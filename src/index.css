@@ -1,0 +1,211 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* -----------------------------
+   Universal Tours Brand Tokens
+------------------------------ */
+:root{
+  --ut-navy: #052468;
+  --ut-sky:  #3CC5F6;
+  --ut-cyan: #04BBE8;
+  --ut-orange:#F07A1C;
+
+  /* Neutres */
+  --ut-bg: #F8FAFC;
+  --ut-text: #0F172A;
+}
+
+/* dark mode tokens */
+.dark{
+  --ut-bg: #0B1220;
+  --ut-text: #E5E7EB;
+}
+html, body, #root { height: 100%; }
+
+/* base */
+body { 
+  @apply text-gray-900;
+  background: var(--ut-bg);
+  color: var(--ut-text);
+}
+.dark body, body.dark { 
+  @apply text-gray-200;
+}
+
+/* components */
+.card { 
+  @apply rounded-2xl p-4 border border-black/5 dark:border-white/10;
+  @apply bg-white dark:bg-panel;
+  box-shadow: 0 12px 30px rgba(5, 36, 104, 0.08);
+}
+
+/* Buttons */
+.btn { 
+  @apply inline-flex items-center justify-center px-4 py-2 rounded-lg font-medium transition;
+}
+
+/* Primary = navy */
+.btn-primary { 
+  @apply btn text-white;
+  background: var(--ut-navy);
+}
+.btn-primary:hover { filter: brightness(0.97); }
+.btn-primary:active { filter: brightness(0.94); }
+
+/* Optional: Orange CTA button (si tu veux sur Login) */
+.btn-accent {
+  @apply btn text-white;
+  background: var(--ut-orange);
+}
+.btn-accent:hover { filter: brightness(0.97); }
+.btn-accent:active { filter: brightness(0.94); }
+
+/* Ghost */
+.btn-ghost { @apply btn bg-transparent hover:bg-black/5 dark:hover:bg-white/10; }
+
+/* Inputs with brand focus */
+.input { 
+  @apply w-full rounded-lg px-3 py-2 bg-white dark:bg-panel;
+  @apply border border-black/10 dark:border-white/10;
+  @apply focus:outline-none focus:ring-2;
+  /* focus ring brand */
+  box-shadow: none;
+}
+.input:focus{
+  border-color: color-mix(in srgb, var(--ut-sky) 55%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ut-sky) 35%, transparent);
+}
+
+/* labels */
+.label { @apply block text-sm mb-1 font-medium; }
+
+/* nav */
+.navlink { @apply flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/10 transition; }
+.nav-active { @apply bg-white/10 text-white font-semibold; }
+
+/* =========================
+   Universal Tours Sidebar (PRO)
+   ========================= */
+
+.ut-sidebar{
+  width: 260px; /* correspond à ton AppShell */
+  height: 100vh;
+  position: relative;
+  background: rgba(255,255,255,0.90);
+  border-right: 1px solid rgba(0,0,0,0.06);
+  backdrop-filter: blur(10px);
+  display: flex;
+  flex-direction: column;
+}
+
+.dark .ut-sidebar{
+  background: rgba(17,24,39,0.72);
+  border-right-color: rgba(255,255,255,0.10);
+}
+
+.ut-side-header{
+  height: 64px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+}
+
+.dark .ut-side-header{
+  border-bottom-color: rgba(255,255,255,0.10);
+}
+
+.ut-side-logo{
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: rgba(5,36,104,0.06); /* ut-navy */
+  overflow: hidden;
+}
+
+.ut-side-nav{
+  padding: 12px;
+  overflow: auto;
+  flex: 1;
+}
+
+.ut-side-group-title{
+  padding: 8px 10px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: rgba(107,114,128,1);
+}
+
+.dark .ut-side-group-title{
+  color: rgba(156,163,175,1);
+}
+
+.ut-side-item{
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 10px 10px 12px;
+  border-radius: 14px;
+  transition: background 150ms ease, color 150ms ease, transform 80ms ease;
+  color: rgba(55,65,81,1);
+}
+
+.dark .ut-side-item{
+  color: rgba(229,231,235,1);
+}
+
+.ut-side-item-idle:hover{
+  background: rgba(5,36,104,0.06);
+}
+
+.dark .ut-side-item-idle:hover{
+  background: rgba(255,255,255,0.06);
+}
+
+.ut-side-item-active{
+  background: rgba(60,197,246,0.16);  /* ut-sky */
+  color: rgba(5,36,104,1);            /* ut-navy */
+}
+
+.dark .ut-side-item-active{
+  background: rgba(60,197,246,0.14);
+  color: rgba(255,255,255,1);
+}
+
+.ut-side-indicator{
+  position: absolute;
+  left: 6px;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.ut-side-item-active .ut-side-indicator{
+  background: var(--ut-orange);
+}
+
+.ut-side-icon{
+  width: 24px;
+  display: inline-flex;
+  justify-content: center;
+  opacity: 0.9;
+}
+
+.ut-side-footer{
+  height: 72px;
+  padding: 12px 14px;
+  border-top: 1px solid rgba(0,0,0,0.06);
+  display: flex;
+  align-items: center;
+}
+
+.dark .ut-side-footer{
+  border-top-color: rgba(255,255,255,0.10);
+}
