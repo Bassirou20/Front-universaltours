@@ -129,14 +129,14 @@ export default function LoginPage() {
               <div>
                 <label className="label">Email</label>
                 <div className="relative">
-                  <Mail
+                  {/* <Mail
                     size={16}
                     className="absolute left-3 top-1/2 -translate-y-1/2 opacity-60 pointer-events-none"
-                  />
+                  /> */}
                   <input
                     className="input pl-10"
                     type="email"
-                    placeholder="ex: admin@universal-tours.com"
+                    placeholder="ex: admin@gmail.com"
                     autoComplete="email"
                     {...register('email', {
                       required: 'Email requis',
@@ -153,10 +153,10 @@ export default function LoginPage() {
               <div>
                 <label className="label">Mot de passe</label>
                 <div className="relative">
-                  <Lock
+                  {/* <Lock
                     size={16}
                     className="absolute left-3 top-1/2 -translate-y-1/2 opacity-60 pointer-events-none"
-                  />
+                  /> */}
                   <input
                     className="input pl-10 pr-10"
                     type={showPwd ? 'text' : 'password'}
