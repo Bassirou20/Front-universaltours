@@ -6,9 +6,9 @@ import { useAuth } from '../../store/auth'
 import logo from '../../assets/brand/logounivtours.jpg'
 
 // ✅ Tes images locales (à mettre dans src/assets/brand/slider/)
-import slide1 from '../../assets/brand/slider/slide-1.jpg'
-import slide2 from '../../assets/brand/slider/slide-2.jpg'
-import slide3 from '../../assets/brand/slider/slide-3.jpg'
+import slide1 from '../../assets/brand/slider/slide-5.jpg'
+import slide2 from '../../assets/brand/slider/slide-6.jpg'
+import slide3 from '../../assets/brand/slider/slide-7.jpg'
 
 type FormVals = {
   email: string
