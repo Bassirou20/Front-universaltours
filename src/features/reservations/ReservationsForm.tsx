@@ -1,1192 +1,1074 @@
 // src/features/reservations/ReservationsForm.tsx
 import React, { useEffect, useMemo, useState } from 'react'
-import { useForm, useFieldArray } from 'react-hook-form'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../../lib/axios'
-import { ChevronDown, Wallet } from 'lucide-react'
+import {
+  User,
+  Users,
+  Calendar,
+  MapPin,
+  Plane,
+  Ticket,
+  Hotel,
+  Car,
+  PartyPopper,
+  Package,
+  Receipt,
+  FileText,
+  ChevronLeft,
+  ChevronRight,
+  CheckCircle2,
+} from 'lucide-react'
 
 export type ReservationType = 'billet_avion' | 'hotel' | 'voiture' | 'evenement' | 'forfait'
 
-type ClientMini = {
-  id: number
-  nom: string
-  prenom?: string | null
-  email?: string | null
-  telephone?: string | null
-}
-
-type ProduitMini = {
-  id: number
-  nom?: string
-  type?: string
-  prix_base?: number
-}
-
-type ForfaitMini = {
-  id: number
-  nom?: string
-  type?: 'solo' | 'couple' | 'famille' | string
-  prix?: number
-  prix_adulte?: number
-  prix_enfant?: number
-}
-
-type ParticipantInput = {
-  nom: string
-  prenom?: string
-  age?: number
-}
-
-// 🔸 Acompte (front-only) : retiré du payload côté ReservationsPage
-export type AcompteInput = {
-  montant?: number | string | null
-  mode_paiement?: string | null
-  reference?: string | null
-}
-
 export type ReservationInput = {
+  // Client
   client_id?: number | null
+  client_mode?: 'existing' | 'new'
   client?: {
-    nom: string
-    prenom?: string | null
-    email?: string | null
-    telephone?: string | null
-    adresse?: string | null
-    pays?: string | null
-    notes?: string | null
+    nom?: string
+    prenom?: string
+    email?: string
+    telephone?: string
+    adresse?: string
+    pays?: string
   }
 
+  // Commun
   type: ReservationType
+  statut?: string
+  reference?: string | null
+  nombre_personnes?: number
+  montant_sous_total?: number | null
+  montant_taxes?: number | null
+  montant_total?: number
+  notes?: string | null
 
-  produit_id?: number | null
-  forfait_id?: number | null
-
-  ville_depart?: string | null
-  ville_arrivee?: string | null
-  date_depart?: string | null
-  date_arrivee?: string | null
-  compagnie?: string | null
-
+  // Billet avion (nouvelle logique)
+  passenger_is_client?: boolean
+  passenger?: {
+    nom: string
+    prenom?: string
+  }
   flight_details?: {
     ville_depart: string
     ville_arrivee: string
     date_depart: string
-    date_arrivee: string
-    compagnie: string
-  } | null
+    date_arrivee?: string | null
+    compagnie?: string | null
+    pnr?: string | null
+    classe?: string | null
+  }
 
-  nombre_personnes?: number | null
-  montant_sous_total?: number | string | null
-  montant_total?: number | null
+  // Autres
+  produit_id?: number | null
+  forfait_id?: number | null
 
-  participants?: ParticipantInput[]
-  notes?: string | null
+  // Participants (events / forfaits)
+  participants?: Array<{
+    nom: string
+    prenom?: string
+    passport?: string
+    age?: number | null
+    remarques?: string
+    role?: string
+  }>
 
-  // front-only
-  acompte?: AcompteInput
+  // acompte front-only
+  acompte?: {
+    montant?: number
+    mode_paiement?: string
+    reference?: string
+  }
 }
 
 type Props = {
-  defaultValues?: Partial<any>
-  onSubmit: (vals: ReservationInput) => void
-  onCancel: () => void
+  defaultValues?: Partial<ReservationInput>
   submitting?: boolean
+  onCancel: () => void
+  onSubmit: (vals: ReservationInput) => void
 }
 
-const normalizeList = (input: any): any[] => {
-  if (!input) return []
-  if (Array.isArray(input)) return input
-  if (Array.isArray(input.data)) return input.data
-  if (Array.isArray(input.items)) return input.items
-  if (Array.isArray(input?.data?.data)) return input.data.data
-  return []
+/* -------------------- UI helpers -------------------- */
+function cx(...cls: Array<string | false | undefined | null>) {
+  return cls.filter(Boolean).join(' ')
 }
 
-const toIntOrNull = (v: any) => {
-  const n = Number(v)
-  return Number.isFinite(n) && n > 0 ? n : null
+function money(n: any, devise = 'XOF') {
+  return `${Number(n || 0).toLocaleString()} ${devise}`
 }
 
-const toNumberOrNull = (v: any) => {
-  if (v === '' || v === null || v === undefined) return null
-  const n = Number(v)
-  return Number.isFinite(n) ? n : null
+const TYPE_META: Record<ReservationType, { label: string; icon: React.ReactNode; hint: string }> = {
+  billet_avion: { label: "Billet d'avion", icon: <Plane size={16} />, hint: 'Vol + passager + PNR optionnel.' },
+  hotel: { label: 'Hôtel', icon: <Hotel size={16} />, hint: 'Produit hôtel + montant.' },
+  voiture: { label: 'Location voiture', icon: <Car size={16} />, hint: '1 réservation = 1 personne (fixé).' },
+  evenement: { label: 'Évènement', icon: <PartyPopper size={16} />, hint: 'Participants optionnels selon besoin.' },
+  forfait: { label: 'Forfait', icon: <Package size={16} />, hint: 'Forfait + participants.' },
 }
 
-const calcSousTotalFromProduit = (prixBase: any, nb: any) => {
-  const p = Number(prixBase || 0)
-  const n = Math.max(1, Number(nb || 1))
-  return p * n
-}
-
-const calcSousTotalFromForfait = (forfait: any, participants: any[]) => {
-  if (!forfait) return 0
-
-  const type = forfait.type
-  const count = Math.max(1, participants?.length || 1)
-
-  if (forfait.prix != null) {
-    if (type === 'solo') return Number(forfait.prix)
-    if (type === 'couple') return Number(forfait.prix) * Math.max(2, count)
-    return Number(forfait.prix) * count
-  }
-
-  if (type === 'famille') {
-    const pa = Number(forfait.prix_adulte || 0)
-    const pe = Number(forfait.prix_enfant || 0)
-
-    let adultes = 0
-    let enfants = 0
-    for (const p of participants || []) {
-      const age = Number(p?.age)
-      if (!Number.isFinite(age)) continue
-      if (age < 12) enfants++
-      else adultes++
-    }
-
-    if (adultes + enfants === 0) return (pa || 0) * count
-    return adultes * pa + enfants * pe
-  }
-
-  return 0
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Stepper({
+  steps,
+  current,
+  onGo,
+}: {
+  steps: Array<{ title: string; subtitle?: string }>
+  current: number
+  onGo?: (idx: number) => void
+}) {
+  const pct = steps.length <= 1 ? 100 : Math.round((current / (steps.length - 1)) * 100)
   return (
-    <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white dark:bg-panel shadow-soft p-4 space-y-3">
-      <div className="font-semibold">{title}</div>
-      {children}
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">Nouvelle réservation</div>
+        <div className="text-xs text-gray-600 dark:text-gray-400">
+          Étape {current + 1} / {steps.length}
+        </div>
+      </div>
+
+      <div className="h-2 w-full rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
+        <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+        {steps.map((s, i) => {
+          const active = i === current
+          const done = i < current
+          return (
+            <button
+              key={i}
+              type="button"
+              onClick={() => onGo?.(i)}
+              className={cx(
+                'rounded-2xl border px-3 py-2 text-left transition',
+                active
+                  ? 'border-primary bg-primary/5'
+                  : 'border-black/10 dark:border-white/10 bg-white dark:bg-panel hover:bg-black/[0.02] dark:hover:bg-white/[0.04]'
+              )}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className={cx('text-sm font-medium', active ? 'text-primary' : 'text-gray-900 dark:text-gray-100')}>
+                  {s.title}
+                </div>
+                {done ? <CheckCircle2 size={16} className="text-green-600 dark:text-green-400" /> : null}
+              </div>
+              {s.subtitle ? <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">{s.subtitle}</div> : null}
+            </button>
+          )
+        })}
+      </div>
     </div>
   )
 }
 
-function Row({ children }: { children: React.ReactNode }) {
-  return <div className="grid grid-cols-1 md:grid-cols-2 gap-3">{children}</div>
-}
-
-function Field({ label, children, hint }: { label: string; children: React.ReactNode; hint?: string }) {
+function Card({ title, icon, children }: { title: string; icon?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div>
-      <label className="label">{label}</label>
-      {children}
-      {hint ? <div className="text-xs text-gray-500 mt-1">{hint}</div> : null}
+    <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white dark:bg-panel shadow-soft">
+      <div className="px-4 py-3 border-b border-black/5 dark:border-white/10 flex items-center gap-2">
+        {icon ? <span className="text-gray-700 dark:text-gray-200">{icon}</span> : null}
+        <div className="font-semibold text-gray-900 dark:text-gray-100">{title}</div>
+      </div>
+      <div className="p-4">{children}</div>
     </div>
   )
 }
 
-const money = (n: any, devise = 'XOF') => `${Number(n || 0).toLocaleString()} ${devise}`
+/* -------------------- Main -------------------- */
+const EMPTY: ReservationInput = {
+  type: 'billet_avion',
+  client_mode: 'existing',
+  client_id: null,
+  nombre_personnes: 1,
+  montant_total: 0,
+  montant_sous_total: null,
+  montant_taxes: null,
+  notes: '',
+  passenger_is_client: true,
+  passenger: { nom: '', prenom: '' },
+  flight_details: {
+    ville_depart: '',
+    ville_arrivee: '',
+    date_depart: '',
+    date_arrivee: '',
+    compagnie: '',
+    pnr: '',
+    classe: '',
+  },
+  produit_id: null,
+  forfait_id: null,
+  participants: [],
+  acompte: { montant: 0, mode_paiement: 'especes', reference: '' },
+}
 
-type BeneficiaryMode = 'client' | 'autre'
+function normalizeReservationToForm(dv?: Partial<ReservationInput>): ReservationInput {
+  const v: any = dv || {}
+  const type: ReservationType = (v.type as ReservationType) || 'billet_avion'
 
-export const ReservationsForm: React.FC<Props> = ({ defaultValues, onSubmit, onCancel, submitting }) => {
-  const [useNewClient, setUseNewClient] = useState(false)
+  // Essayons de deviner les structures du backend (show includes passenger, flightDetails, participants)
+  const clientId = v.client_id ?? v.client?.id ?? null
 
-  // ✅ Billet d’avion : bénéficiaire clair
-  const [beneficiaryMode, setBeneficiaryMode] = useState<BeneficiaryMode>('client')
+  const flightFromBackend = v.flight_details ?? v.flightDetails ?? null
+  const flight_details =
+    type === 'billet_avion'
+      ? {
+          ville_depart: String(flightFromBackend?.ville_depart ?? v.ville_depart ?? ''),
+          ville_arrivee: String(flightFromBackend?.ville_arrivee ?? v.ville_arrivee ?? ''),
+          date_depart: String(flightFromBackend?.date_depart ?? v.date_depart ?? ''),
+          date_arrivee: String(flightFromBackend?.date_arrivee ?? v.date_arrivee ?? ''),
+          compagnie: String(flightFromBackend?.compagnie ?? v.compagnie ?? ''),
+          pnr: String(flightFromBackend?.pnr ?? v.pnr ?? ''),
+          classe: String(flightFromBackend?.classe ?? v.classe ?? ''),
+        }
+      : undefined
 
-  // participants (UI)
-  const [participantFormOpen, setParticipantFormOpen] = useState(false)
-  const [draftParticipant, setDraftParticipant] = useState<{ nom: string; prenom: string; age: string }>({
-    nom: '',
-    prenom: '',
-    age: '',
-  })
-  const [participantErrors, setParticipantErrors] = useState<{ nom?: string; prenom?: string; age?: string }>({})
-  const [editingIndex, setEditingIndex] = useState<number | null>(null)
+  const passengerBackend = v.passenger ?? null
+  const passenger_is_client =
+    typeof v.passenger_is_client === 'boolean'
+      ? v.passenger_is_client
+      : passengerBackend
+      ? false
+      : true
 
-  const clearDraft = () => {
-    setDraftParticipant({ nom: '', prenom: '', age: '' })
-    setParticipantErrors({})
-  }
+  const passenger =
+    type === 'billet_avion' && !passenger_is_client
+      ? {
+          nom: String(passengerBackend?.nom ?? v.passenger_nom ?? ''),
+          prenom: String(passengerBackend?.prenom ?? v.passenger_prenom ?? ''),
+        }
+      : { nom: '', prenom: '' }
 
-  const form = useForm<ReservationInput>({
-    defaultValues: {
-      type: (defaultValues?.type as ReservationType) || 'billet_avion',
+  const participantsArr = Array.isArray(v.participants) ? v.participants : []
+  const participants =
+    type === 'forfait' || type === 'evenement'
+      ? participantsArr.map((p: any) => ({
+          nom: String(p?.nom ?? ''),
+          prenom: p?.prenom ?? '',
+          passport: p?.passport ?? '',
+          age: p?.age ?? null,
+          remarques: p?.remarques ?? '',
+          role: p?.role ?? 'passenger',
+        }))
+      : []
 
-      client_id: defaultValues?.client_id ?? null,
-      produit_id: defaultValues?.produit_id ?? null,
-      forfait_id: defaultValues?.forfait_id ?? null,
+  return {
+    ...EMPTY,
+    ...v,
+    type,
+    client_mode: v.client_mode || 'existing',
+    client_id: clientId ? Number(clientId) : null,
 
-      ville_depart: defaultValues?.ville_depart ?? '',
-      ville_arrivee: defaultValues?.ville_arrivee ?? '',
-      date_depart: defaultValues?.date_depart ?? '',
-      date_arrivee: defaultValues?.date_arrivee ?? '',
-      compagnie: defaultValues?.compagnie ?? '',
+    nombre_personnes: Number(v.nombre_personnes ?? 1),
+    montant_sous_total: v.montant_sous_total != null ? Number(v.montant_sous_total) : null,
+    montant_taxes: v.montant_taxes != null ? Number(v.montant_taxes) : null,
+    montant_total: Number(v.montant_total ?? 0),
+    notes: v.notes ?? '',
 
-      nombre_personnes: defaultValues?.nombre_personnes ?? 1,
+    passenger_is_client,
+    passenger,
+    flight_details,
 
-      // ✅ billet: on utilise ce champ comme "prix par personne" (et on calcule total)
-      montant_sous_total: defaultValues?.montant_sous_total ?? '',
+    produit_id: v.produit_id != null ? Number(v.produit_id) : null,
+    forfait_id: v.forfait_id != null ? Number(v.forfait_id) : null,
 
-      notes: defaultValues?.notes ?? '',
-      participants: defaultValues?.participants ?? [],
+    participants,
 
-      client: defaultValues?.client ?? {
-        nom: '',
-        prenom: '',
-        email: '',
-        telephone: '',
-        adresse: '',
-        pays: 'Sénégal',
-        notes: '',
-      },
-
-      acompte: defaultValues?.acompte ?? {
-        montant: '',
-        mode_paiement: 'especes',
-        reference: '',
-      },
+    // acompte reste front-only
+    acompte: {
+      montant: Number(v.acompte?.montant ?? 0),
+      mode_paiement: String(v.acompte?.mode_paiement ?? 'especes'),
+      reference: String(v.acompte?.reference ?? ''),
     },
-  })
+  }
+}
 
-  const {
-    register,
-    watch,
-    handleSubmit,
-    reset,
-    setValue,
-    setError,
-    clearErrors,
-    formState: { errors },
-  } = form
+export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit }: Props) {
+  const [form, setForm] = useState<ReservationInput>(() => normalizeReservationToForm(defaultValues))
+  const [step, setStep] = useState(0)
 
-  const type = watch('type')
-  const produitId = watch('produit_id')
-  const forfaitId = watch('forfait_id')
-  const nbPersonnes = watch('nombre_personnes')
-  const sousTotalInput = watch('montant_sous_total')
-  const participantsWatch = watch('participants') ?? []
+  // Quand on passe en modification => recharger form
+  useEffect(() => {
+    setForm(normalizeReservationToForm(defaultValues))
+    setStep(0)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(defaultValues || {})])
 
-  const participantsFA = useFieldArray({ control: form.control, name: 'participants' })
-
+  /* ---------- Data sources (selects) ---------- */
   const qClients = useQuery({
-    queryKey: ['clients-mini'],
+    queryKey: ['clients', 'select-all'],
     queryFn: async () => {
-      const { data } = await api.get('/clients', { params: { page: 1, per_page: 200 } })
-      return normalizeList(data)
+      const { data } = await api.get('/clients', { params: { per_page: 200 } })
+      const list = Array.isArray(data?.data) ? data.data : Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : []
+      return list
     },
   })
 
   const qProduits = useQuery({
-    queryKey: ['produits-mini', type],
+    queryKey: ['produits', 'select-all'],
     queryFn: async () => {
-      const { data } = await api.get('/produits', {
-        params: {
-          page: 1,
-          per_page: 300,
-          type: type === 'billet_avion' || type === 'forfait' ? undefined : type,
-        },
-      })
-      return normalizeList(data)
+      const { data } = await api.get('/produits', { params: { per_page: 300 } })
+      const list = Array.isArray(data?.data) ? data.data : Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : []
+      return list
     },
-    enabled: type !== 'billet_avion' && type !== 'forfait',
   })
 
   const qForfaits = useQuery({
-    queryKey: ['forfaits-mini'],
+    queryKey: ['forfaits', 'select-all'],
     queryFn: async () => {
-      const { data } = await api.get('/forfaits', { params: { page: 1, per_page: 300 } })
-      return normalizeList(data)
+      const { data } = await api.get('/forfaits', { params: { per_page: 300 } })
+      const list = Array.isArray(data?.data) ? data.data : Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : []
+      return list
     },
   })
 
-  const clients: ClientMini[] = useMemo(() => qClients.data ?? [], [qClients.data])
-  const produits: ProduitMini[] = useMemo(() => qProduits.data ?? [], [qProduits.data])
-  const forfaits: ForfaitMini[] = useMemo(() => qForfaits.data ?? [], [qForfaits.data])
+  const clients: any[] = qClients.data || []
+  const produits: any[] = qProduits.data || []
+  const forfaits: any[] = qForfaits.data || []
 
-  const selectedProduit = useMemo(() => produits.find((p) => p.id === Number(produitId)), [produits, produitId])
-  const selectedForfait = useMemo(() => forfaits.find((f) => f.id === Number(forfaitId)), [forfaits, forfaitId])
+  const produitsOfType = useMemo(() => {
+    if (!form.type) return []
+    return produits.filter((p) => String(p?.type) === String(form.type))
+  }, [produits, form.type])
 
-  const isSoloForfaitSelected = useMemo(() => {
-    if (!selectedForfait) return false
-    return String(selectedForfait.type) === 'solo'
-  }, [selectedForfait])
+  const selectedClient = useMemo(() => {
+    if (!form.client_id) return null
+    return clients.find((c) => Number(c?.id) === Number(form.client_id)) || null
+  }, [clients, form.client_id])
 
-  // ✅ Total estimé (avec billet avion: prix/personne × nb)
-  const estimatedTotal = useMemo(() => {
-    const nb = toIntOrNull(nbPersonnes) || 1
+  /* ---------- Step definitions ---------- */
+  const steps = useMemo(
+    () => [
+      { title: 'Type & client', subtitle: 'Choisir le type + le payeur' },
+      { title: 'Détails', subtitle: 'Vol / produit / forfait' },
+      { title: 'Bénéficiaire', subtitle: 'Passager / participants' },
+      { title: 'Montant', subtitle: 'Total + notes' },
+      { title: 'Acompte', subtitle: 'Optionnel (front)' },
+    ],
+    []
+  )
 
-    if (type === 'billet_avion') {
-      const unit = toNumberOrNull(sousTotalInput) ?? 0
-      return unit * nb
+  /* ---------- Generic setters ---------- */
+  const set = <K extends keyof ReservationInput>(key: K, value: ReservationInput[K]) => {
+    setForm((s) => ({ ...s, [key]: value }))
+  }
+
+  const setFlight = (patch: Partial<NonNullable<ReservationInput['flight_details']>>) => {
+    setForm((s) => ({
+      ...s,
+      flight_details: { ...(s.flight_details || (EMPTY.flight_details as any)), ...patch },
+    }))
+  }
+
+  const setPassenger = (patch: Partial<NonNullable<ReservationInput['passenger']>>) => {
+    setForm((s) => ({
+      ...s,
+      passenger: { ...(s.passenger || { nom: '', prenom: '' }), ...patch } as any,
+    }))
+  }
+
+  const addParticipant = () => {
+    setForm((s) => ({
+      ...s,
+      participants: [...(s.participants || []), { nom: '', prenom: '', passport: '', age: null, remarques: '', role: 'passenger' }],
+    }))
+  }
+
+  const updateParticipant = (idx: number, patch: any) => {
+    setForm((s) => ({
+      ...s,
+      participants: (s.participants || []).map((p, i) => (i === idx ? { ...p, ...patch } : p)),
+    }))
+  }
+
+  const removeParticipant = (idx: number) => {
+    setForm((s) => ({ ...s, participants: (s.participants || []).filter((_, i) => i !== idx) }))
+  }
+
+  /* ---------- Business rules ---------- */
+  useEffect(() => {
+    // Voiture: 1 personne
+    if (form.type === 'voiture' && form.nombre_personnes !== 1) {
+      set('nombre_personnes', 1)
+    }
+    // Billet avion: souvent 1 (ton backend supporte nombre_personnes, mais UX: 1)
+    if (form.type === 'billet_avion' && (form.nombre_personnes ?? 1) < 1) {
+      set('nombre_personnes', 1)
+    }
+    // reset produit/forfait si type change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.type])
+
+  /* ---------- Validation minimal (wizard) ---------- */
+  const validateStep = (s: number): string | null => {
+    if (s === 0) {
+      if (form.client_mode === 'existing' && !form.client_id) return 'Veuillez sélectionner un client.'
+      if (form.client_mode === 'new') {
+        if (!form.client?.nom) return 'Nom du client requis.'
+        if (!form.client?.telephone && !form.client?.email) return 'Téléphone ou email du client requis.'
+      }
+      if (!form.type) return 'Type requis.'
     }
 
-    if (type === 'voiture') return calcSousTotalFromProduit(selectedProduit?.prix_base, 1)
-
-    if (type === 'hotel') return calcSousTotalFromProduit(selectedProduit?.prix_base, nb)
-
-    if (type === 'evenement') {
-      if (selectedForfait) return calcSousTotalFromForfait(selectedForfait, participantsWatch)
-      return calcSousTotalFromProduit(selectedProduit?.prix_base, nb)
-    }
-
-    if (type === 'forfait') return calcSousTotalFromForfait(selectedForfait, participantsWatch)
-
-    return 0
-  }, [type, sousTotalInput, selectedProduit, nbPersonnes, selectedForfait, participantsWatch])
-
-  const validateDraftParticipant = (opts: { requirePrenom: boolean; requireAge: boolean }) => {
-    const errs: { nom?: string; prenom?: string; age?: string } = {}
-
-    const nom = draftParticipant.nom.trim()
-    const prenom = draftParticipant.prenom.trim()
-
-    if (!nom) errs.nom = 'Nom obligatoire.'
-    if (opts.requirePrenom && !prenom) errs.prenom = 'Prénom obligatoire.'
-
-    if (opts.requireAge) {
-      if (draftParticipant.age.trim() === '') {
-        errs.age = 'Âge obligatoire.'
+    if (s === 1) {
+      if (form.type === 'billet_avion') {
+        const fd = form.flight_details
+        if (!fd?.ville_depart) return 'Ville départ requise.'
+        if (!fd?.ville_arrivee) return 'Ville arrivée requise.'
+        if (!fd?.date_depart) return 'Date départ requise.'
+      } else if (form.type === 'forfait') {
+        if (!form.forfait_id) return 'Veuillez sélectionner un forfait.'
       } else {
-        const age = Number(draftParticipant.age)
-        if (!Number.isFinite(age)) errs.age = 'Âge invalide.'
-        else if (age < 0) errs.age = 'Âge doit être >= 0.'
-      }
-    } else {
-      if (draftParticipant.age.trim() !== '') {
-        const age = Number(draftParticipant.age)
-        if (!Number.isFinite(age)) errs.age = 'Âge invalide.'
-        else if (age < 0) errs.age = 'Âge doit être >= 0.'
+        // produit-based
+        if (!form.produit_id) return 'Veuillez sélectionner un produit.'
       }
     }
 
-    setParticipantErrors(errs)
-    return Object.keys(errs).length === 0
-  }
-
-  // reset en édition uniquement
-  useEffect(() => {
-    if (!defaultValues) return
-    reset({
-      type: (defaultValues?.type as ReservationType) || 'billet_avion',
-      client_id: defaultValues?.client_id ?? null,
-      produit_id: defaultValues?.produit_id ?? null,
-      forfait_id: defaultValues?.forfait_id ?? null,
-
-      ville_depart: defaultValues?.ville_depart ?? '',
-      ville_arrivee: defaultValues?.ville_arrivee ?? '',
-      date_depart: defaultValues?.date_depart ?? '',
-      date_arrivee: defaultValues?.date_arrivee ?? '',
-      compagnie: defaultValues?.compagnie ?? '',
-
-      nombre_personnes: defaultValues?.nombre_personnes ?? 1,
-      montant_sous_total: defaultValues?.montant_sous_total ?? '',
-
-      notes: defaultValues?.notes ?? '',
-      participants: defaultValues?.participants ?? [],
-
-      client: defaultValues?.client ?? {
-        nom: '',
-        prenom: '',
-        email: '',
-        telephone: '',
-        adresse: '',
-        pays: 'Sénégal',
-        notes: '',
-      },
-
-      acompte: defaultValues?.acompte ?? {
-        montant: '',
-        mode_paiement: 'especes',
-        reference: '',
-      },
-    })
-
-    // ✅ déduire mode bénéficiaire en édition (heuristique)
-    const nb = Number(defaultValues?.nombre_personnes ?? 1)
-    const parts = Array.isArray(defaultValues?.participants) ? defaultValues.participants : []
-    if ((defaultValues?.type as any) === 'billet_avion') {
-      // si on a autant de participants que nb -> probablement "autre" (tous passagers saisis)
-      if (parts.length >= nb) setBeneficiaryMode('autre')
-      else setBeneficiaryMode('client')
-    }
-  }, [defaultValues, reset])
-
-  // règles UI
-  useEffect(() => {
-    if (type === 'voiture') {
-      setValue('nombre_personnes', 1)
-      setValue('participants', [])
-    }
-    if (type === 'billet_avion') {
-      setValue('produit_id', null)
-      setValue('forfait_id', null)
-      // billets: participants gérés selon bénéficiaire/nb → on ne vide pas automatiquement
-    }
-    if (type === 'forfait') {
-      setValue('produit_id', null)
-    }
-  }, [type, setValue])
-
-  // ✅ Acompte toggle (UI)
-  const [acompteOpen, setAcompteOpen] = useState(false)
-
-  // ✅ validations “logiques” avant submit
-  const ensureClient = (vals: ReservationInput) => {
-    if (useNewClient) {
-      if (!vals.client?.nom?.trim()) {
-        setError('client.nom' as any, { type: 'manual', message: 'Nom du client requis.' })
-        return false
-      }
-      clearErrors('client.nom' as any)
-      return true
-    }
-
-    const cid = toIntOrNull(vals.client_id)
-    if (!cid) {
-      setError('client_id' as any, { type: 'manual', message: 'Client requis.' })
-      return false
-    }
-    clearErrors('client_id' as any)
-    return true
-  }
-
-  const submit = (vals: ReservationInput) => {
-    // 1) client obligatoire
-    if (!ensureClient(vals)) return
-
-    const payload: ReservationInput = {
-      type: vals.type,
-      notes: vals.notes?.trim() ? vals.notes : null,
-    }
-
-    // client
-    if (useNewClient) {
-      payload.client = {
-        nom: vals.client!.nom.trim(),
-        prenom: vals.client?.prenom?.trim() || null,
-        email: vals.client?.email?.trim() || null,
-        telephone: vals.client?.telephone?.trim() || null,
-        adresse: vals.client?.adresse?.trim() || null,
-        pays: vals.client?.pays?.trim() || null,
-        notes: vals.client?.notes?.trim() || null,
-      }
-    } else {
-      payload.client_id = toIntOrNull(vals.client_id)
-    }
-
-    const normalizedParticipants: ParticipantInput[] = (vals.participants ?? [])
-      .filter((p) => (p.nom || '').trim())
-      .map((p) => ({
-        nom: (p.nom || '').trim(),
-        prenom: p.prenom?.trim() || undefined,
-        age: p.age != null && p.age !== ('' as any) ? Number(p.age) : undefined,
-      }))
-
-    // ==========================
-    // BILLET AVION
-    // ==========================
-
-    if (acompteOpen) {
-      const m = toNumberOrNull(vals.acompte?.montant)
-      if (m != null && m > 0) {
-        payload.acompte = {
-          montant: m,
-          mode_paiement: (vals.acompte?.mode_paiement || 'especes') as any,
-          reference: vals.acompte?.reference?.trim() || null,
+    if (s === 2) {
+      if (form.type === 'billet_avion') {
+        if (!form.passenger_is_client) {
+          if (!form.passenger?.nom) return 'Nom du passager requis.'
         }
-      } else {
-        payload.acompte = undefined
       }
-    } else {
-      payload.acompte = undefined
     }
-    if (vals.type === 'billet_avion') {
-      const nb = toIntOrNull(vals.nombre_personnes) || 1
 
-      const vd = (vals.ville_depart || '').trim()
-      const va = (vals.ville_arrivee || '').trim()
-      const dd = (vals.date_depart || '').trim()
-      const da = (vals.date_arrivee || '').trim()
-      const cp = (vals.compagnie || '').trim()
+    if (s === 3) {
+      if (Number(form.montant_total || 0) <= 0) return 'Montant total requis.'
+    }
 
-      if (!vd || !va || !dd || !da || !cp) {
-        // messages déjà via RHF sur inputs, mais on sécurise
-        alert('Veuillez remplir tous les détails du vol.')
-        return
+    return null
+  }
+
+  const canGoNext = validateStep(step) === null
+
+  const next = () => {
+    const err = validateStep(step)
+    if (err) return
+    setStep((v) => Math.min(v + 1, steps.length - 1))
+  }
+
+  const prev = () => setStep((v) => Math.max(v - 1, 0))
+
+  /* ---------- Submit mapping to backend ---------- */
+  const buildPayload = (): ReservationInput => {
+    const payload: any = { ...form }
+
+    // client mode
+    if (payload.client_mode === 'existing') {
+      delete payload.client
+    } else {
+      delete payload.client_id
+    }
+    delete payload.client_mode
+
+    // backend expects passenger_is_client OR passenger object for billet
+    if (payload.type !== 'billet_avion') {
+      delete payload.passenger_is_client
+      delete payload.passenger
+      delete payload.flight_details
+    } else {
+      // passenger logic
+      if (payload.passenger_is_client) {
+        delete payload.passenger
+      } else {
+        // ensure minimal passenger object
+        payload.passenger = {
+          nom: String(payload.passenger?.nom || '').trim(),
+          prenom: String(payload.passenger?.prenom || '').trim() || undefined,
+        }
       }
 
-      // ✅ billet: montant_sous_total = PRIX PAR PERSONNE
-      const unit = toNumberOrNull(vals.montant_sous_total)
-      if (unit == null) {
-        setError('montant_sous_total' as any, { type: 'manual', message: 'Prix par personne obligatoire.' })
-        return
-      }
-      clearErrors('montant_sous_total' as any)
-
-      // ✅ passagers requis
-      // - si nb == 1 :
-      //    - mode client => aucun participant requis
-      //    - mode autre  => 1 participant requis (le bénéficiaire)
-      // - si nb > 1 :
-      //    - mode client => participants requis = nb-1 (autres passagers)
-      //    - mode autre  => participants requis = nb (tous passagers)
-      const requiredCount =
-        nb === 1
-          ? beneficiaryMode === 'autre'
-            ? 1
-            : 0
-          : beneficiaryMode === 'autre'
-          ? nb
-          : nb - 1
-
-      if (normalizedParticipants.length < requiredCount) {
-        alert(
-          beneficiaryMode === 'autre'
-            ? `Veuillez ajouter ${requiredCount} passager(s) (tous les bénéficiaires).`
-            : `Veuillez ajouter ${requiredCount} passager(s) (hors client).`
-        )
-        return
-      }
-
-      payload.nombre_personnes = nb
-      payload.montant_sous_total = unit * nb
-      payload.montant_total = unit * nb
-
+      // clean flight details
       payload.flight_details = {
-        ville_depart: vd,
-        ville_arrivee: va,
-        date_depart: dd,
-        date_arrivee: da,
-        compagnie: cp,
+        ville_depart: String(payload.flight_details?.ville_depart || '').trim(),
+        ville_arrivee: String(payload.flight_details?.ville_arrivee || '').trim(),
+        date_depart: String(payload.flight_details?.date_depart || '').trim(),
+        date_arrivee: payload.flight_details?.date_arrivee ? String(payload.flight_details.date_arrivee) : null,
+        compagnie: payload.flight_details?.compagnie ? String(payload.flight_details.compagnie) : null,
+        pnr: payload.flight_details?.pnr ? String(payload.flight_details.pnr) : null,
+        classe: payload.flight_details?.classe ? String(payload.flight_details.classe) : null,
       }
-
-      payload.produit_id = null
-      payload.forfait_id = null
-
-      // ✅ on envoie participants seulement si nécessaire (mais si l’UI a collecté, on envoie)
-      payload.participants = requiredCount > 0 ? normalizedParticipants.slice(0, requiredCount) : []
-
-      // éviter ambiguïté champs plats
-      payload.ville_depart = null
-      payload.ville_arrivee = null
-      payload.date_depart = null
-      payload.date_arrivee = null
-      payload.compagnie = null
-
-      onSubmit(payload)
-      return
     }
 
-    // ==========================
-    // HOTEL / VOITURE / EVENEMENT
-    // ==========================
-    if (vals.type === 'hotel' || vals.type === 'voiture' || vals.type === 'evenement') {
-      payload.produit_id = toIntOrNull(vals.produit_id)
-      if (!payload.produit_id) {
-        alert('Produit requis.')
-        return
-      }
-
-      const produit = produits.find((p) => p.id === payload.produit_id)
-      const nb = vals.type === 'voiture' ? 1 : toIntOrNull(vals.nombre_personnes) || 1
-      payload.nombre_personnes = nb
-
-      let sousTotal = calcSousTotalFromProduit(produit?.prix_base, nb)
-
-      if (vals.type === 'voiture' || vals.type === 'hotel') {
-        payload.participants = undefined
-        payload.forfait_id = null
-      }
-
-      if (vals.type === 'evenement') {
-        payload.forfait_id = toIntOrNull(vals.forfait_id) // optionnel
-        payload.participants = normalizedParticipants
-
-        if (payload.forfait_id) {
-          const f = forfaits.find((x) => x.id === payload.forfait_id)
-          sousTotal = calcSousTotalFromForfait(f, normalizedParticipants)
-        }
-      }
-
-      payload.montant_sous_total = sousTotal
-      payload.montant_total = sousTotal
-
-      onSubmit(payload)
-      return
+    // produit/forfait rules
+    if (payload.type === 'forfait') {
+      delete payload.produit_id
+    } else if (payload.type !== 'forfait' && payload.type !== 'billet_avion') {
+      delete payload.forfait_id
     }
 
-    // ==========================
-    // FORFAIT
-    // ==========================
-    if (vals.type === 'forfait') {
-      payload.forfait_id = toIntOrNull(vals.forfait_id)
-      if (!payload.forfait_id) {
-        alert('Forfait requis.')
-        return
-      }
+    // participants
+    const shouldHaveParticipants = payload.type === 'forfait' || payload.type === 'evenement'
+    if (!shouldHaveParticipants) delete payload.participants
+    else payload.participants = (payload.participants || []).filter((p: any) => String(p?.nom || '').trim() !== '')
 
-      payload.produit_id = null
-      payload.participants = normalizedParticipants
+    // Montants
+    payload.nombre_personnes = Number(payload.nombre_personnes || 1)
+    payload.montant_total = Number(payload.montant_total || 0)
 
-      const f = forfaits.find((x) => x.id === payload.forfait_id)
-      const sousTotal = calcSousTotalFromForfait(f, normalizedParticipants)
-
-      payload.montant_sous_total = sousTotal
-      payload.montant_total = sousTotal
-
-      onSubmit(payload)
-      return
-    }
-
-    onSubmit(payload)
+    // acompte: front-only
+    // (ReservationsPage.tsx le traite déjà en post-create)
+    // on le laisse dans l'objet "vals" retourné au parent, mais le parent peut l'exclure côté API
+    return payload as ReservationInput
   }
 
-  const canHaveParticipants = type === 'evenement' || type === 'forfait' || type === 'billet_avion'
+  const onFinalSubmit = () => {
+    // validate all steps quickly
+    for (let i = 0; i < steps.length; i++) {
+      const err = validateStep(i)
+      if (err) {
+        setStep(i)
+        return
+      }
+    }
+    onSubmit(buildPayload())
+  }
 
-  // UI helpers
-  const nb = toIntOrNull(nbPersonnes) || 1
-  const billetRequiredCount =
-    type === 'billet_avion'
-      ? nb === 1
-        ? beneficiaryMode === 'autre'
-          ? 1
-          : 0
-        : beneficiaryMode === 'autre'
-        ? nb
-        : nb - 1
-      : 0
+  /* ---------- Summary panel ---------- */
+  const summary = useMemo(() => {
+    const typeMeta = TYPE_META[form.type]
+    const clientLabel =
+      form.client_mode === 'existing'
+        ? selectedClient
+          ? [selectedClient?.prenom, selectedClient?.nom].filter(Boolean).join(' ') || selectedClient?.nom || `Client #${selectedClient.id}`
+          : '—'
+        : [form.client?.prenom, form.client?.nom].filter(Boolean).join(' ') || form.client?.nom || 'Nouveau client'
 
-  const participantLabel =
-    type === 'billet_avion'
-      ? beneficiaryMode === 'autre'
-        ? 'Passagers (bénéficiaires)'
-        : 'Autres passagers (hors client)'
-      : 'Participants (Nom, Prénom, Âge)'
+    const details =
+      form.type === 'billet_avion'
+        ? `${form.flight_details?.ville_depart || '—'} → ${form.flight_details?.ville_arrivee || '—'}`
+        : form.type === 'forfait'
+        ? forfaits.find((f) => Number(f?.id) === Number(form.forfait_id))?.nom || '—'
+        : produits.find((p) => Number(p?.id) === Number(form.produit_id))?.nom || '—'
 
-  const participantHint =
-    type === 'billet_avion'
-      ? beneficiaryMode === 'autre'
-        ? `Ajoutez tous les bénéficiaires du billet (${billetRequiredCount} requis).`
-        : `Le client est bénéficiaire. Ajoutez les autres passagers (${billetRequiredCount} requis).`
-      : 'Ajoute les bénéficiaires (événements & forfaits).'
+    const pay = Number(form.acompte?.montant || 0)
+    const total = Number(form.montant_total || 0)
+    const pct = total > 0 ? Math.min(100, Math.round((pay / total) * 100)) : 0
 
-  return (
-    <form onSubmit={handleSubmit(submit)} className="flex flex-col max-h-[80vh]">
-      <div className="flex-1 overflow-y-auto pr-1 space-y-4">
-        <Section title="Type & Client">
-          <Row>
-            <Field label="Type de réservation">
-              <select className="input" {...register('type')}>
-                <option value="billet_avion">Billet d’avion</option>
-                <option value="hotel">Hôtel</option>
-                <option value="voiture">Voiture</option>
-                <option value="evenement">Événement</option>
-                <option value="forfait">Forfait</option>
-              </select>
-            </Field>
+    return { typeMeta, clientLabel, details, total, pay, pct }
+  }, [form, selectedClient, produits, forfaits])
 
-            <Field label="Mode client">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  className={`btn ${!useNewClient ? 'bg-gray-200 dark:bg-white/10' : 'bg-transparent'}`}
-                  onClick={() => setUseNewClient(false)}
-                >
-                  Client existant
-                </button>
-                <button
-                  type="button"
-                  className={`btn ${useNewClient ? 'bg-gray-200 dark:bg-white/10' : 'bg-transparent'}`}
-                  onClick={() => setUseNewClient(true)}
-                >
-                  Nouveau client
-                </button>
-              </div>
-            </Field>
-          </Row>
+  /* ---------- Render per step ---------- */
+  const Step0 = (
+    <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_0.85fr] gap-4">
+      <Card title="Type de réservation" icon={<Ticket size={16} />}>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label className="label">Type</label>
+            <select
+              className="input"
+              value={form.type}
+              onChange={(e) => {
+                const t = e.target.value as ReservationType
+                set('type', t)
+                // reset dépendances
+                set('produit_id', null)
+                set('forfait_id', null)
+              }}
+            >
+              {Object.entries(TYPE_META).map(([k, m]) => (
+                <option key={k} value={k}>
+                  {m.label}
+                </option>
+              ))}
+            </select>
+            <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">{TYPE_META[form.type].hint}</div>
+          </div>
 
-          {!useNewClient ? (
-            <Row>
-              <Field label="Client *">
-                <select className="input" {...register('client_id')}>
-                  <option value="">— Choisir —</option>
-                  {clients.map((c) => (
-                    <option key={c.id} value={String(c.id)}>
-                      {[(c.prenom || '').trim(), (c.nom || '').trim()].filter(Boolean).join(' ') || `Client #${c.id}`}
-                    </option>
-                  ))}
-                </select>
-                {errors.client_id ? (
-                  <div className="text-xs text-red-600 mt-1">{String((errors as any).client_id?.message)}</div>
-                ) : null}
-              </Field>
-              <div />
-            </Row>
-          ) : (
-            <div className="space-y-3">
-              <Row>
-                <Field label="Nom *">
-                  <input className="input" {...register('client.nom')} placeholder="Nom" />
-                  {(errors as any).client?.nom ? (
-                    <div className="text-xs text-red-600 mt-1">{String((errors as any).client?.nom?.message)}</div>
-                  ) : null}
-                </Field>
-                <Field label="Prénom">
-                  <input className="input" {...register('client.prenom')} placeholder="Prénom" />
-                </Field>
-              </Row>
-
-              <Row>
-                <Field label="Email">
-                  <input className="input" {...register('client.email')} placeholder="email@exemple.com" />
-                </Field>
-                <Field label="Téléphone">
-                  <input className="input" {...register('client.telephone')} placeholder="+221 ..." />
-                </Field>
-              </Row>
-
-              <Row>
-                <Field label="Adresse">
-                  <input className="input" {...register('client.adresse')} placeholder="Adresse" />
-                </Field>
-                <Field label="Pays">
-                  <input className="input" {...register('client.pays')} placeholder="Sénégal" />
-                </Field>
-              </Row>
-            </div>
-          )}
-        </Section>
-
-        {type === 'billet_avion' && (
-          <>
-            <Section title="Billet d’avion — Détails du vol">
-              <Row>
-                <Field label="Ville départ *">
-                  <input className="input" {...register('ville_depart', { required: 'Ville départ obligatoire' })} placeholder="Dakar" />
-                  {errors.ville_depart ? <div className="text-xs text-red-600 mt-1">{String(errors.ville_depart.message)}</div> : null}
-                </Field>
-
-                <Field label="Ville arrivée *">
-                  <input className="input" {...register('ville_arrivee', { required: 'Ville arrivée obligatoire' })} placeholder="Paris" />
-                  {errors.ville_arrivee ? <div className="text-xs text-red-600 mt-1">{String(errors.ville_arrivee.message)}</div> : null}
-                </Field>
-              </Row>
-
-              <Row>
-                <Field label="Date départ *">
-                  <input className="input" type="date" {...register('date_depart', { required: 'Date départ obligatoire' })} />
-                  {errors.date_depart ? <div className="text-xs text-red-600 mt-1">{String(errors.date_depart.message)}</div> : null}
-                </Field>
-
-                <Field label="Date arrivée *">
-                  <input className="input" type="date" {...register('date_arrivee', { required: 'Date arrivée obligatoire' })} />
-                  {errors.date_arrivee ? <div className="text-xs text-red-600 mt-1">{String(errors.date_arrivee.message)}</div> : null}
-                </Field>
-              </Row>
-
-              <Row>
-                <Field label="Compagnie *">
-                  <input className="input" {...register('compagnie', { required: 'Compagnie obligatoire' })} placeholder="Air France" />
-                  {errors.compagnie ? <div className="text-xs text-red-600 mt-1">{String(errors.compagnie.message)}</div> : null}
-                </Field>
-
-                <Field label="Nombre de personnes">
-                  <input className="input" type="number" min={1} {...register('nombre_personnes')} />
-                </Field>
-              </Row>
-
-              <Row>
-                <Field
-                  label="Prix par personne *"
-                  hint="Taxes = 0%. Le total est calculé automatiquement (prix × nombre de personnes)."
-                >
-                  <input className="input" type="number" min={0} step="1" {...register('montant_sous_total', { required: 'Prix par personne obligatoire' })} />
-                  {errors.montant_sous_total ? <div className="text-xs text-red-600 mt-1">{String(errors.montant_sous_total.message)}</div> : null}
-                </Field>
-                <div />
-              </Row>
-
-              <div className="mt-2 rounded-xl border border-black/10 dark:border-white/10 bg-white/70 dark:bg-white/5 px-3 py-2 text-sm flex items-center justify-between">
-                <span className="text-gray-600 dark:text-gray-300">Total estimé</span>
-                <span className="font-semibold">{money(estimatedTotal, 'XOF')}</span>
-              </div>
-            </Section>
-
-            <Section title="Billet d’avion — Bénéficiaire(s)">
-              <div className="text-sm text-gray-600 dark:text-gray-400">
-                Indique clairement <b>qui va utiliser le billet</b>. Si c’est pour une autre personne, ajoutez le/les passager(s).
-              </div>
-
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  className={`btn ${beneficiaryMode === 'client' ? 'bg-gray-200 dark:bg-white/10' : 'bg-transparent'}`}
-                  onClick={() => {
-                    setBeneficiaryMode('client')
-                    // si nb==1, on peut vider les passagers (optionnel)
-                    // (on ne force pas un reset agressif)
-                  }}
-                >
-                  Le client est le bénéficiaire
-                </button>
-                <button
-                  type="button"
-                  className={`btn ${beneficiaryMode === 'autre' ? 'bg-gray-200 dark:bg-white/10' : 'bg-transparent'}`}
-                  onClick={() => setBeneficiaryMode('autre')}
-                >
-                  Le client achète pour quelqu’un d’autre
-                </button>
-              </div>
-
-              <div className="mt-3 rounded-xl border border-black/10 dark:border-white/10 bg-white/70 dark:bg-white/5 px-3 py-2 text-sm flex items-center justify-between">
-                <span className="text-gray-600 dark:text-gray-300">Passagers requis</span>
-                <span className="font-semibold">{billetRequiredCount}</span>
-              </div>
-
-              {billetRequiredCount === 0 ? (
-                <div className="text-sm text-gray-500 mt-2">
-                  Aucun passager à ajouter. Le billet est pour le client.
-                </div>
-              ) : (
-                <div className="text-sm text-gray-500 mt-2">
-                  {beneficiaryMode === 'autre'
-                    ? 'Ajoutez tous les passagers (bénéficiaires).'
-                    : 'Ajoutez uniquement les autres passagers (hors client).'}
-                </div>
-              )}
-            </Section>
-          </>
-        )}
-
-        {(type === 'hotel' || type === 'voiture' || type === 'evenement') && (
-          <Section title="Produit">
-            <Row>
-              <Field label="Produit *">
-                <select className="input" {...register('produit_id')}>
-                  <option value="">— Choisir —</option>
-                  {produits.map((p) => (
-                    <option key={p.id} value={String(p.id)}>
-                      {p.nom || `Produit #${p.id}`} {p.prix_base != null ? `— ${Number(p.prix_base).toLocaleString()} XOF` : ''}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-
-              {type !== 'voiture' ? (
-                <Field label="Nombre de personnes">
-                  <input className="input" type="number" min={1} {...register('nombre_personnes')} />
-                </Field>
-              ) : (
-                <Field label="Nombre de personnes" hint="Voiture = 1 personne (fixé).">
-                  <input className="input" type="number" value={1} disabled />
-                </Field>
-              )}
-            </Row>
-
-            {type === 'evenement' ? (
-              <Row>
-                <Field label="Forfait (optionnel)">
-                  <select className="input" {...register('forfait_id')}>
-                    <option value="">— Aucun —</option>
-                    {forfaits.map((f) => (
-                      <option key={f.id} value={String(f.id)}>
-                        {f.nom || `Forfait #${f.id}`} {f.type ? `— ${f.type}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <div />
-              </Row>
+          <div>
+            <label className="label">Nombre de personnes</label>
+            <input
+              type="number"
+              min={1}
+              className="input"
+              value={form.nombre_personnes ?? 1}
+              onChange={(e) => set('nombre_personnes', Number(e.target.value || 1))}
+              disabled={form.type === 'voiture'}
+            />
+            {form.type === 'voiture' ? (
+              <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">Voiture: 1 réservation = 1 personne (fixé).</div>
             ) : null}
+          </div>
+        </div>
+      </Card>
 
-            <div className="mt-2 rounded-xl border border-black/10 dark:border-white/10 bg-white/70 dark:bg-white/5 px-3 py-2 text-sm flex items-center justify-between">
-              <span className="text-gray-600 dark:text-gray-300">Total estimé</span>
-              <span className="font-semibold">{money(estimatedTotal, 'XOF')}</span>
+      <Card title="Client (payeur)" icon={<User size={16} />}>
+        <div className="flex items-center gap-2 mb-3">
+          <button
+            type="button"
+            className={cx('btn px-3', form.client_mode === 'existing' ? 'bg-gray-900 text-white dark:bg-white dark:text-black' : 'bg-gray-200 dark:bg-white/10')}
+            onClick={() => set('client_mode', 'existing')}
+          >
+            Client existant
+          </button>
+          <button
+            type="button"
+            className={cx('btn px-3', form.client_mode === 'new' ? 'bg-gray-900 text-white dark:bg-white dark:text-black' : 'bg-gray-200 dark:bg-white/10')}
+            onClick={() => set('client_mode', 'new')}
+          >
+            Nouveau client
+          </button>
+        </div>
+
+        {form.client_mode === 'existing' ? (
+          <div>
+            <label className="label">Client *</label>
+            <select
+              className="input"
+              value={form.client_id ?? ''}
+              onChange={(e) => set('client_id', e.target.value ? Number(e.target.value) : null)}
+            >
+              <option value="">— Choisir —</option>
+              {clients.map((c) => {
+                const name = [c?.prenom, c?.nom].filter(Boolean).join(' ') || c?.nom || `Client #${c?.id}`
+                return (
+                  <option key={c.id} value={c.id}>
+                    {name}
+                  </option>
+                )
+              })}
+            </select>
+            {selectedClient ? (
+              <div className="mt-2 rounded-xl bg-black/[0.03] dark:bg-white/[0.06] p-3 text-xs text-gray-700 dark:text-gray-200">
+                <div className="font-semibold">{[selectedClient?.prenom, selectedClient?.nom].filter(Boolean).join(' ')}</div>
+                <div className="mt-1 text-gray-600 dark:text-gray-400">
+                  {selectedClient?.email || '—'} • {selectedClient?.telephone || '—'}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="label">Nom *</label>
+              <input className="input" value={form.client?.nom ?? ''} onChange={(e) => set('client', { ...(form.client || {}), nom: e.target.value })} />
+            </div>
+            <div>
+              <label className="label">Prénom</label>
+              <input className="input" value={form.client?.prenom ?? ''} onChange={(e) => set('client', { ...(form.client || {}), prenom: e.target.value })} />
+            </div>
+            <div>
+              <label className="label">Téléphone</label>
+              <input className="input" value={form.client?.telephone ?? ''} onChange={(e) => set('client', { ...(form.client || {}), telephone: e.target.value })} />
+            </div>
+            <div>
+              <label className="label">Email</label>
+              <input className="input" value={form.client?.email ?? ''} onChange={(e) => set('client', { ...(form.client || {}), email: e.target.value })} />
+            </div>
+            <div className="md:col-span-2">
+              <label className="label">Adresse</label>
+              <input className="input" value={form.client?.adresse ?? ''} onChange={(e) => set('client', { ...(form.client || {}), adresse: e.target.value })} />
+            </div>
+          </div>
+        )}
+      </Card>
+    </div>
+  )
+
+  const Step1 = (
+    <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_0.85fr] gap-4">
+      <Card title="Détails" icon={<FileText size={16} />}>
+        {form.type === 'billet_avion' ? (
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="label">Ville départ *</label>
+                <div className="relative">
+                  <MapPin size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                  <input className="input pl-9" value={form.flight_details?.ville_depart ?? ''} onChange={(e) => setFlight({ ville_depart: e.target.value })} />
+                </div>
+              </div>
+              <div>
+                <label className="label">Ville arrivée *</label>
+                <div className="relative">
+                  <MapPin size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                  <input className="input pl-9" value={form.flight_details?.ville_arrivee ?? ''} onChange={(e) => setFlight({ ville_arrivee: e.target.value })} />
+                </div>
+              </div>
             </div>
 
-            <div className="text-xs text-gray-500">Le montant est calculé automatiquement. Taxes = 0.</div>
-          </Section>
-        )}
-
-        {type === 'forfait' && (
-          <Section title="Forfait">
-            <Row>
-              <Field label="Forfait *">
-                <select className="input" {...register('forfait_id')}>
-                  <option value="">— Choisir —</option>
-                  {forfaits.map((f) => (
-                    <option key={f.id} value={String(f.id)}>
-                      {f.nom || `Forfait #${f.id}`} {f.type ? `— ${f.type}` : ''}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <div />
-            </Row>
-
-            <div className="mt-2 rounded-xl border border-black/10 dark:border-white/10 bg-white/70 dark:bg-white/5 px-3 py-2 text-sm flex items-center justify-between">
-              <span className="text-gray-600 dark:text-gray-300">Total estimé</span>
-              <span className="font-semibold">{money(estimatedTotal, 'XOF')}</span>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="label">Date départ *</label>
+                <div className="relative">
+                  <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                  <input type="date" className="input pl-9" value={form.flight_details?.date_depart ?? ''} onChange={(e) => setFlight({ date_depart: e.target.value })} />
+                </div>
+              </div>
+              <div>
+                <label className="label">Date arrivée</label>
+                <div className="relative">
+                  <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                  <input type="date" className="input pl-9" value={String(form.flight_details?.date_arrivee ?? '')} onChange={(e) => setFlight({ date_arrivee: e.target.value })} />
+                </div>
+              </div>
             </div>
 
-            <div className="text-xs text-gray-500">Le montant est calculé automatiquement selon le forfait. Taxes = 0.</div>
-          </Section>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div>
+                <label className="label">Compagnie</label>
+                <input className="input" value={String(form.flight_details?.compagnie ?? '')} onChange={(e) => setFlight({ compagnie: e.target.value })} />
+              </div>
+              <div>
+                <label className="label">Classe</label>
+                <input className="input" value={String(form.flight_details?.classe ?? '')} onChange={(e) => setFlight({ classe: e.target.value })} />
+              </div>
+              <div>
+                <label className="label">PNR</label>
+                <input className="input" placeholder="Ex: CSSUNO" value={String(form.flight_details?.pnr ?? '')} onChange={(e) => setFlight({ pnr: e.target.value })} />
+                <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">Optionnel (nullable DB).</div>
+              </div>
+            </div>
+          </div>
+        ) : form.type === 'forfait' ? (
+          <div>
+            <label className="label">Forfait *</label>
+            <select className="input" value={form.forfait_id ?? ''} onChange={(e) => set('forfait_id', e.target.value ? Number(e.target.value) : null)}>
+              <option value="">— Choisir —</option>
+              {forfaits.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f?.nom || `Forfait #${f?.id}`}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <div>
+            <label className="label">Produit *</label>
+            <select className="input" value={form.produit_id ?? ''} onChange={(e) => set('produit_id', e.target.value ? Number(e.target.value) : null)}>
+              <option value="">— Choisir —</option>
+              {produitsOfType.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p?.nom || `Produit #${p?.id}`}
+                </option>
+              ))}
+            </select>
+            {form.type !== 'billet_avion' ? (
+              <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                Produits filtrés automatiquement selon le type ({TYPE_META[form.type].label}).
+              </div>
+            ) : null}
+          </div>
         )}
+      </Card>
 
-        {/* Participants / passagers */}
-        {canHaveParticipants && (
-          <Section title={participantLabel}>
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-sm text-gray-600 dark:text-gray-400">{participantHint}</div>
+      <Card title="Résumé" icon={TYPE_META[form.type].icon}>
+        <div className="space-y-3 text-sm">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-gray-600 dark:text-gray-400">Type</span>
+            <span className="font-medium">{TYPE_META[form.type].label}</span>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-gray-600 dark:text-gray-400">Client</span>
+            <span className="font-medium truncate">{summary.clientLabel}</span>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-gray-600 dark:text-gray-400">Détails</span>
+            <span className="font-medium truncate">{summary.details}</span>
+          </div>
+        </div>
+      </Card>
+    </div>
+  )
 
-              <button
-                type="button"
-                className="btn-primary"
-                disabled={((type === 'forfait' || type === 'evenement') && isSoloForfaitSelected) || submitting}
-                onClick={() => {
-                  setEditingIndex(null)
-                  clearDraft()
-                  setParticipantFormOpen(true)
-                }}
-              >
-                Ajouter
+  const Step2 = (
+    <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_0.85fr] gap-4">
+      <Card title={form.type === 'billet_avion' ? 'Passager (bénéficiaire)' : 'Participants'} icon={<Users size={16} />}>
+        {form.type === 'billet_avion' ? (
+          <div className="space-y-3">
+            <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] p-3">
+              <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">Qui bénéficie du billet ?</div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className={cx('btn px-3', form.passenger_is_client ? 'bg-gray-900 text-white dark:bg-white dark:text-black' : 'bg-gray-200 dark:bg-white/10')}
+                  onClick={() => set('passenger_is_client', true)}
+                >
+                  Le client
+                </button>
+                <button
+                  type="button"
+                  className={cx('btn px-3', !form.passenger_is_client ? 'bg-gray-900 text-white dark:bg-white dark:text-black' : 'bg-gray-200 dark:bg-white/10')}
+                  onClick={() => set('passenger_is_client', false)}
+                >
+                  Une autre personne
+                </button>
+              </div>
+
+              {form.passenger_is_client ? (
+                <div className="mt-3 text-xs text-gray-600 dark:text-gray-400">
+                  Le passager sera automatiquement le client (côté backend via <code>passenger_is_client</code>).
+                </div>
+              ) : null}
+            </div>
+
+            {!form.passenger_is_client ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Nom passager *</label>
+                  <input className="input" value={form.passenger?.nom ?? ''} onChange={(e) => setPassenger({ nom: e.target.value })} />
+                </div>
+                <div>
+                  <label className="label">Prénom passager</label>
+                  <input className="input" value={form.passenger?.prenom ?? ''} onChange={(e) => setPassenger({ prenom: e.target.value })} />
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : form.type === 'forfait' || form.type === 'evenement' ? (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-sm text-gray-600 dark:text-gray-400">
+                Ajoute des participants si nécessaire. (Nom requis, le reste optionnel)
+              </div>
+              <button type="button" className="btn bg-gray-200 dark:bg-white/10" onClick={addParticipant}>
+                + Ajouter
               </button>
             </div>
 
-            {((type === 'forfait' || type === 'evenement') && isSoloForfaitSelected) ? (
-              <div className="text-xs text-gray-500">
-                Forfait <b>solo</b> sélectionné : aucun participant n’est requis.
-              </div>
-            ) : null}
-
-            {type !== 'billet_avion' ? (
-              <div className="mt-2 rounded-xl border border-black/10 dark:border-white/10 bg-white/70 dark:bg-white/5 px-3 py-2 text-sm flex items-center justify-between">
-                <span className="text-gray-600 dark:text-gray-300">Total estimé</span>
-                <span className="font-semibold">{money(estimatedTotal, 'XOF')}</span>
-              </div>
-            ) : null}
-
-            {participantFormOpen ? (
-              <div className="rounded-2xl border border-black/5 dark:border-white/10 p-3 bg-black/[0.02] dark:bg-white/[0.03]">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <Field label="Nom *">
-                    <input
-                      className="input"
-                      value={draftParticipant.nom}
-                      onChange={(e) => setDraftParticipant((s) => ({ ...s, nom: e.target.value }))}
-                      placeholder="Nom"
-                    />
-                    {participantErrors.nom ? <div className="text-xs text-red-600 mt-1">{participantErrors.nom}</div> : null}
-                  </Field>
-
-                  <Field label={type === 'billet_avion' ? 'Prénom *' : 'Prénom'}>
-                    <input
-                      className="input"
-                      value={draftParticipant.prenom}
-                      onChange={(e) => setDraftParticipant((s) => ({ ...s, prenom: e.target.value }))}
-                      placeholder="Prénom"
-                    />
-                    {participantErrors.prenom ? <div className="text-xs text-red-600 mt-1">{participantErrors.prenom}</div> : null}
-                  </Field>
-
-                  <Field label={type === 'billet_avion' ? 'Âge (optionnel)' : 'Âge *'}>
-                    <input
-                      className="input"
-                      type="number"
-                      min={0}
-                      value={draftParticipant.age}
-                      onChange={(e) => setDraftParticipant((s) => ({ ...s, age: e.target.value }))}
-                      placeholder={type === 'billet_avion' ? 'Ex: 25' : 'Obligatoire'}
-                    />
-                    {participantErrors.age ? <div className="text-xs text-red-600 mt-1">{participantErrors.age}</div> : null}
-                  </Field>
-                </div>
-
-                <div className="mt-3 flex items-center justify-end gap-2">
-                  <button
-                    type="button"
-                    className="btn bg-gray-200 dark:bg-white/10"
-                    onClick={() => {
-                      setParticipantFormOpen(false)
-                      setEditingIndex(null)
-                      clearDraft()
-                    }}
-                  >
-                    Annuler
-                  </button>
-
-                  <button
-                    type="button"
-                    className="btn-primary"
-                    onClick={() => {
-                      const ok = validateDraftParticipant({
-                        requirePrenom: type === 'billet_avion',
-                        requireAge: type !== 'billet_avion',
-                      })
-                      if (!ok) return
-
-                      const nom = draftParticipant.nom.trim()
-                      const prenom = draftParticipant.prenom.trim()
-                      const age = draftParticipant.age.trim() === '' ? undefined : Number(draftParticipant.age)
-
-                      const payload: ParticipantInput = {
-                        nom,
-                        prenom: prenom || undefined,
-                        age: Number.isFinite(Number(age)) ? (age as any) : undefined,
-                      }
-
-                      if (editingIndex !== null) participantsFA.update(editingIndex, payload)
-                      else participantsFA.append(payload)
-
-                      setParticipantFormOpen(false)
-                      setEditingIndex(null)
-                      clearDraft()
-                    }}
-                  >
-                    Enregistrer
-                  </button>
-                </div>
-              </div>
-            ) : null}
-
-            {participantsFA.fields.length === 0 ? (
-              <div className="text-sm text-gray-500">Aucun élément ajouté.</div>
+            {(form.participants || []).length === 0 ? (
+              <div className="text-sm text-gray-500">Aucun participant.</div>
             ) : (
-              <div className="rounded-2xl border border-black/5 dark:border-white/10 overflow-hidden">
-                <div className="max-h-[35vh] overflow-y-auto">
-                  {participantsFA.fields.map((p, idx) => (
-                    <div
-                      key={p.id}
-                      className="flex items-center justify-between gap-3 px-3 py-2 border-t border-black/5 dark:border-white/10 first:border-t-0"
-                    >
-                      <div className="min-w-0">
-                        <div className="font-medium truncate">
-                          {(p as any).nom} {(p as any).prenom ? ` ${(p as any).prenom}` : ''}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          {(p as any).age != null ? `Âge: ${(p as any).age}` : type === 'billet_avion' ? 'Âge: —' : ''}
-                        </div>
+              <div className="space-y-2">
+                {(form.participants || []).map((p, idx) => (
+                  <div key={idx} className="rounded-2xl border border-black/5 dark:border-white/10 bg-white dark:bg-panel p-3">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <div className="text-sm font-semibold">Participant {idx + 1}</div>
+                      <button type="button" className="btn px-2 bg-gray-200 dark:bg-white/10" onClick={() => removeParticipant(idx)}>
+                        Supprimer
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="label">Nom *</label>
+                        <input className="input" value={p.nom ?? ''} onChange={(e) => updateParticipant(idx, { nom: e.target.value })} />
                       </div>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          type="button"
-                          className="btn px-2 bg-gray-200 dark:bg-white/10"
-                          title="Modifier"
-                          onClick={() => {
-                            setEditingIndex(idx)
-                            setDraftParticipant({
-                              nom: String((p as any).nom ?? ''),
-                              prenom: String((p as any).prenom ?? ''),
-                              age: String((p as any).age ?? ''),
-                            })
-                            setParticipantErrors({})
-                            setParticipantFormOpen(true)
-                          }}
-                        >
-                          Modifier
-                        </button>
-
-                        <button
-                          type="button"
-                          className="btn px-2 bg-red-600 text-white"
-                          title="Supprimer"
-                          onClick={() => participantsFA.remove(idx)}
-                        >
-                          Supprimer
-                        </button>
+                      <div>
+                        <label className="label">Prénom</label>
+                        <input className="input" value={p.prenom ?? ''} onChange={(e) => updateParticipant(idx, { prenom: e.target.value })} />
+                      </div>
+                      <div>
+                        <label className="label">Passeport</label>
+                        <input className="input" value={p.passport ?? ''} onChange={(e) => updateParticipant(idx, { passport: e.target.value })} />
+                      </div>
+                      <div>
+                        <label className="label">Âge</label>
+                        <input
+                          type="number"
+                          className="input"
+                          value={p.age ?? ''}
+                          onChange={(e) => updateParticipant(idx, { age: e.target.value ? Number(e.target.value) : null })}
+                        />
+                      </div>
+                      <div className="md:col-span-2">
+                        <label className="label">Remarques</label>
+                        <input className="input" value={p.remarques ?? ''} onChange={(e) => updateParticipant(idx, { remarques: e.target.value })} />
                       </div>
                     </div>
-                  ))}
-                </div>
+                  </div>
+                ))}
               </div>
             )}
-
-            {type === 'billet_avion' && billetRequiredCount > 0 ? (
-              <div className="text-xs text-gray-500">
-                Astuce : vous pouvez ajouter uniquement {beneficiaryMode === 'autre' ? 'tous les passagers' : 'les autres passagers'}.
-              </div>
-            ) : null}
-          </Section>
+          </div>
+        ) : (
+          <div className="text-sm text-gray-500">Aucun participant requis pour ce type.</div>
         )}
+      </Card>
 
-        {/* Acompte (optionnel, déclencheur) */}
-        <Section title="Acompte (optionnel)">
-          <button
-            type="button"
-            className="btn bg-gray-200 dark:bg-white/10 inline-flex items-center gap-2"
-            onClick={() => setAcompteOpen((v) => !v)}
-          >
-            <Wallet size={16} />
-            {acompteOpen ? 'Masquer l’acompte' : 'Ajouter un acompte'}
-            <ChevronDown size={16} className={`transition-transform ${acompteOpen ? 'rotate-180' : ''}`} />
+      <Card title="Conseil" icon={<Receipt size={16} />}>
+        <div className="text-sm text-gray-700 dark:text-gray-200 space-y-2">
+          <div className="rounded-xl bg-black/[0.03] dark:bg-white/[0.06] p-3">
+            <div className="font-semibold">Bon workflow</div>
+            <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">
+              Créer la réservation → générer facture/Devis → enregistrer paiements → suivre le reste.
+            </div>
+          </div>
+          <div className="text-xs text-gray-600 dark:text-gray-400">
+            Astuce: si tu veux une référence “simple”, tu peux utiliser le PNR comme référence (billet avion).
+          </div>
+        </div>
+      </Card>
+    </div>
+  )
+
+  const Step3 = (
+    <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_0.85fr] gap-4">
+      <Card title="Montants & Notes" icon={<Receipt size={16} />}>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label className="label">Montant total *</label>
+            <input
+              type="number"
+              min={0}
+              className="input"
+              value={form.montant_total ?? 0}
+              onChange={(e) => set('montant_total', Number(e.target.value || 0))}
+            />
+            <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">Taxes: si besoin, gère côté backend (ou ajoute champs plus tard).</div>
+          </div>
+
+          <div>
+            <label className="label">Référence (optionnel)</label>
+            <input
+              className="input"
+              placeholder="Laisse vide pour auto-génération"
+              value={String(form.reference ?? '')}
+              onChange={(e) => set('reference', e.target.value || null)}
+            />
+          </div>
+
+          <div className="md:col-span-2">
+            <label className="label">Notes</label>
+            <textarea className="input min-h-[110px]" value={String(form.notes ?? '')} onChange={(e) => set('notes', e.target.value)} />
+          </div>
+        </div>
+      </Card>
+
+      <Card title="Résumé paiement" icon={<FileText size={16} />}>
+        <div className="space-y-3">
+          <div className="rounded-xl bg-black/[0.03] dark:bg-white/[0.06] p-3 text-sm">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-gray-600 dark:text-gray-400">Total</span>
+              <span className="font-semibold">{money(summary.total)}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3 mt-2">
+              <span className="text-gray-600 dark:text-gray-400">Acompte (optionnel)</span>
+              <span className="font-semibold">{money(summary.pay)}</span>
+            </div>
+            <div className="mt-3">
+              <div className="text-xs text-gray-600 dark:text-gray-400">% couvert</div>
+              <div className="mt-1 h-2 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
+                <div className="h-full bg-primary" style={{ width: `${summary.pct}%` }} />
+              </div>
+            </div>
+          </div>
+          <div className="text-xs text-gray-600 dark:text-gray-400">
+            L’acompte sera traité après création (ton `ReservationsPage.tsx` gère déjà ça).
+          </div>
+        </div>
+      </Card>
+    </div>
+  )
+
+  const Step4 = (
+    <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_0.85fr] gap-4">
+      <Card title="Acompte (optionnel)" icon={<Receipt size={16} />}>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div>
+            <label className="label">Montant</label>
+            <input
+              type="number"
+              min={0}
+              className="input"
+              value={form.acompte?.montant ?? 0}
+              onChange={(e) => set('acompte', { ...(form.acompte || {}), montant: Number(e.target.value || 0) })}
+            />
+          </div>
+          <div>
+            <label className="label">Mode</label>
+            <select
+              className="input"
+              value={form.acompte?.mode_paiement ?? 'especes'}
+              onChange={(e) => set('acompte', { ...(form.acompte || {}), mode_paiement: e.target.value })}
+            >
+              <option value="especes">Espèces</option>
+              <option value="wave">Wave</option>
+              <option value="orange_money">Orange Money</option>
+              <option value="virement">Virement</option>
+              <option value="carte">Carte</option>
+              <option value="cheque">Chèque</option>
+            </select>
+          </div>
+          <div>
+            <label className="label">Référence</label>
+            <input
+              className="input"
+              value={form.acompte?.reference ?? ''}
+              onChange={(e) => set('acompte', { ...(form.acompte || {}), reference: e.target.value })}
+            />
+          </div>
+        </div>
+
+        <div className="mt-3 rounded-xl bg-black/[0.03] dark:bg-white/[0.06] p-3 text-sm">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-gray-600 dark:text-gray-400">Total</span>
+            <span className="font-semibold">{money(form.montant_total)}</span>
+          </div>
+          <div className="flex items-center justify-between gap-3 mt-2">
+            <span className="text-gray-600 dark:text-gray-400">Acompte</span>
+            <span className="font-semibold">{money(form.acompte?.montant)}</span>
+          </div>
+          <div className="flex items-center justify-between gap-3 mt-2">
+            <span className="text-gray-600 dark:text-gray-400">Reste</span>
+            <span className="font-semibold">{money(Math.max(0, Number(form.montant_total || 0) - Number(form.acompte?.montant || 0)))}</span>
+          </div>
+        </div>
+      </Card>
+
+      <Card title="Avant d’enregistrer" icon={<FileText size={16} />}>
+        <div className="text-sm text-gray-700 dark:text-gray-200 space-y-2">
+          <div className="rounded-xl bg-black/[0.03] dark:bg-white/[0.06] p-3">
+            <div className="font-semibold">Vérification rapide</div>
+            <ul className="mt-2 text-xs text-gray-600 dark:text-gray-400 list-disc pl-4 space-y-1">
+              <li>Client sélectionné (ou nouveau client valide)</li>
+              <li>Détails du type (vol / produit / forfait)</li>
+              <li>Montant total</li>
+              <li>Acompte optionnel</li>
+            </ul>
+          </div>
+        </div>
+      </Card>
+    </div>
+  )
+
+  const currentStepUI = [Step0, Step1, Step2, Step3, Step4][step]
+
+  const stepError = validateStep(step)
+
+  return (
+    <div className="space-y-4">
+      <Stepper steps={steps} current={step} onGo={(i) => setStep(i)} />
+
+      {stepError ? (
+        <div className="rounded-2xl border border-red-200 bg-red-50 text-red-800 px-4 py-3 text-sm dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
+          {stepError}
+        </div>
+      ) : null}
+
+      {currentStepUI}
+
+      <div className="flex items-center justify-between gap-2 pt-2">
+        <button type="button" className="btn bg-gray-200 dark:bg-white/10" onClick={onCancel} disabled={!!submitting}>
+          Annuler
+        </button>
+
+        <div className="flex items-center gap-2">
+          <button type="button" className="btn bg-gray-200 dark:bg-white/10" onClick={prev} disabled={step === 0 || !!submitting}>
+            <ChevronLeft size={16} className="mr-1" />
+            Précédent
           </button>
 
-          {acompteOpen ? (
-            <div className="mt-3 space-y-3">
-              <Row>
-                <Field label="Montant">
-                  <input
-                    className="input"
-                    type="number"
-                    min={0}
-                    step="1"
-                    {...register('acompte.montant')}
-                    placeholder="Ex: 10000"
-                    onChange={(e) => {
-                      const v = e.target.value
-                      // ✅ éviter l’erreur TS: on normalise en string puis Number au submit côté page
-                      if (v === '') {
-                        clearErrors('acompte.montant' as any)
-                        return
-                      }
-                      const n = Number(v)
-                      if (!Number.isFinite(n) || n < 0) {
-                        setError('acompte.montant' as any, { type: 'manual', message: 'Montant invalide.' })
-                      } else {
-                        clearErrors('acompte.montant' as any)
-                      }
-                    }}
-                  />
-                  {(errors as any).acompte?.montant ? (
-                    <div className="text-xs text-red-600 mt-1">{String((errors as any).acompte?.montant?.message)}</div>
-                  ) : null}
-                </Field>
-
-                <Field label="Mode de paiement">
-                  <select className="input" {...register('acompte.mode_paiement')}>
-                    <option value="especes">Espèces</option>
-                    <option value="wave">Wave</option>
-                    <option value="orange_money">Orange Money</option>
-                    <option value="cheque">Chèque</option>
-                    <option value="virement">Virement</option>
-                    <option value="carte">Carte</option>
-                  </select>
-                </Field>
-              </Row>
-
-              <Row>
-                <Field label="Référence (optionnel)">
-                  <input className="input" {...register('acompte.reference')} placeholder="Ex: TXN-123 / Wave ref..." />
-                </Field>
-                <div />
-              </Row>
-            </div>
+          {step < steps.length - 1 ? (
+            <button
+              type="button"
+              className="btn bg-gray-900 text-white dark:bg-white dark:text-black"
+              onClick={next}
+              disabled={!canGoNext || !!submitting}
+            >
+              Suivant
+              <ChevronRight size={16} className="ml-1" />
+            </button>
           ) : (
-            <div className="text-xs text-gray-500">
-              Ajoutez un acompte si le client paye partiellement à la création (facultatif).
-            </div>
+            <button
+              type="button"
+              className="btn bg-gray-900 text-white dark:bg-white dark:text-black"
+              onClick={onFinalSubmit}
+              disabled={!!submitting}
+            >
+              Enregistrer
+            </button>
           )}
-        </Section>
-
-        <Section title="Notes">
-          <Field label="Notes">
-            <textarea className="input min-h-[90px]" {...register('notes')} placeholder="Notes internes…" />
-          </Field>
-        </Section>
-      </div>
-
-      <div className="pt-3 mt-3 border-t border-black/10 dark:border-white/10 bg-white/80 dark:bg-panel/80 backdrop-blur">
-        <div className="flex items-center justify-end gap-2">
-          <button type="button" className="btn bg-gray-200 dark:bg-white/10" onClick={onCancel} disabled={submitting}>
-            Annuler
-          </button>
-          <button type="submit" className="btn-primary" disabled={submitting}>
-            {submitting ? 'Enregistrement…' : 'Enregistrer'}
-          </button>
         </div>
       </div>
-    </form>
+    </div>
   )
 }

@@ -2,7 +2,7 @@
 import React, { useMemo, useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { api } from '../../lib/axios'
-import { Modal } from '../../ui/Modal'
+import Modal from "../../ui/Modal"
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { FiltersBar } from '../../ui/FiltersBar'
 import { Pagination } from '../../ui/Pagination'
@@ -761,7 +761,8 @@ export default function ReservationsPage() {
         }}
         title="Détails de la réservation"
         // ✅ très large
-        widthClass="max-w-[1200px]"
+       widthClass="max-w-[1200px]"
+      // heightClass="h-[92vh]"
       >
         <div
           className={[
@@ -820,25 +821,27 @@ export default function ReservationsPage() {
 
       {/* Form Modal */}
       <Modal
-        open={formOpen}
-        onClose={() => {
-          setFormOpen(false)
-          setEditing(null)
-          setPrefillCreate(null)
-        }}
-        title={editing ? 'Modifier réservation' : 'Nouvelle réservation'}
-        widthClass="max-w-4xl"
-      >
-        <ReservationsForm
-          defaultValues={(editing ?? (prefillCreate ?? undefined)) as any}
-          onSubmit={(vals) => (editing ? mUpdate.mutate(vals) : mCreate.mutate(vals))}
-          onCancel={() => {
-            setFormOpen(false)
-            setEditing(null)
-          }}
-          submitting={mCreate.isPending || mUpdate.isPending}
-        />
-      </Modal>
+  open={formOpen}
+  onClose={() => {
+    setFormOpen(false)
+    setEditing(null)
+    setPrefillCreate(null)
+  }}
+  title={editing ? "Modifier réservation" : "Nouvelle réservation"}
+  widthClass="max-w-[1200px]"
+  // heightClass="h-[92vh]"
+  // scrollInside={false} // 👈 si tu veux éviter le scroll interne
+>
+  <ReservationsForm
+    defaultValues={(editing ?? (prefillCreate ?? undefined)) as any}
+    onSubmit={(vals) => (editing ? mUpdate.mutate(vals) : mCreate.mutate(vals))}
+    onCancel={() => {
+      setFormOpen(false)
+      setEditing(null)
+    }}
+    submitting={mCreate.isPending || mUpdate.isPending}
+  />
+</Modal>
 
       {/* Delete confirm */}
       <ConfirmDialog
