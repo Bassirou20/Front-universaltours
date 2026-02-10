@@ -2,7 +2,7 @@
 import React, { useMemo, useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { api } from '../../lib/axios'
-import Modal from "../../ui/Modal"
+import Modal from '../../ui/Modal'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { FiltersBar } from '../../ui/FiltersBar'
 import { Pagination } from '../../ui/Pagination'
@@ -13,18 +13,7 @@ import { ReservationsForm, type ReservationInput } from './ReservationsForm'
 import { ReservationDetails } from './ReservationDetails'
 import { useAuth } from '../../store/auth'
 import { useSearchParams } from 'react-router-dom'
-import {
-  Plus,
-  Search,
-  Eye,
-  Pencil,
-  Trash2,
-  CheckCircle2,
-  XCircle,
-  X,
-  Receipt,
-  FileText,
-} from 'lucide-react'
+import { Plus, Search, Eye, Pencil, Trash2, CheckCircle2, XCircle, X, Receipt, FileText } from 'lucide-react'
 
 // -------------------- helpers --------------------
 function useDebouncedValue<T>(value: T, delay = 300) {
@@ -75,16 +64,7 @@ function StatusBadge({ statut }: { statut: any }) {
 
 /**
  * Paiement badge:
- * - Payé (100%)
- * - Partiel (1..99%)
- * - Non payé (0%)
- *
- * Pour être fiable, on essaie d'extraire une facture depuis:
- * - r.facture (objet)
- * - r.factures (objet)
- * - r.factures (array / pagination)
- *
- * Puis on calcule paid = somme des paiements statut 'recu'
+ * calcule paid depuis facture->paiements.
  */
 function computePaymentSummaryFromReservation(r: any): {
   total: number
@@ -138,7 +118,6 @@ function computePaymentSummaryFromReservation(r: any): {
   const paid = paiements.reduce((sum, p) => {
     const st = String(p?.statut ?? '').toLowerCase()
     const montant = Number(p?.montant ?? 0) || 0
-    // si statut absent, on compte quand même
     if (!p?.statut) return sum + montant
     if (st === 'recu' || st === 'reçu') return sum + montant
     return sum
@@ -184,21 +163,17 @@ export default function ReservationsPage() {
   const { user } = useAuth()
   const isAdmin = String(user?.role || '').toLowerCase() === 'admin'
 
-  // ✅ Pagination fixée à 10 éléments / page
   const [page, setPage] = useState(1)
   const perPage = 10
 
-  // filtres
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebouncedValue(search, 300)
   const [type, setType] = useState<string>('')
   const [statut, setStatut] = useState<string>('')
 
-  // filtre historique client
   const [clientIdFilter, setClientIdFilter] = useState<number | null>(null)
   const [clientLabelFilter, setClientLabelFilter] = useState<string>('')
 
-  // modals
   const [formOpen, setFormOpen] = useState(false)
   const [editing, setEditing] = useState<Reservation | null>(null)
 
@@ -207,7 +182,6 @@ export default function ReservationsPage() {
 
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id?: number }>({ open: false })
 
-  // ✅ IMPORTANT: ce useEffect ne doit pas être dans une fonction
   useEffect(() => {
     const cid = sp.get('client_id')
     const label = sp.get('client_label') || ''
@@ -347,6 +321,33 @@ export default function ReservationsPage() {
     }
   }
 
+  // ✅ helper: enregistrer acompte (create OU update)
+  const applyAcompteToReservation = async (reservation: any, acompte: any) => {
+    const montant = Number(acompte?.montant || 0)
+    if (!reservation?.id || montant <= 0) return
+
+    const date_facture = new Date().toISOString().slice(0, 10)
+
+    // 1) récupérer ou créer facture via endpoint reservations/:id/factures
+    const factureRes = await api.post(`/reservations/${reservation.id}/factures`, { date_facture })
+    const facture = factureRes.data?.data ?? factureRes.data
+
+    // 2) émettre (si endpoint existe)
+    try {
+      await api.post(`/factures/${facture.id}/emettre`)
+    } catch {
+      // si ton backend n’a pas emettre() ou route: ignorer
+    }
+
+    // 3) paiement
+    await api.post(`/factures/${facture.id}/paiements`, {
+      montant,
+      mode_paiement: acompte.mode_paiement,
+      reference: acompte.reference || null,
+      statut: 'recu',
+    })
+  }
+
   // -------------------- Mutations --------------------
   const mCreate = useMutation({
     mutationFn: async (vals: ReservationInput) => {
@@ -361,32 +362,14 @@ export default function ReservationsPage() {
         setFormOpen(false)
         setEditing(null)
 
-        const montant = Number(acompte?.montant || 0)
+        await applyAcompteToReservation(reservation, acompte)
 
-        if (reservation?.id && montant > 0) {
-          const date_facture = new Date().toISOString().slice(0, 10)
-          const factureRes = await api.post(`/reservations/${reservation.id}/factures`, { date_facture })
-          const facture = factureRes.data?.data ?? factureRes.data
-
-          try {
-            await api.post(`/factures/${facture.id}/emettre`)
-          } catch {}
-
-          await api.post(`/factures/${facture.id}/paiements`, {
-            montant,
-            mode_paiement: acompte.mode_paiement,
-            reference: acompte.reference || null,
-            statut: 'recu',
-          })
-
-          toast.push({ title: 'Réservation confirmée + acompte enregistré', tone: 'success' })
-        } else {
-          toast.push({ title: 'Réservation confirmée', tone: 'success' })
-        }
+        toast.push({
+          title: Number(acompte?.montant || 0) > 0 ? 'Réservation confirmée + acompte enregistré' : 'Réservation confirmée',
+          tone: 'success',
+        })
       } catch (err: any) {
-        const msg =
-          err?.response?.data?.message ||
-          "Réservation créée, mais échec lors de l'enregistrement de l'acompte."
+        const msg = err?.response?.data?.message || "Réservation créée, mais échec lors de l'enregistrement de l'acompte."
         toast.push({ title: msg, tone: 'error' })
       } finally {
         qc.invalidateQueries({ queryKey: ['reservations'] })
@@ -395,22 +378,56 @@ export default function ReservationsPage() {
   })
 
   const mUpdate = useMutation({
-    mutationFn: async (vals: ReservationInput) => {
-      const { acompte, ...payload } = vals as any
-      return api.put(`/reservations/${editing?.id}`, payload)
-    },
-    onSuccess: () => {
+  mutationFn: async (vals: ReservationInput) => {
+    const { acompte, ...payload } = vals as any
+    const res = await api.put(`/reservations/${editing?.id}`, payload)
+    return { reservation: res.data?.data ?? res.data, acompte }
+  },
+  onSuccess: async ({ reservation, acompte }) => {
+    try {
       qc.invalidateQueries({ queryKey: ['reservations'] })
-      if (detailsOpen && viewingId === editing?.id) qc.invalidateQueries({ queryKey: ['reservation', viewingId] })
+      if (reservation?.id) qc.invalidateQueries({ queryKey: ['reservation', reservation.id] })
+
+      const montant = Number(acompte?.montant || 0)
+      if (reservation?.id && montant > 0) {
+        // 1) assurer facture
+        const date_facture = new Date().toISOString().slice(0, 10)
+        const factureRes = await api.post(`/reservations/${reservation.id}/factures`, { date_facture })
+        const facture = factureRes.data?.data ?? factureRes.data
+
+        // 2) émettre (si ton backend a la route; sinon supprime ce bloc)
+        try {
+          await api.post(`/factures/${facture.id}/emettre`)
+        } catch {}
+
+        // 3) paiement
+        await api.post(`/factures/${facture.id}/paiements`, {
+          montant,
+          mode_paiement: acompte?.mode_paiement || 'especes',
+          reference: acompte?.reference || null,
+          statut: 'recu',
+        })
+
+        toast.push({ title: 'Réservation mise à jour + acompte enregistré', tone: 'success' })
+      } else {
+        toast.push({ title: 'Réservation mise à jour', tone: 'success' })
+      }
+
       setFormOpen(false)
       setEditing(null)
-      toast.push({ title: 'Réservation mise à jour', tone: 'success' })
-    },
-    onError: (err: any) => {
-      const msg = err?.response?.data?.message || 'Erreur lors de la mise à jour.'
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || "Réservation modifiée, mais échec lors de l'enregistrement de l'acompte."
       toast.push({ title: msg, tone: 'error' })
-    },
-  })
+    } finally {
+      qc.invalidateQueries({ queryKey: ['reservations'] })
+      if (reservation?.id) qc.invalidateQueries({ queryKey: ['reservation', reservation.id] })
+    }
+  },
+  onError: (err: any) => {
+    const msg = err?.response?.data?.message || 'Erreur lors de la mise à jour.'
+    toast.push({ title: msg, tone: 'error' })
+  },
+})
 
   const mDelete = useMutation({
     mutationFn: (id: number) => api.delete(`/reservations/${id}`),
@@ -471,10 +488,18 @@ export default function ReservationsPage() {
     setFormOpen(true)
   }
 
-  const openEdit = (r: any) => {
-    setEditing(r)
+  // ✅ FIX: charger tous les champs en edit via GET /reservations/:id
+  const openEdit = async (r: any) => {
+  try {
+    const { data } = await api.get(`/reservations/${r.id}`)
+    const full = data?.data ?? data
+    setEditing(full)
     setFormOpen(true)
+  } catch (err: any) {
+    toast.push({ title: "Impossible de charger la réservation pour modification.", tone: 'error' })
   }
+}
+
 
   const openDetails = (rOrId: any) => {
     const id = typeof rOrId === 'number' ? rOrId : rOrId?.id ?? rOrId?.reservation_id ?? null
@@ -492,7 +517,6 @@ export default function ReservationsPage() {
     setConfirmDelete({ open: false })
   }
 
-  // historique client
   const viewClientHistory = (clientId: number, label?: string) => {
     setClientIdFilter(clientId)
     setClientLabelFilter(label || `Client #${clientId}`)
@@ -515,9 +539,7 @@ export default function ReservationsPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-xl font-semibold">Réservations</h2>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            Gérez les réservations (vol, hôtel, voiture, événement, forfait).
-          </p>
+          <p className="text-sm text-gray-600 dark:text-gray-400">Gérez les réservations (vol, hôtel, voiture, événement, forfait).</p>
         </div>
 
         <button className="btn-primary" onClick={openCreate} type="button">
@@ -531,12 +553,7 @@ export default function ReservationsPage() {
           <div className="inline-flex items-center gap-2 rounded-full border border-black/10 dark:border-white/10 bg-white dark:bg-panel px-3 py-1.5 text-sm shadow-soft">
             <span className="text-gray-600 dark:text-gray-300">Historique :</span>
             <span className="font-medium">{clientLabelFilter || `Client #${clientIdFilter}`}</span>
-            <button
-              type="button"
-              className="btn px-2 bg-gray-200 dark:bg-white/10"
-              onClick={clearClientHistoryFilter}
-              title="Réinitialiser"
-            >
+            <button type="button" className="btn px-2 bg-gray-200 dark:bg-white/10" onClick={clearClientHistoryFilter} title="Réinitialiser">
               <X size={14} />
             </button>
           </div>
@@ -643,12 +660,9 @@ export default function ReservationsPage() {
                 </tr>
               ) : (
                 rows.map((r: any) => {
-                  const clientName =
-                    [r?.client?.prenom, r?.client?.nom].filter(Boolean).join(' ') || r?.client?.nom || '—'
-
+                  const clientName = [r?.client?.prenom, r?.client?.nom].filter(Boolean).join(' ') || r?.client?.nom || '—'
                   const canConfirm = r?.statut === 'en_attente' || r?.statut === 'brouillon'
                   const canCancel = r?.statut === 'en_attente' || r?.statut === 'brouillon'
-
                   const factureId = pickFactureIdFromReservation(r)
 
                   const actions = [
@@ -704,18 +718,13 @@ export default function ReservationsPage() {
                   ]
 
                   return (
-                    <tr
-                      key={r.id}
-                      className="border-t border-black/5 dark:border-white/10 hover:bg-black/[0.02] dark:hover:bg-white/[0.03]"
-                    >
+                    <tr key={r.id} className="border-t border-black/5 dark:border-white/10 hover:bg-black/[0.02] dark:hover:bg-white/[0.03]">
                       <Td className="font-medium whitespace-nowrap">{r.reference ?? `#${r.id}`}</Td>
-
                       <Td className="hidden lg:table-cell">{r.type_label ?? r.type ?? '—'}</Td>
 
                       <Td className="min-w-0">
                         <div className="truncate">{clientName}</div>
 
-                        {/* Mobile: type + statut + paiement + total */}
                         <div className="mt-1 text-xs text-gray-500 lg:hidden flex flex-wrap items-center gap-2">
                           <span className="capitalize">{r.type_label ?? r.type ?? '—'}</span>
                           <span>•</span>
@@ -749,7 +758,6 @@ export default function ReservationsPage() {
         </div>
       )}
 
-      {/* Pagination */}
       <Pagination page={paged.page} lastPage={paged.lastPage} total={paged.total} onPage={setPage} />
 
       {/* Details Modal */}
@@ -760,19 +768,9 @@ export default function ReservationsPage() {
           setViewingId(null)
         }}
         title="Détails de la réservation"
-        // ✅ très large
-       widthClass="max-w-[1200px]"
-      // heightClass="h-[92vh]"
+        widthClass="max-w-[1200px]"
       >
-        <div
-          className={[
-            // ✅ hauteur très grande + scroll interne
-            'h-[85vh] lg:h-[88vh]',
-            'flex flex-col',
-            'min-w-0',
-          ].join(' ')}
-        >
-          {/* ✅ header interne sticky (pro) */}
+        <div className={['h-[85vh] lg:h-[88vh]', 'flex flex-col', 'min-w-0'].join(' ')}>
           <div className="sticky top-0 z-10 -mx-4 -mt-4 mb-3 px-4 pt-4 pb-3 bg-white dark:bg-panel border-b border-black/5 dark:border-white/10">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
@@ -780,9 +778,7 @@ export default function ReservationsPage() {
                   {viewingReservation?.reference ? `Réservation ${viewingReservation.reference}` : 'Réservation'}
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                  {viewingReservation?.client
-                    ? `${viewingReservation.client?.prenom ?? ''} ${viewingReservation.client?.nom ?? ''}`.trim()
-                    : ''}
+                  {viewingReservation?.client ? `${viewingReservation.client?.prenom ?? ''} ${viewingReservation.client?.nom ?? ''}`.trim() : ''}
                 </div>
               </div>
 
@@ -799,7 +795,6 @@ export default function ReservationsPage() {
             </div>
           </div>
 
-          {/* ✅ content scrollable */}
           <div className="flex-1 overflow-auto pr-1">
             {viewingId ? (
               qDetails.isLoading ? (
@@ -818,32 +813,28 @@ export default function ReservationsPage() {
         </div>
       </Modal>
 
-
       {/* Form Modal */}
       <Modal
-  open={formOpen}
-  onClose={() => {
-    setFormOpen(false)
-    setEditing(null)
-    setPrefillCreate(null)
-  }}
-  title={editing ? "Modifier réservation" : "Nouvelle réservation"}
-  widthClass="max-w-[1200px]"
-  // heightClass="h-[92vh]"
-  // scrollInside={false} // 👈 si tu veux éviter le scroll interne
->
-  <ReservationsForm
-    defaultValues={(editing ?? (prefillCreate ?? undefined)) as any}
-    onSubmit={(vals) => (editing ? mUpdate.mutate(vals) : mCreate.mutate(vals))}
-    onCancel={() => {
-      setFormOpen(false)
-      setEditing(null)
-    }}
-    submitting={mCreate.isPending || mUpdate.isPending}
-  />
-</Modal>
+        open={formOpen}
+        onClose={() => {
+          setFormOpen(false)
+          setEditing(null)
+          setPrefillCreate(null)
+        }}
+        title={editing ? 'Modifier réservation' : 'Nouvelle réservation'}
+        widthClass="max-w-[1200px]"
+      >
+        <ReservationsForm
+          defaultValues={(editing ?? (prefillCreate ?? undefined)) as any}
+          onSubmit={(vals) => (editing ? mUpdate.mutate(vals) : mCreate.mutate(vals))}
+          onCancel={() => {
+            setFormOpen(false)
+            setEditing(null)
+          }}
+          submitting={mCreate.isPending || mUpdate.isPending}
+        />
+      </Modal>
 
-      {/* Delete confirm */}
       <ConfirmDialog
         open={confirmDelete.open}
         onCancel={() => setConfirmDelete({ open: false })}

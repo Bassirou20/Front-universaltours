@@ -1,80 +1,58 @@
 // src/features/reservations/ReservationDetails.tsx
-import React, { useMemo, useState } from 'react'
-import {
-  BadgeCheck,
-  CalendarClock,
-  UserRound,
-  Plane,
-  Building2,
-  Car,
-  Ticket,
-  Users,
-  Receipt,
-  Info,
-  History,
-  Download,
-  FilePlus2,
-  CreditCard,
-} from 'lucide-react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { api } from '../../lib/axios'
 import { useToast } from '../../ui/Toasts'
-
-type ReservationDetailsModel = any
+import {
+  Plane,
+  Hotel,
+  Car,
+  PartyPopper,
+  Package,
+  User,
+  Users,
+  Receipt,
+  FileText,
+  Calendar,
+  MapPin,
+  Phone,
+  Mail,
+  Globe,
+  ClipboardList,
+  BadgeCheck,
+  BadgeAlert,
+  Info,
+  Download,
+  CreditCard,
+  Zap,
+} from 'lucide-react'
 
 type Props = {
-  reservation: ReservationDetailsModel
+  reservation: any
   onViewClientHistory?: (clientId: number, label?: string) => void
 }
 
-const ToneBadge: React.FC<{ children: React.ReactNode; tone?: 'green' | 'red' | 'amber' | 'gray' }> = ({
-  children,
-  tone = 'gray',
-}) => {
-  const tones: Record<string, string> = {
-    green: 'bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300',
-    red: 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300',
-    amber: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300',
-    gray: 'bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-gray-200',
-  }
-  return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${tones[tone]}`}>
-      {children}
-    </span>
-  )
+/* -------------------- UI helpers -------------------- */
+function cx(...cls: Array<string | false | undefined | null>) {
+  return cls.filter(Boolean).join(' ')
 }
 
 const money = (n: any, devise = 'XOF') => `${Number(n || 0).toLocaleString()} ${devise}`
 
-function Card({ title, icon, children }: { title: string; icon?: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white dark:bg-panel shadow-soft p-4">
-      <div className="flex items-center gap-2 font-semibold">
-        {icon}
-        <span>{title}</span>
-      </div>
-      <div className="mt-3 text-sm">{children}</div>
-    </div>
-  )
-}
-
-function KV({ k, v }: { k: string; v: React.ReactNode }) {
-  return (
-    <div className="flex items-start justify-between gap-4 py-1">
-      <div className="text-gray-600 dark:text-gray-400">{k}</div>
-      <div className="text-right font-medium">{v}</div>
-    </div>
-  )
-}
-
-const sumPaid = (paiements: any[]) => (paiements || []).reduce((acc, p) => acc + Number(p?.montant || 0), 0)
-
-const safeDate = (d: any) => {
+function safeDateTime(d: any) {
   if (!d) return '—'
   const dt = new Date(d)
-  return Number.isNaN(dt.getTime()) ? String(d) : dt.toLocaleString()
+  if (Number.isNaN(dt.getTime())) return '—'
+  return dt.toLocaleString()
 }
 
-async function downloadBlobAsFile(blob: Blob, filename: string) {
+function safeDate(d: any) {
+  if (!d) return '—'
+  const dt = new Date(d)
+  if (Number.isNaN(dt.getTime())) return '—'
+  return dt.toLocaleDateString()
+}
+
+function downloadBlob(blob: Blob, filename: string) {
   const url = window.URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
@@ -85,157 +63,271 @@ async function downloadBlobAsFile(blob: Blob, filename: string) {
   window.URL.revokeObjectURL(url)
 }
 
-function clamp(n: number, a: number, b: number) {
-  return Math.max(a, Math.min(b, n))
+function Card({
+  title,
+  icon,
+  right,
+  children,
+}: {
+  title: string
+  icon?: React.ReactNode
+  right?: React.ReactNode
+  children: React.ReactNode
+}) {
+  return (
+    <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white dark:bg-panel shadow-soft">
+      <div className="px-4 py-3 border-b border-black/5 dark:border-white/10 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          {icon ? <span className="text-gray-700 dark:text-gray-200">{icon}</span> : null}
+          <div className="font-semibold text-gray-900 dark:text-gray-100 truncate">{title}</div>
+        </div>
+        {right ? <div className="shrink-0">{right}</div> : null}
+      </div>
+      <div className="p-4">{children}</div>
+    </div>
+  )
 }
 
-function ProgressBar({ value }: { value: number }) {
-  const v = clamp(Number(value || 0), 0, 100)
-  const tone =
-    v >= 100 ? 'bg-green-500/70 dark:bg-green-400/60' : v > 0 ? 'bg-amber-500/70 dark:bg-amber-400/60' : 'bg-gray-400/70 dark:bg-white/20'
-
+function KV({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="w-full">
-      <div className="h-2 w-full rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
-        <div className={`h-2 ${tone}`} style={{ width: `${v}%` }} />
-      </div>
-      <div className="mt-1 text-[11px] text-gray-600 dark:text-gray-400 flex items-center justify-between">
-        <span>Payé</span>
-        <span className="font-medium">{v}%</span>
+    <div className="flex items-start justify-between gap-4">
+      <div className="text-sm text-gray-600 dark:text-gray-400">{label}</div>
+      <div className="text-sm font-medium text-gray-900 dark:text-gray-100 text-right max-w-[65%] break-words">
+        {value ?? '—'}
       </div>
     </div>
   )
 }
 
-export const ReservationDetails: React.FC<Props> = ({ reservation, onViewClientHistory }) => {
-  const toast = useToast()
-  const r = reservation || {}
+function ToneBadge({
+  tone,
+  children,
+}: {
+  tone: 'gray' | 'green' | 'amber' | 'red' | 'blue'
+  children: React.ReactNode
+}) {
+  const base = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap'
+  const cls =
+    tone === 'green'
+      ? 'bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300'
+      : tone === 'amber'
+      ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
+      : tone === 'red'
+      ? 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300'
+      : tone === 'blue'
+      ? 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300'
+      : 'bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-gray-200'
+  return <span className={`${base} ${cls}`}>{children}</span>
+}
 
-  const [busyInvoiceId, setBusyInvoiceId] = useState<number | null>(null)
+function normalizeStatut(s: any) {
+  const v = String(s || '').trim().toLowerCase()
+  if (v === 'confirmée') return 'confirmee'
+  if (v === 'annulée') return 'annulee'
+  return v
+}
 
-  const clientName = [r?.client?.prenom, r?.client?.nom].filter(Boolean).join(' ') || r?.client?.nom || '—'
-  const clientId = r?.client?.id ?? r?.client_id ?? null
+function StatutBadge({ statut }: { statut: any }) {
+  const v = normalizeStatut(statut)
+  const label =
+    v === 'confirmee'
+      ? 'Confirmée'
+      : v === 'annulee'
+      ? 'Annulée'
+      : v === 'brouillon'
+      ? 'Brouillon'
+      : v === 'en_attente'
+      ? 'En attente'
+      : statut || '—'
 
-  const statutTone = r?.statut === 'confirmee' ? 'green' : r?.statut === 'annulee' ? 'red' : 'amber'
-  const statutLabel =
-    r?.statut === 'confirmee' ? 'Confirmée' : r?.statut === 'annulee' ? 'Annulée' : r?.statut || 'En attente'
+  const tone =
+    v === 'confirmee'
+      ? 'green'
+      : v === 'annulee'
+      ? 'red'
+      : v === 'brouillon'
+      ? 'gray'
+      : 'amber'
 
-  const typeLabel =
-    r?.type_label ||
-    (r?.type === 'billet_avion'
-      ? 'Billet d’avion'
-      : r?.type === 'hotel'
-      ? 'Hôtel'
-      : r?.type === 'voiture'
-      ? 'Voiture'
-      : r?.type === 'evenement'
-      ? 'Événement'
-      : r?.type === 'forfait'
-      ? 'Forfait'
-      : r?.type || '—')
+  return <ToneBadge tone={tone as any}>{label}</ToneBadge>
+}
 
-  const typeIcon =
-    r?.type === 'billet_avion' ? (
-      <Plane size={18} />
-    ) : r?.type === 'hotel' ? (
-      <Building2 size={18} />
-    ) : r?.type === 'voiture' ? (
-      <Car size={18} />
-    ) : r?.type === 'evenement' || r?.type === 'forfait' ? (
-      <Ticket size={18} />
-    ) : (
-      <Info size={18} />
-    )
-
-  const participants = Array.isArray(r?.participants) ? r.participants : []
-
-  const factures = useMemo(() => {
-    if (Array.isArray(r?.factures)) return r.factures
-    if (r?.factures && typeof r.factures === 'object' && r.factures.id) return [r.factures]
-    if (r?.facture && r.facture.id) return [r.facture]
-    return []
-  }, [r])
-
-  // Vol: supporte flight_details (payload), flightDetails (relation), et fallback champs plats
-  const fd = r?.flight_details || r?.flightDetails || r?.flight_detail || null
-  const vol = {
-    ville_depart: fd?.ville_depart ?? r?.ville_depart ?? null,
-    ville_arrivee: fd?.ville_arrivee ?? r?.ville_arrivee ?? null,
-    date_depart: fd?.date_depart ?? r?.date_depart ?? null,
-    date_arrivee: fd?.date_arrivee ?? r?.date_arrivee ?? null,
-    compagnie: fd?.compagnie ?? r?.compagnie ?? null,
-    pnr: fd?.pnr ?? null,
-    classe: fd?.classe ?? null,
+const TYPE_META: Record<string, { label: string; icon: React.ReactNode; tone: 'blue' | 'gray' | 'amber' | 'green' }> =
+  {
+    billet_avion: { label: "Billet d'avion", icon: <Plane size={16} />, tone: 'blue' },
+    hotel: { label: 'Hôtel', icon: <Hotel size={16} />, tone: 'green' },
+    voiture: { label: 'Voiture', icon: <Car size={16} />, tone: 'amber' },
+    evenement: { label: 'Événement', icon: <PartyPopper size={16} />, tone: 'blue' },
+    forfait: { label: 'Forfait', icon: <Package size={16} />, tone: 'green' },
   }
 
-  const reservationTotal = Number(r?.montant_total || 0)
-  const reservationSousTotal = Number(r?.montant_sous_total || 0)
-  const reservationTaxes = Number(r?.montant_taxes || 0)
+function pickLatestInvoice(r: any) {
+  if (!r) return null
+  if (r.facture && typeof r.facture === 'object') return r.facture
+  if (r.factures && typeof r.factures === 'object' && !Array.isArray(r.factures) && r.factures.id) return r.factures
 
-  const handleGeneratePdf = async (factureId: number) => {
+  const fs = r.factures
+  let arr: any[] = []
+  if (Array.isArray(fs)) arr = fs
+  else if (Array.isArray(fs?.data)) arr = fs.data
+  else if (Array.isArray(fs?.items)) arr = fs.items
+  if (!arr.length) return null
+
+  const sorted = [...arr].sort((a, b) => {
+    const da = new Date(a?.created_at || a?.date_facture || 0).getTime()
+    const db = new Date(b?.created_at || b?.date_facture || 0).getTime()
+    return db - da
+  })
+  return sorted[0] ?? null
+}
+
+function computePay(r: any) {
+  const f = pickLatestInvoice(r)
+  const total =
+    Number(
+      f?.total ??
+        f?.total_ttc ??
+        f?.montant_total ??
+        f?.montant_ttc ??
+        f?.total_amount ??
+        r?.montant_total ??
+        0
+    ) || 0
+
+  const paiementsRaw = f?.paiements ?? r?.paiements ?? []
+  const paiements: any[] = Array.isArray(paiementsRaw)
+    ? paiementsRaw
+    : Array.isArray(paiementsRaw?.data)
+    ? paiementsRaw.data
+    : Array.isArray(paiementsRaw?.items)
+    ? paiementsRaw.items
+    : []
+
+  const paid = paiements.reduce((sum, p) => {
+    const st = normalizeStatut(p?.statut)
+    const montant = Number(p?.montant ?? 0) || 0
+    if (!p?.statut) return sum + montant
+    if (st === 'recu' || st === 'reçu') return sum + montant
+    return sum
+  }, 0)
+
+  const remaining = Math.max(0, total - paid)
+  const percent = total > 0 ? Math.max(0, Math.min(100, Math.round((paid / total) * 100))) : 0
+
+  const label = paid <= 0 ? 'Non payé' : total > 0 && paid >= total ? 'Payé' : 'Partiel'
+  const tone: 'gray' | 'amber' | 'green' = paid <= 0 ? 'gray' : total > 0 && paid >= total ? 'green' : 'amber'
+
+  return { total, paid, remaining, percent, label, tone, facture: f, paiements }
+}
+
+/* -------------------- Main -------------------- */
+export function ReservationDetails({ reservation, onViewClientHistory }: Props) {
+  const toast = useToast()
+
+  // ✅ copie locale pour pouvoir refresh après actions rapides
+  const [data, setData] = useState<any>(reservation)
+  useEffect(() => setData(reservation), [reservation])
+
+  const [busy, setBusy] = useState(false)
+  const [busyInvoiceId, setBusyInvoiceId] = useState<number | null>(null)
+
+  const r = data
+  const typeKey = String(r?.type || 'billet_avion')
+  const typeMeta = TYPE_META[typeKey] ?? { label: typeKey, icon: <ClipboardList size={16} />, tone: 'gray' as const }
+
+  const client = r?.client ?? null
+  const devise = String(r?.devise || 'XOF')
+
+  const pay = useMemo(() => computePay(r), [r])
+  const flight = r?.flight_details ?? r?.flightDetails ?? null
+
+  // passager (nouvelle logique backend)
+  const passengerIsClient =
+    typeof r?.passenger_is_client === 'boolean'
+      ? r.passenger_is_client
+      : r?.passenger
+      ? false
+      : true
+
+  const passengerName = useMemo(() => {
+    if (typeKey !== 'billet_avion') return null
+    if (passengerIsClient) {
+      const n = [client?.prenom, client?.nom].filter(Boolean).join(' ').trim()
+      return n || client?.nom || null
+    }
+    const p = r?.passenger ?? null
+    const n = [p?.prenom, p?.nom].filter(Boolean).join(' ').trim()
+    return n || p?.nom || null
+  }, [typeKey, passengerIsClient, client?.prenom, client?.nom, client?.nom, r?.passenger])
+
+  const headerRef = r?.reference ?? `#${r?.id ?? '—'}`
+
+  const refreshReservation = async () => {
+    const id = Number(r?.id)
+    if (!id) return
+    setBusy(true)
     try {
-      setBusyInvoiceId(factureId)
-
-      const tries = [
-        `/factures/${factureId}/generer-pdf`,
-        `/factures/${factureId}/pdf/generate`,
-        `/factures/${factureId}/pdf`,
-      ]
-      let ok = false
-
-      for (const url of tries) {
-        try {
-          try {
-            await api.get(url)
-          } catch {
-            await api.post(url)
-          }
-          ok = true
-          break
-        } catch {
-          // next
-        }
-      }
-
-      if (!ok) throw new Error('generation_failed')
-      toast.push({ title: 'PDF généré', tone: 'success' })
-    } catch (err: any) {
-      const msg = err?.response?.data?.message || 'Impossible de générer le PDF.'
-      toast.push({ title: msg, tone: 'error' })
+      const res = await api.get(`/reservations/${id}`)
+      setData(res.data?.data ?? res.data)
+    } catch {
+      // on ne bloque pas
     } finally {
-      setBusyInvoiceId(null)
+      setBusy(false)
     }
   }
 
-  const handleDownloadPdf = async (facture: any) => {
-    const factureId = Number(facture?.id)
-    if (!factureId) return
-
+  const downloadDevisPdf = async () => {
+    const id = Number(r?.id)
+    if (!id) return
     try {
-      setBusyInvoiceId(factureId)
+      const res = await api.get(`/reservations/${id}/devis-pdf`, { responseType: 'blob' })
+      const filename = `devis-${headerRef}.pdf`.replace(/[^\w\-\.]+/g, '_')
+      downloadBlob(res.data, filename)
+      toast.push({ title: 'Devis téléchargé', tone: 'success' })
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || 'Impossible de générer le devis.'
+      toast.push({ title: msg, tone: 'error' })
+    }
+  }
 
-      const filename = `${facture?.numero || `facture-${factureId}`}.pdf`
+  const downloadFacturePdf = async (factureId: number, numero?: string) => {
+    const filename = `${numero || `facture-${factureId}`}.pdf`.replace(/[^\w\-\.]+/g, '_')
+    try {
+      const res = await api.get(`/factures/${factureId}/pdf`, { responseType: 'blob' })
+      downloadBlob(res.data, filename)
+      toast.push({ title: 'Facture téléchargée', tone: 'success' })
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || 'PDF indisponible.'
+      toast.push({ title: msg, tone: 'error' })
+    }
+  }
 
-      const tries = [
-        `/factures/${factureId}/telecharger-pdf`,
-        `/factures/${factureId}/download`,
-        `/factures/${factureId}/pdf`,
-      ]
+  const ensureInvoice = async (): Promise<any | null> => {
+    const reservationId = Number(r?.id)
+    if (!reservationId) return null
 
-      let blob: Blob | null = null
-      for (const url of tries) {
-        try {
-          const res = await api.get(url, { responseType: 'blob' })
-          blob = res.data as Blob
-          break
-        } catch {
-          // next
-        }
+    let facture = pickLatestInvoice(r)
+    if (facture?.id) return facture
+
+    const date_facture = new Date().toISOString().slice(0, 10)
+    const created = await api.post(`/reservations/${reservationId}/factures`, { date_facture })
+    facture = created?.data?.data ?? created?.data
+    return facture?.id ? facture : null
+  }
+
+  const ensureAndDownloadInvoice = async () => {
+    const reservationId = Number(r?.id)
+    if (!reservationId) return
+
+    setBusyInvoiceId(reservationId)
+    try {
+      const facture = await ensureInvoice()
+      if (!facture?.id) {
+        toast.push({ title: 'Aucune facture trouvée/créée.', tone: 'error' })
+        return
       }
-
-      if (!blob) throw new Error('download_failed')
-      await downloadBlobAsFile(blob, filename)
-      toast.push({ title: 'Téléchargement lancé', tone: 'success' })
+      await downloadFacturePdf(Number(facture.id), facture?.numero)
+      await refreshReservation()
     } catch (err: any) {
       const msg = err?.response?.data?.message || 'Impossible de télécharger la facture.'
       toast.push({ title: msg, tone: 'error' })
@@ -244,292 +336,540 @@ export const ReservationDetails: React.FC<Props> = ({ reservation, onViewClientH
     }
   }
 
-  // -------------------- UI --------------------
+  // ✅ Action rapide: Émettre facture
+  const emitInvoice = async () => {
+    setBusy(true)
+    try {
+      const facture = await ensureInvoice()
+      if (!facture?.id) {
+        toast.push({ title: 'Impossible de créer la facture.', tone: 'error' })
+        return
+      }
+
+      // endpoint que tu utilises côté page: POST /factures/:id/emettre
+      await api.post(`/factures/${facture.id}/emettre`)
+      toast.push({ title: 'Facture émise', tone: 'success' })
+      await refreshReservation()
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.message ||
+        "Impossible d’émettre la facture (vérifie la route + méthode FactureController::emettre)."
+      toast.push({ title: msg, tone: 'error' })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // ✅ Action rapide: Ajouter paiement
+  const [payFormOpen, setPayFormOpen] = useState(false)
+  const [paymentForm, setPaymentForm] = useState({
+    montant: 0,
+    mode_paiement: 'especes',
+    reference: '',
+  })
+
+  const addPayment = async () => {
+    const montant = Number(paymentForm.montant || 0)
+    if (montant <= 0) {
+      toast.push({ title: 'Montant du paiement requis.', tone: 'error' })
+      return
+    }
+
+    setBusy(true)
+    try {
+      const facture = await ensureInvoice()
+      if (!facture?.id) {
+        toast.push({ title: 'Impossible de créer la facture pour enregistrer le paiement.', tone: 'error' })
+        return
+      }
+
+      await api.post(`/factures/${facture.id}/paiements`, {
+        montant,
+        mode_paiement: paymentForm.mode_paiement,
+        reference: paymentForm.reference || null,
+        statut: 'recu',
+      })
+
+      toast.push({ title: 'Paiement enregistré', tone: 'success' })
+      setPaymentForm({ montant: 0, mode_paiement: 'especes', reference: '' })
+      setPayFormOpen(false)
+      await refreshReservation()
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || 'Impossible d’enregistrer le paiement.'
+      toast.push({ title: msg, tone: 'error' })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const showProduit = !!r?.produit
+  const showForfait = !!r?.forfait
+  const showParticipants =
+    typeKey === 'evenement' || typeKey === 'forfait'
+      ? Array.isArray(r?.participants) && r.participants.length > 0
+      : false
+
+  const topBadges = (
+    <div className="flex items-center gap-2 flex-wrap justify-end">
+      <ToneBadge tone={typeMeta.tone}>{typeMeta.label}</ToneBadge>
+      <StatutBadge statut={r?.statut} />
+      <ToneBadge tone={pay.tone}>
+        {pay.label} • {pay.percent}%
+      </ToneBadge>
+      {r?.reference ? <ToneBadge tone="gray">{r.reference}</ToneBadge> : null}
+    </div>
+  )
+
+  const totalsCard = (
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] p-3">
+        <div className="text-xs text-gray-600 dark:text-gray-400">Total</div>
+        <div className="text-lg font-semibold">{money(pay.total || r?.montant_total, devise)}</div>
+      </div>
+      <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] p-3">
+        <div className="text-xs text-gray-600 dark:text-gray-400">Payé</div>
+        <div className="text-lg font-semibold">{money(pay.paid, devise)}</div>
+      </div>
+      <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] p-3">
+        <div className="text-xs text-gray-600 dark:text-gray-400">Reste</div>
+        <div className="text-lg font-semibold">{money(pay.remaining, devise)}</div>
+      </div>
+
+      <div className="sm:col-span-3">
+        <div className="text-xs text-gray-600 dark:text-gray-400">% payé</div>
+        <div className="mt-1 h-2 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
+          <div className="h-full bg-primary" style={{ width: `${pay.percent}%` }} />
+        </div>
+      </div>
+    </div>
+  )
+
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-lg font-semibold flex items-center gap-2">
-            {typeIcon}
-            <span className="truncate">{typeLabel}</span>
-          </div>
-          <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">
-            Créée le {safeDate(r?.created_at)} • Mise à jour {safeDate(r?.updated_at)}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <ToneBadge tone={statutTone}>{statutLabel}</ToneBadge>
-          <ToneBadge tone="gray">{r?.reference ?? `#${r?.id ?? ''}`}</ToneBadge>
-        </div>
-      </div>
-
-      {/* Top cards */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card title="Client" icon={<UserRound size={18} />}>
-          <KV k="Nom" v={clientName} />
-          {r?.client?.telephone ? <KV k="Téléphone" v={r.client.telephone} /> : null}
-          {r?.client?.email ? <KV k="Email" v={r.client.email} /> : null}
-          {r?.client?.adresse ? <KV k="Adresse" v={r.client.adresse} /> : null}
-          {r?.client?.pays ? <KV k="Pays" v={r.client.pays} /> : null}
-
-          {onViewClientHistory && clientId ? (
-            <div className="mt-3">
-              <button
-                type="button"
-                className="btn bg-gray-200 dark:bg-white/10 w-full flex items-center justify-center gap-2"
-                onClick={() => onViewClientHistory(Number(clientId), clientName)}
-                title="Voir l’historique de ce client"
-              >
-                <History size={16} />
-                Historique du client
-              </button>
+      {/* Header pro */}
+      <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white dark:bg-panel shadow-soft p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="text-gray-700 dark:text-gray-200">{typeMeta.icon}</span>
+              <div className="text-lg font-semibold text-gray-900 dark:text-gray-100 truncate">
+                {r?.reference ? `Réservation ${r.reference}` : 'Détails de la réservation'}
+              </div>
             </div>
+
+            <div className="mt-1 text-xs text-gray-600 dark:text-gray-400 flex flex-wrap items-center gap-2">
+              <span>Créée le {safeDateTime(r?.created_at)}</span>
+              <span>•</span>
+              <span>Mise à jour {safeDateTime(r?.updated_at)}</span>
+              {passengerName ? (
+                <>
+                  <span>•</span>
+                  <span className="inline-flex items-center gap-1">
+                    <User size={12} />
+                    <span className="font-medium text-gray-800 dark:text-gray-200">Bénéficiaire:</span> {passengerName}
+                  </span>
+                </>
+              ) : null}
+              {busy ? (
+                <>
+                  <span>•</span>
+                  <span className="text-xs text-gray-500">Actualisation…</span>
+                </>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="shrink-0">{topBadges}</div>
+        </div>
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button type="button" className="btn bg-gray-200 dark:bg-white/10" onClick={downloadDevisPdf} disabled={busy}>
+            <FileText size={16} className="mr-2" />
+            Devis (PDF)
+          </button>
+
+          <button
+            type="button"
+            className={cx('btn', 'bg-gray-200 dark:bg-white/10')}
+            onClick={ensureAndDownloadInvoice}
+            disabled={!!busyInvoiceId || busy}
+            title="Télécharger la facture (création auto si manquante)"
+          >
+            <Download size={16} className="mr-2" />
+            Facture (PDF)
+          </button>
+
+          {client?.id && onViewClientHistory ? (
+            <button
+              type="button"
+              className="btn bg-gray-200 dark:bg-white/10"
+              onClick={() =>
+                onViewClientHistory(
+                  Number(client.id),
+                  [client?.prenom, client?.nom].filter(Boolean).join(' ') || client?.nom
+                )
+              }
+              disabled={busy}
+            >
+              <Users size={16} className="mr-2" />
+              Historique du client
+            </button>
           ) : null}
-        </Card>
-
-        <Card title="Résumé financier" icon={<BadgeCheck size={18} />}>
-          <KV k="Nombre de personnes" v={r?.nombre_personnes ?? '—'} />
-          <KV k="Sous-total" v={money(reservationSousTotal, 'XOF')} />
-          <KV k="Taxes" v={money(reservationTaxes, 'XOF')} />
-          <KV k="Total" v={money(reservationTotal, 'XOF')} />
-        </Card>
+        </div>
       </div>
 
-      {/* Produit / Forfait */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card title="Produit" icon={<Receipt size={18} />}>
-          <KV k="Produit" v={r?.produit?.nom || (r?.produit_id ? `#${r.produit_id}` : '—')} />
-          {r?.produit?.type ? <KV k="Type produit" v={r.produit.type} /> : null}
-          {r?.produit?.prix_base != null ? <KV k="Prix de base" v={money(r.produit.prix_base, 'XOF')} /> : null}
-        </Card>
+      {/* Grid principal */}
+      <div className="grid grid-cols-1 lg:grid-cols-[1.05fr_0.95fr] gap-4">
+        {/* LEFT */}
+        <div className="space-y-4">
+          {/* Client */}
+          <Card title="Client" icon={<User size={18} />} right={client?.id ? <ToneBadge tone="gray">#{client.id}</ToneBadge> : undefined}>
+            {client ? (
+              <div className="space-y-3">
+                <KV label="Nom" value={[client?.prenom, client?.nom].filter(Boolean).join(' ') || client?.nom || '—'} />
+                <KV
+                  label="Téléphone"
+                  value={
+                    client?.telephone ? (
+                      <span className="inline-flex items-center gap-2">
+                        <Phone size={14} className="opacity-70" /> {client.telephone}
+                      </span>
+                    ) : (
+                      '—'
+                    )
+                  }
+                />
+                <KV
+                  label="Email"
+                  value={
+                    client?.email ? (
+                      <span className="inline-flex items-center gap-2">
+                        <Mail size={14} className="opacity-70" /> {client.email}
+                      </span>
+                    ) : (
+                      '—'
+                    )
+                  }
+                />
+                <KV
+                  label="Pays"
+                  value={
+                    client?.pays ? (
+                      <span className="inline-flex items-center gap-2">
+                        <Globe size={14} className="opacity-70" /> {client.pays}
+                      </span>
+                    ) : (
+                      '—'
+                    )
+                  }
+                />
+              </div>
+            ) : (
+              <div className="text-sm text-gray-500">—</div>
+            )}
+          </Card>
 
-        <Card title="Forfait" icon={<Ticket size={18} />}>
-          <KV k="Forfait" v={r?.forfait?.nom || (r?.forfait_id ? `#${r.forfait_id}` : '—')} />
-          {r?.forfait?.type ? <KV k="Type" v={r.forfait.type} /> : null}
-          {r?.forfait?.prix != null ? <KV k="Prix" v={money(r.forfait.prix, 'XOF')} /> : null}
-        </Card>
-      </div>
-
-      {/* Flight details */}
-      {r?.type === 'billet_avion' && (
-        <Card title="Détails du vol" icon={<Plane size={18} />}>
-          <KV k="Départ" v={vol.ville_depart ?? '—'} />
-          <KV k="Arrivée" v={vol.ville_arrivee ?? '—'} />
-          <KV k="Date départ" v={vol.date_depart ? new Date(vol.date_depart).toLocaleDateString() : '—'} />
-          <KV k="Date arrivée" v={vol.date_arrivee ? new Date(vol.date_arrivee).toLocaleDateString() : '—'} />
-          <KV k="Compagnie" v={vol.compagnie ?? '—'} />
-          {vol.pnr ? <KV k="PNR" v={vol.pnr} /> : null}
-          {vol.classe ? <KV k="Classe" v={vol.classe} /> : null}
-        </Card>
-      )}
-
-      {/* Participants */}
-      {participants.length > 0 && (
-        <Card title="Participants" icon={<Users size={18} />}>
-          <div className="space-y-2">
-            {participants.map((p: any, idx: number) => (
-              <div key={p.id ?? idx} className="rounded-xl border border-black/5 dark:border-white/10 p-3">
-                <div className="font-medium">
-                  {[(p.prenom || '').trim(), (p.nom || '').trim()].filter(Boolean).join(' ') || `Participant #${idx + 1}`}
+          {/* Vol */}
+          {typeKey === 'billet_avion' ? (
+            <Card
+              title="Détails du vol"
+              icon={<Plane size={18} />}
+              right={
+                flight?.pnr ? (
+                  <ToneBadge tone="blue">
+                    PNR: <span className="ml-1 font-bold">{String(flight.pnr).toUpperCase()}</span>
+                  </ToneBadge>
+                ) : undefined
+              }
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] p-3">
+                  <div className="text-xs text-gray-600 dark:text-gray-400">Trajet</div>
+                  <div className="mt-1 font-semibold flex items-center gap-2">
+                    <MapPin size={16} className="opacity-70" />
+                    <span className="truncate">
+                      {flight?.ville_depart || '—'} → {flight?.ville_arrivee || '—'}
+                    </span>
+                  </div>
                 </div>
-                <div className="mt-1 text-xs text-gray-600 dark:text-gray-400 space-y-1">
-                  {p.age != null ? <div>Âge : {p.age}</div> : null}
-                  {p.remarques ? <div>Remarques : {p.remarques}</div> : null}
+
+                <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] p-3">
+                  <div className="text-xs text-gray-600 dark:text-gray-400">Compagnie</div>
+                  <div className="mt-1 font-semibold">{flight?.compagnie || '—'}</div>
+                </div>
+
+                <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] p-3">
+                  <div className="text-xs text-gray-600 dark:text-gray-400">Départ</div>
+                  <div className="mt-1 font-semibold inline-flex items-center gap-2">
+                    <Calendar size={16} className="opacity-70" />
+                    {safeDate(flight?.date_depart)}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] p-3">
+                  <div className="text-xs text-gray-600 dark:text-gray-400">Arrivée</div>
+                  <div className="mt-1 font-semibold inline-flex items-center gap-2">
+                    <Calendar size={16} className="opacity-70" />
+                    {safeDate(flight?.date_arrivee)}
+                  </div>
+                </div>
+
+                <div className="md:col-span-2">
+                  <KV label="Classe" value={flight?.classe || '—'} />
                 </div>
               </div>
-            ))}
-          </div>
-        </Card>
-      )}
+            </Card>
+          ) : null}
 
-      {/* Factures + Historique paiements */}
-      <Card title="Factures & Paiements" icon={<CalendarClock size={18} />}>
-        {factures.length === 0 ? (
-          <div className="text-sm text-gray-500">Aucune facture liée à cette réservation.</div>
-        ) : (
-          <div className="space-y-3">
-            {factures.map((f: any) => {
-              const factureId = Number(f?.id)
-              const busy = busyInvoiceId === factureId
+          {/* Produit / Forfait */}
+          {showProduit ? (
+            <Card title="Produit" icon={<ClipboardList size={18} />}>
+              <div className="space-y-2">
+                <KV label="Nom" value={r?.produit?.nom || `Produit #${r?.produit?.id ?? '—'}`} />
+                <KV label="Type" value={r?.produit?.type_label ?? r?.produit?.type ?? '—'} />
+              </div>
+            </Card>
+          ) : null}
 
-              const devise = f?.devise || 'XOF'
-              const paiements = Array.isArray(f?.paiements) ? f.paiements : []
-              const total = Number(f?.montant_total ?? f?.montant_ttc ?? f?.total ?? 0) || 0
-              const paid = sumPaid(paiements)
-              const remaining = Math.max(0, total - paid)
-              const pct = total > 0 ? clamp((paid / total) * 100, 0, 100) : 0
+          {showForfait ? (
+            <Card title="Forfait" icon={<Package size={18} />}>
+              <div className="space-y-2">
+                <KV label="Nom" value={r?.forfait?.nom || `Forfait #${r?.forfait?.id ?? '—'}`} />
+                <KV label="Type" value={r?.forfait?.type ?? '—'} />
+              </div>
+            </Card>
+          ) : null}
 
-              const paymentTone = remaining <= 0 ? 'green' : paid > 0 ? 'amber' : 'gray'
-              const paymentLabel = remaining <= 0 ? 'Payée' : paid > 0 ? 'Partiellement payée' : 'Non payée'
-
-              const factureTone =
-                f?.statut === 'annule' ? 'red' : f?.statut === 'emis' || f?.statut === 'emise' ? 'green' : 'amber'
-
-              // tri paiement (plus récent en haut)
-              const sortedPayments = [...paiements].sort((a, b) => {
-                const da = new Date(a?.date_paiement || a?.created_at || 0).getTime()
-                const db = new Date(b?.date_paiement || b?.created_at || 0).getTime()
-                return db - da
-              })
-
-              return (
-                <div key={f.id} className="rounded-2xl border border-black/5 dark:border-white/10 overflow-hidden">
-                  {/* Header facture */}
-                  <div className="p-3 sm:p-4 bg-black/[0.02] dark:bg-white/[0.04]">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          {/* Participants */}
+          {showParticipants ? (
+            <Card title="Participants" icon={<Users size={18} />}>
+              <div className="space-y-2">
+                {r.participants.map((p: any, idx: number) => {
+                  const name = [p?.prenom, p?.nom].filter(Boolean).join(' ') || p?.nom || `Participant ${idx + 1}`
+                  return (
+                    <div
+                      key={p?.id ?? idx}
+                      className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] p-3 flex items-start justify-between gap-3"
+                    >
                       <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <div className="font-semibold truncate">
-                            {f.numero || `Facture #${f.id}`}
-                          </div>
-                          <ToneBadge tone={factureTone}>{f.statut ?? '—'}</ToneBadge>
-                          <ToneBadge tone={paymentTone}>{paymentLabel}</ToneBadge>
-                        </div>
-
-                        <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-600 dark:text-gray-400">
-                          <div className="flex items-center justify-between gap-3 rounded-xl bg-white/70 dark:bg-black/10 px-3 py-2">
-                            <span>Date</span>
-                            <span className="font-medium text-gray-900 dark:text-gray-100">
-                              {f?.date_facture ? new Date(f.date_facture).toLocaleDateString() : '—'}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between gap-3 rounded-xl bg-white/70 dark:bg-black/10 px-3 py-2">
-                            <span>Total</span>
-                            <span className="font-medium text-gray-900 dark:text-gray-100">{money(total, devise)}</span>
-                          </div>
-                          <div className="flex items-center justify-between gap-3 rounded-xl bg-white/70 dark:bg-black/10 px-3 py-2">
-                            <span>Payé</span>
-                            <span className="font-medium text-gray-900 dark:text-gray-100">{money(paid, devise)}</span>
-                          </div>
-                          <div className="flex items-center justify-between gap-3 rounded-xl bg-white/70 dark:bg-black/10 px-3 py-2">
-                            <span>Reste</span>
-                            <span className="font-medium text-gray-900 dark:text-gray-100">
-                              {money(remaining, devise)}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="mt-3">
-                          <ProgressBar value={pct} />
+                        <div className="font-semibold truncate">{name}</div>
+                        <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                          {p?.passport ? <>Passeport: {p.passport}</> : null}
+                          {p?.age != null ? (
+                            <>
+                              {p?.passport ? ' • ' : ''}
+                              Âge: {p.age}
+                            </>
+                          ) : null}
                         </div>
                       </div>
-
-                      {/* Actions */}
-                      <div className="flex items-center gap-2 sm:justify-end">
-                        <button
-                          type="button"
-                          className="btn bg-gray-200 dark:bg-white/10 flex items-center gap-2"
-                          disabled={busy || !factureId}
-                          onClick={() => handleGeneratePdf(factureId)}
-                          title="Générer le PDF"
-                        >
-                          <FilePlus2 size={16} />
-                          Générer
-                        </button>
-
-                        <button
-                          type="button"
-                          className="btn-primary flex items-center gap-2"
-                          disabled={busy || !factureId}
-                          onClick={() => handleDownloadPdf(f)}
-                          title="Télécharger la facture"
-                        >
-                          <Download size={16} />
-                          Télécharger
-                        </button>
-                      </div>
+                      {p?.role ? <ToneBadge tone="gray">{p.role}</ToneBadge> : null}
                     </div>
+                  )
+                })}
+              </div>
+            </Card>
+          ) : null}
+
+          {/* Notes */}
+          {r?.notes ? (
+            <Card title="Notes" icon={<Info size={18} />}>
+              <div className="whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-200">{r.notes}</div>
+            </Card>
+          ) : null}
+        </div>
+
+        {/* RIGHT */}
+        <div className="space-y-4">
+          {/* Résumé financier */}
+          <Card title="Résumé financier" icon={pay.percent >= 100 ? <BadgeCheck size={18} /> : <BadgeAlert size={18} />}>
+            {totalsCard}
+          </Card>
+
+          {/* ✅ Actions rapides */}
+          <Card title="Actions rapides" icon={<Zap size={18} />}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <button
+                type="button"
+                className="btn bg-gray-200 dark:bg-white/10"
+                onClick={emitInvoice}
+                disabled={busy}
+                title="Émettre la facture (si route disponible)"
+              >
+                <Receipt size={16} className="mr-2" />
+                Émettre facture
+              </button>
+
+              <button
+                type="button"
+                className="btn bg-gray-200 dark:bg-white/10"
+                onClick={() => setPayFormOpen((v) => !v)}
+                disabled={busy}
+              >
+                <CreditCard size={16} className="mr-2" />
+                Ajouter paiement
+              </button>
+            </div>
+
+            {payFormOpen ? (
+              <div className="mt-3 rounded-2xl border border-black/5 dark:border-white/10 bg-white/70 dark:bg-black/10 p-3">
+                <div className="text-sm font-semibold mb-2">Nouveau paiement</div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div>
+                    <label className="label">Montant *</label>
+                    <input
+                      className="input"
+                      type="number"
+                      min={0}
+                      value={paymentForm.montant}
+                      onChange={(e) => setPaymentForm((s) => ({ ...s, montant: Number(e.target.value || 0) }))}
+                    />
                   </div>
 
-                  {/* Historique paiements */}
-                  <div className="p-3 sm:p-4">
-                    <div className="flex items-center gap-2 font-semibold">
-                      <CreditCard size={16} />
-                      <span>Historique des paiements</span>
-                      <span className="text-xs font-normal text-gray-500 dark:text-gray-400">
-                        ({sortedPayments.length})
-                      </span>
-                    </div>
+                  <div>
+                    <label className="label">Mode</label>
+                    <select
+                      className="input"
+                      value={paymentForm.mode_paiement}
+                      onChange={(e) => setPaymentForm((s) => ({ ...s, mode_paiement: e.target.value }))}
+                    >
+                      <option value="especes">Espèces</option>
+                      <option value="wave">Wave</option>
+                      <option value="orange_money">Orange Money</option>
+                      <option value="virement">Virement</option>
+                      <option value="carte">Carte</option>
+                      <option value="cheque">Chèque</option>
+                    </select>
+                  </div>
 
-                    {sortedPayments.length === 0 ? (
-                      <div className="mt-2 text-sm text-gray-500">Aucun paiement enregistré.</div>
-                    ) : (
-                      <div
-                        className={[
-                          'mt-3 rounded-xl border border-black/5 dark:border-white/10',
-                          'overflow-hidden',
-                        ].join(' ')}
-                      >
-                        {/* header */}
-                        <div className="grid grid-cols-[1fr_120px] sm:grid-cols-[160px_1fr_140px] gap-3 px-3 py-2 text-[11px] uppercase tracking-wide text-gray-600 dark:text-gray-400 bg-black/[0.03] dark:bg-white/[0.06]">
-                          <div className="hidden sm:block">Date</div>
-                          <div>Mode / Référence</div>
-                          <div className="text-right">Montant</div>
-                        </div>
-
-                        {/* list scrollable (anti débordement) */}
-                        <div className="max-h-56 overflow-auto">
-                          {sortedPayments.map((p: any) => {
-                            const dt = safeDate(p.date_paiement || p.created_at)
-                            const mode = p.mode_paiement ?? '—'
-                            const ref = p.reference ? String(p.reference) : ''
-                            const st = String(p.statut || '').toLowerCase()
-                            const ok = st === 'recu' || st === 'reçu' || st === 'paye' || st === 'payé'
-
-                            return (
-                              <div
-                                key={p.id}
-                                className="grid grid-cols-[1fr_120px] sm:grid-cols-[160px_1fr_140px] gap-3 px-3 py-2 text-xs border-t border-black/5 dark:border-white/10"
-                              >
-                                <div className="hidden sm:block text-gray-600 dark:text-gray-400 whitespace-nowrap">
-                                  {dt}
-                                </div>
-
-                                <div className="min-w-0">
-                                  {/* mobile date */}
-                                  <div className="sm:hidden text-[11px] text-gray-600 dark:text-gray-400 whitespace-nowrap">
-                                    {dt}
-                                  </div>
-
-                                  <div className="flex items-center gap-2 min-w-0">
-                                    <span className="truncate font-medium">{mode}</span>
-                                    {ref ? (
-                                      <span className="truncate text-gray-600 dark:text-gray-400">• {ref}</span>
-                                    ) : null}
-                                  </div>
-
-                                  <div className="mt-1">
-                                    <ToneBadge tone={ok ? 'green' : 'gray'}>{p.statut ?? '—'}</ToneBadge>
-                                  </div>
-                                </div>
-
-                                <div className="text-right font-semibold whitespace-nowrap">
-                                  {money(p.montant, devise)}
-                                </div>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    )}
-
-                    {busy ? <div className="mt-2 text-xs text-gray-500">Traitement…</div> : null}
+                  <div>
+                    <label className="label">Référence</label>
+                    <input
+                      className="input"
+                      value={paymentForm.reference}
+                      onChange={(e) => setPaymentForm((s) => ({ ...s, reference: e.target.value }))}
+                    />
                   </div>
                 </div>
-              )
-            })}
-          </div>
-        )}
-      </Card>
 
-      {/* Notes */}
-      {r?.notes ? (
-        <Card title="Notes" icon={<Info size={18} />}>
-          <div className="whitespace-pre-wrap">{r.notes}</div>
-        </Card>
-      ) : null}
+                <div className="mt-3 flex items-center justify-end gap-2">
+                  <button type="button" className="btn bg-gray-200 dark:bg-white/10" onClick={() => setPayFormOpen(false)} disabled={busy}>
+                    Annuler
+                  </button>
+                  <button type="button" className="btn bg-gray-900 text-white dark:bg-white dark:text-black" onClick={addPayment} disabled={busy}>
+                    Enregistrer paiement
+                  </button>
+                </div>
+
+                <div className="mt-2 text-xs text-gray-600 dark:text-gray-400">
+                  Astuce: si aucune facture n’existe, elle sera créée automatiquement avant d’enregistrer le paiement.
+                </div>
+              </div>
+            ) : null}
+          </Card>
+
+          {/* Factures & paiements */}
+          <Card title="Factures & paiements" icon={<Receipt size={18} />}>
+            {!pay.facture ? (
+              <div className="text-sm text-gray-500 space-y-2">
+                <div>Aucune facture liée (ou non incluse dans la réponse API).</div>
+                <button
+                  type="button"
+                  className="btn bg-gray-200 dark:bg-white/10"
+                  onClick={ensureAndDownloadInvoice}
+                  disabled={!!busyInvoiceId || busy}
+                >
+                  <Receipt size={16} className="mr-2" />
+                  Créer / télécharger la facture
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-semibold truncate">{pay.facture?.numero || `Facture #${pay.facture?.id}`}</div>
+                    <div className="text-xs text-gray-600 dark:text-gray-400">
+                      Date: {safeDate(pay.facture?.date_facture || pay.facture?.created_at)}
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    className="btn bg-gray-200 dark:bg-white/10"
+                    onClick={() => downloadFacturePdf(Number(pay.facture.id), pay.facture?.numero)}
+                    disabled={busy}
+                  >
+                    <Download size={16} className="mr-2" />
+                    PDF
+                  </button>
+                </div>
+
+                {Array.isArray(pay.paiements) && pay.paiements.length > 0 ? (
+                  <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white/70 dark:bg-black/10">
+                    <div className="px-3 py-2 border-b border-black/5 dark:border-white/10 flex items-center justify-between">
+                      <div className="text-sm font-semibold inline-flex items-center gap-2">
+                        <CreditCard size={16} /> Paiements
+                      </div>
+                      <div className="text-xs text-gray-600 dark:text-gray-400">
+                        {pay.paiements.length} entrée{pay.paiements.length > 1 ? 's' : ''}
+                      </div>
+                    </div>
+
+                    <div className="max-h-[44vh] overflow-y-auto p-3 space-y-2">
+                      {[...pay.paiements]
+                        .sort(
+                          (a: any, b: any) =>
+                            +new Date(b?.date_paiement || b?.created_at || 0) - +new Date(a?.date_paiement || a?.created_at || 0)
+                        )
+                        .map((p: any) => {
+                          const st = normalizeStatut(p?.statut)
+                          const ok = !p?.statut || st === 'recu' || st === 'reçu'
+                          const ref = p?.reference ? String(p.reference) : null
+                          return (
+                            <div
+                              key={p?.id || `${p?.mode_paiement}-${p?.created_at}`}
+                              className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] px-3 py-2"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="font-semibold truncate">
+                                    {p?.mode_paiement ?? '—'}{' '}
+                                    {ref ? <span className="text-xs text-gray-600 dark:text-gray-400">({ref})</span> : null}
+                                  </div>
+                                  <div className="text-xs text-gray-600 dark:text-gray-400">
+                                    {safeDate(p?.date_paiement || p?.created_at)}
+                                  </div>
+                                  <div className="mt-1">
+                                    <ToneBadge tone={ok ? 'green' : 'gray'}>{p?.statut ?? '—'}</ToneBadge>
+                                  </div>
+                                </div>
+
+                                <div className="text-right font-semibold whitespace-nowrap">{money(p?.montant, devise)}</div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-sm text-gray-500">Aucun paiement enregistré.</div>
+                )}
+              </div>
+            )}
+          </Card>
+
+          {/* Infos techniques */}
+          <Card title="Infos" icon={<Info size={18} />}>
+            <div className="space-y-2">
+              <KV label="ID" value={r?.id ?? '—'} />
+              <KV label="Référence" value={headerRef} />
+              <KV label="Type" value={typeMeta.label} />
+              <KV label="Statut" value={<StatutBadge statut={r?.statut} />} />
+            </div>
+          </Card>
+        </div>
+      </div>
     </div>
   )
 }

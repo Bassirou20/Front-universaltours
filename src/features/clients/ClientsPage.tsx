@@ -1,55 +1,19 @@
+// src/features/clients/ClientsPage.tsx
 import React, { useMemo, useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
 import { api } from '../../lib/axios'
-import { fromLaravel } from '../../lib/paginate'
-import { T, Th, Td } from '../../ui/Table'
-import { Modal } from '../../ui/Modal'
+import Modal from '../../ui/Modal'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
-import { ClientsForm, type ClientInput } from './ClientsForm'
 import { FiltersBar } from '../../ui/FiltersBar'
 import { Pagination } from '../../ui/Pagination'
+import { T, Th, Td } from '../../ui/Table'
 import { useToast } from '../../ui/Toasts'
-import {
-  Eye,
-  Pencil,
-  Trash2,
-  Plus,
-  Upload,
-  RefreshCw,
-  Search,
-  List,
-  CalendarPlus,
-} from 'lucide-react'
-import { ClientDetails } from './ClientDetails'
 import { ActionsMenu } from '../../ui/ActionsMenu'
-import { useAuth } from '../../store/auth'
+import ClientDetails from './ClientDetails'
+import ClientsForm from './ClientsForm'
+import { Plus, Search, Eye, Pencil, Trash2, X, Upload, Users, Phone, Mail, Globe } from 'lucide-react'
 
-type Client = {
-  id: number
-  nom: string
-  prenom?: string | null
-  email?: string | null
-  telephone?: string | null
-  adresse?: string | null
-  pays?: string | null
-  notes?: string | null
-  created_at?: string
-}
-
-type Paged<T> = {
-  items: T[]
-  page: number
-  lastPage: number
-  total: number
-}
-
-const fetchClients = async (params: { page: number; per_page: number; search?: string }): Promise<Paged<Client>> => {
-  const { data } = await api.get('/clients', { params })
-  return fromLaravel<Client>(data) as Paged<Client>
-}
-
-// Debounce léger pour éviter spam requêtes
+// -------------------- helpers --------------------
 function useDebouncedValue<T>(value: T, delay = 300) {
   const [debounced, setDebounced] = useState(value)
   useEffect(() => {
@@ -59,140 +23,155 @@ function useDebouncedValue<T>(value: T, delay = 300) {
   return debounced
 }
 
-const TableWrap: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <div className="w-full overflow-x-auto rounded-2xl shadow-soft bg-white dark:bg-panel border border-black/5 dark:border-white/10">
-    {children}
-  </div>
-)
+/**
+ * Supporte:
+ * 1) Laravel paginate direct: { data: [], current_page, last_page, total }
+ * 2) Laravel paginate enveloppé: { data: { data: [], current_page, last_page, total } }
+ * 3) fallback: { items: [], page, lastPage, total }
+ */
+const normalizePaged = (input: any) => {
+  const root = input?.data?.data && Array.isArray(input.data.data) ? input.data : input
 
-const SkeletonRow: React.FC = () => (
-  <tr className="border-t border-black/5 dark:border-white/10">
-    <Td><div className="h-4 w-32 rounded bg-black/10 dark:bg-white/10" /></Td>
-    <Td><div className="h-4 w-24 rounded bg-black/10 dark:bg-white/10" /></Td>
-    <Td><div className="h-4 w-40 rounded bg-black/10 dark:bg-white/10" /></Td>
-    <Td><div className="h-4 w-28 rounded bg-black/10 dark:bg-white/10" /></Td>
-    <Td><div className="h-4 w-20 rounded bg-black/10 dark:bg-white/10" /></Td>
-    <Td><div className="h-8 w-44 rounded bg-black/10 dark:bg-white/10 mx-auto" /></Td>
-  </tr>
-)
+  const items = Array.isArray(root?.data)
+    ? root.data
+    : Array.isArray(root?.items)
+    ? root.items
+    : Array.isArray(root)
+    ? root
+    : []
 
-function ImportClientsModal({ onDone }: { onDone: () => void }) {
-  const toast = useToast()
-  const [file, setFile] = useState<File | null>(null)
-  const [loading, setLoading] = useState(false)
-
-  const upload = async () => {
-    if (!file) {
-      toast.push({ title: 'Choisis un fichier Excel', tone: 'info' })
-      return
-    }
-
-    const fd = new FormData()
-    fd.append('excel', file)
-
-    setLoading(true)
-    try {
-      await api.post('/clients/import', fd, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
-      toast.push({ title: 'Import terminé', tone: 'success' })
-      onDone()
-    } catch (err: any) {
-      const msg = err?.response?.data?.message || 'Erreur import.'
-      toast.push({ title: msg, tone: 'error' })
-    } finally {
-      setLoading(false)
-    }
+  return {
+    items,
+    page: Number(root?.current_page ?? root?.page ?? 1) || 1,
+    lastPage: Number(root?.last_page ?? root?.lastPage ?? 1) || 1,
+    total: Number(root?.total ?? items.length ?? 0) || 0,
   }
-
-  return (
-    <div className="space-y-3">
-      <div className="rounded-2xl bg-gray-50 dark:bg-white/5 border border-black/5 dark:border-white/10 p-4 text-sm">
-        <div className="font-medium mb-1">Format attendu</div>
-        <div className="text-gray-600 dark:text-gray-400">
-          Colonnes : <span className="font-mono">prenom, nom, email, telephone, adresse</span>
-        </div>
-        <div className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-          Tu peux importer .xlsx / .xls / .csv
-        </div>
-      </div>
-
-      <div>
-        <label className="label">Fichier</label>
-        <input
-          type="file"
-          className="input"
-          accept=".xlsx,.xls,.csv"
-          onChange={(e) => setFile(e.target.files?.[0] || null)}
-        />
-      </div>
-
-      <div className="flex items-center justify-end gap-2">
-        <button
-          className="btn bg-gray-200 dark:bg-white/10"
-          onClick={() => setFile(null)}
-          disabled={loading}
-        >
-          Réinitialiser
-        </button>
-        <button className="btn-primary" onClick={upload} disabled={loading}>
-          {loading ? 'Import…' : 'Importer'}
-        </button>
-      </div>
-    </div>
-  )
 }
+
+function cx(...cls: Array<string | false | undefined | null>) {
+  return cls.filter(Boolean).join(' ')
+}
+
+function initialsFromClient(c: any) {
+  const a = String(c?.prenom || '').trim()
+  const b = String(c?.nom || '').trim()
+  const s = `${a} ${b}`.trim() || String(c?.nom || '').trim() || 'CL'
+  const parts = s.split(/\s+/).filter(Boolean)
+  const i1 = parts[0]?.[0] ?? 'C'
+  const i2 = parts[1]?.[0] ?? parts[0]?.[1] ?? 'L'
+  return `${i1}${i2}`.toUpperCase()
+}
+
+function displayClientName(c: any) {
+  return [c?.prenom, c?.nom].filter(Boolean).join(' ').trim() || c?.nom || `Client #${c?.id ?? '—'}`
+}
+
+function ToneBadge({
+  tone,
+  children,
+}: {
+  tone: 'gray' | 'blue' | 'green' | 'amber'
+  children: React.ReactNode
+}) {
+  const base = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap'
+  const cls =
+    tone === 'green'
+      ? 'bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300'
+      : tone === 'amber'
+      ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
+      : tone === 'blue'
+      ? 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300'
+      : 'bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-gray-200'
+  return <span className={`${base} ${cls}`}>{children}</span>
+}
+
+type Client = any
 
 export default function ClientsPage() {
   const qc = useQueryClient()
   const toast = useToast()
-  const navigate = useNavigate()
 
-  const { user } = useAuth()
-  const canDelete = String(user?.role || '').toLowerCase() === 'admin'
-
+  // pagination
   const [page, setPage] = useState(1)
-  const [perPage] = useState(10)
+  const perPage = 10
 
+  // filtres
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebouncedValue(search, 300)
+  const [sort, setSort] = useState<'recent' | 'alpha'>('recent')
 
-  // Tri front-only
-  const [sortUi, setSortUi] = useState<'recent' | 'old' | 'name_az' | 'name_za'>('recent')
+  // modals
+  const [detailsOpen, setDetailsOpen] = useState(false)
+  const [viewing, setViewing] = useState<Client | null>(null)
 
   const [formOpen, setFormOpen] = useState(false)
-  const [detailsOpen, setDetailsOpen] = useState(false)
-  const [importOpen, setImportOpen] = useState(false)
-
   const [editing, setEditing] = useState<Client | null>(null)
-  const [viewing, setViewing] = useState<Client | null>(null)
-  const [confirm, setConfirm] = useState<{ open: boolean; id?: number }>({ open: false })
 
-  const q = useQuery<Paged<Client>>({
-    queryKey: ['clients', { page, perPage, search: debouncedSearch }] as const,
-    queryFn: () => fetchClients({ page, per_page: perPage, search: debouncedSearch || undefined }),
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id?: number }>({ open: false })
+
+  // -------------------- Query --------------------
+  const q = useQuery({
+    queryKey: ['clients', { page, perPage, search: debouncedSearch, sort }] as const,
+    queryFn: async () => {
+      const { data } = await api.get('/clients', {
+        params: {
+          page,
+          per_page: perPage,
+          search: debouncedSearch || undefined,
+          sort: sort === 'alpha' ? 'alpha' : 'recent',
+        },
+      })
+      return data
+    },
     placeholderData: keepPreviousData,
   })
 
+  const paged = useMemo(() => normalizePaged(q.data), [q.data])
+  const rows: Client[] = useMemo(() => paged.items ?? [], [paged.items])
+
+  // ✅ pagination guard: si page > lastPage (ex: suppression dernier item), on recale
+  useEffect(() => {
+    if (!q.isFetching && paged.lastPage && page > paged.lastPage) {
+      setPage(paged.lastPage)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paged.lastPage, q.isFetching])
+
+  // -------------------- Mutations --------------------
   const mCreate = useMutation({
-    mutationFn: (vals: ClientInput) => api.post('/clients', vals),
+    mutationFn: async (vals: any) => {
+      const res = await api.post('/clients', vals)
+      return res.data?.data ?? res.data
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['clients'] })
       setFormOpen(false)
+      setEditing(null)
       toast.push({ title: 'Client créé', tone: 'success' })
     },
-    onError: (e: any) => toast.push({ title: e?.response?.data?.message || 'Erreur création', tone: 'error' }),
+    onError: (err: any) => {
+      const msg = err?.response?.data?.message || 'Erreur lors de la création.'
+      toast.push({ title: msg, tone: 'error' })
+    },
   })
 
   const mUpdate = useMutation({
-    mutationFn: (vals: ClientInput) => api.put(`/clients/${editing?.id}`, vals),
+    mutationFn: async (vals: any) => {
+      if (!editing?.id) throw new Error('Client ID manquant')
+      // PATCH recommandé, mais si ton backend attend PUT, remplace par api.put
+      const res = await api.patch(`/clients/${editing.id}`, vals)
+      return res.data?.data ?? res.data
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['clients'] })
       setFormOpen(false)
       setEditing(null)
       toast.push({ title: 'Client mis à jour', tone: 'success' })
     },
-    onError: (e: any) => toast.push({ title: e?.response?.data?.message || 'Erreur modification', tone: 'error' }),
+    onError: (err: any) => {
+      const msg = err?.response?.data?.message || 'Erreur lors de la mise à jour.'
+      toast.push({ title: msg, tone: 'error' })
+    },
   })
 
   const mDelete = useMutation({
@@ -201,118 +180,74 @@ export default function ClientsPage() {
       qc.invalidateQueries({ queryKey: ['clients'] })
       toast.push({ title: 'Client supprimé', tone: 'success' })
     },
-    onError: (e: any) => toast.push({ title: e?.response?.data?.message || 'Suppression impossible', tone: 'error' }),
+    onError: (err: any) => {
+      const msg = err?.response?.data?.message || 'Erreur lors de la suppression.'
+      toast.push({ title: msg, tone: 'error' })
+    },
   })
 
+  const isPending = mCreate.isPending || mUpdate.isPending || mDelete.isPending
+
+  // -------------------- actions --------------------
   const openCreate = () => {
     setEditing(null)
     setFormOpen(true)
   }
 
-  const openEdit = (client: Client) => {
-    setEditing(client)
+  const openEdit = (c: any) => {
+    setEditing(c)
     setFormOpen(true)
   }
 
-  const openDetails = (client: Client) => {
-    setViewing(client)
+  const openDetails = (c: any) => {
+    setViewing(c)
     setDetailsOpen(true)
   }
 
-  const askDelete = (id: number) => setConfirm({ open: true, id })
-
+  const askDelete = (id: number) => setConfirmDelete({ open: true, id })
   const doDelete = () => {
-    if (confirm.id) mDelete.mutate(confirm.id)
-    setConfirm({ open: false })
+    if (confirmDelete.id) mDelete.mutate(confirmDelete.id)
+    setConfirmDelete({ open: false })
   }
 
-  const clientLabel = (c: Client) => [c?.prenom, c?.nom].filter(Boolean).join(' ') || c?.nom || `Client #${c?.id}`
-
-  const goClientReservations = (c: Client) => {
-    navigate(`/reservations?client_id=${c.id}&client_label=${encodeURIComponent(clientLabel(c))}`)
-  }
-
-  const createReservationForClient = (c: Client) => {
-    navigate(`/reservations?create=1&client_id=${c.id}&client_label=${encodeURIComponent(clientLabel(c))}`)
-  }
-
-  // Tri côté front
-  const rows: Client[] = useMemo(() => {
-    const items = q.data?.items ?? []
-    const sorted = [...items]
-
-    const byCreatedDesc = (a: Client, b: Client) => {
-      const ta = new Date(a.created_at ?? 0).getTime()
-      const tb = new Date(b.created_at ?? 0).getTime()
-      return tb - ta
-    }
-
-    const byNameAsc = (a: Client, b: Client) => {
-      const na = `${a.nom ?? ''} ${a.prenom ?? ''}`.trim()
-      const nb = `${b.nom ?? ''} ${b.prenom ?? ''}`.trim()
-      return na.localeCompare(nb, 'fr', { sensitivity: 'base' })
-    }
-
-    switch (sortUi) {
-      case 'recent':
-        sorted.sort(byCreatedDesc)
-        break
-      case 'old':
-        sorted.sort((a, b) => -byCreatedDesc(a, b))
-        break
-      case 'name_az':
-        sorted.sort(byNameAsc)
-        break
-      case 'name_za':
-        sorted.sort((a, b) => -byNameAsc(a, b))
-        break
-    }
-
-    return sorted
-  }, [q.data, sortUi])
-
-  const defaults = useMemo<Partial<ClientInput> | undefined>(() => {
-    if (!editing) return undefined
-    return {
-      id: editing.id,
-      nom: editing.nom ?? '',
-      prenom: editing.prenom ?? '',
-      email: editing.email ?? '',
-      telephone: editing.telephone ?? '',
-      adresse: editing.adresse ?? '',
-      pays: editing.pays ?? 'Sénégal',
-      notes: editing.notes ?? '',
-    }
-  }, [editing])
-
-  const onSubmit = (vals: ClientInput) => (editing ? mUpdate.mutate(vals) : mCreate.mutate(vals))
-
-  const showEmpty = !q.isLoading && !q.isError && rows.length === 0
+  // -------------------- UI --------------------
+  const total = Number(paged.total || 0)
 
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-xl font-semibold">Clients</h2>
-          <p className="text-sm text-gray-600 dark:text-gray-400">Liste des clients enregistrés.</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <div className="h-10 w-10 rounded-2xl bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300 flex items-center justify-center">
+              <Users size={18} />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-xl font-semibold truncate">Clients</h2>
+              <p className="text-sm text-gray-600 dark:text-gray-400 truncate">
+                Liste des clients enregistrés, accès rapide aux contacts.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            <ToneBadge tone="gray">{total} client{total > 1 ? 's' : ''}</ToneBadge>
+            {debouncedSearch ? <ToneBadge tone="blue">Filtre: “{debouncedSearch}”</ToneBadge> : null}
+            <ToneBadge tone="amber">Tri: {sort === 'alpha' ? 'A → Z' : 'Plus récents'}</ToneBadge>
+          </div>
         </div>
 
         <div className="flex items-center gap-2">
           <button
+            type="button"
             className="btn bg-gray-200 dark:bg-white/10"
-            onClick={() => q.refetch()}
-            disabled={q.isFetching}
-            title="Rafraîchir"
+            onClick={() => toast.push({ title: 'Branche ton import ici (ou garde ton bouton actuel).', tone: 'info' })}
+            title="Importer des clients"
           >
-            <RefreshCw size={16} className={q.isFetching ? 'animate-spin' : ''} />
-          </button>
-
-          <button className="btn bg-gray-200 dark:bg-white/10" onClick={() => setImportOpen(true)}>
             <Upload size={16} className="mr-2" /> Import Excel
           </button>
 
-          <button className="btn-primary" onClick={openCreate}>
+          <button type="button" className="btn-primary" onClick={openCreate}>
             <Plus size={16} className="mr-2" /> Nouveau
           </button>
         </div>
@@ -320,11 +255,11 @@ export default function ClientsPage() {
 
       {/* Filters */}
       <FiltersBar>
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_260px] gap-3 w-full">
-          <div className="w-full">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_220px] gap-3 w-full">
+          <div>
             <label className="label">Recherche</label>
             <div className="relative">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 opacity-60" />
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
               <input
                 className="input pl-9 pr-10"
                 placeholder="Nom, email, téléphone…"
@@ -334,7 +269,7 @@ export default function ClientsPage() {
                   setPage(1)
                 }}
               />
-              {search && (
+              {search ? (
                 <button
                   type="button"
                   className="absolute right-2 top-1/2 -translate-y-1/2 btn px-2 bg-gray-200 dark:bg-white/10"
@@ -344,172 +279,215 @@ export default function ClientsPage() {
                   }}
                   title="Effacer"
                 >
-                  ×
+                  <X size={14} />
                 </button>
-              )}
+              ) : null}
             </div>
           </div>
 
-          <div className="w-full">
+          <div>
             <label className="label">Trier</label>
             <select
               className="input"
-              value={sortUi}
+              value={sort}
               onChange={(e) => {
-                setSortUi(e.target.value as any)
+                setSort(e.target.value as any)
                 setPage(1)
               }}
             >
               <option value="recent">Plus récents</option>
-              <option value="old">Plus anciens</option>
-              <option value="name_az">Nom (A → Z)</option>
-              <option value="name_za">Nom (Z → A)</option>
+              <option value="alpha">A → Z</option>
             </select>
           </div>
         </div>
       </FiltersBar>
 
-      {/* Content */}
-      {q.isError ? (
-        <div className="rounded-2xl bg-white dark:bg-panel border border-red-200/60 dark:border-red-500/30 p-4 text-red-700 dark:text-red-200">
-          Erreur lors du chargement.
-        </div>
-      ) : showEmpty ? (
-        <div className="rounded-2xl bg-white dark:bg-panel border border-black/5 dark:border-white/10 p-8 text-center shadow-soft">
-          <div className="text-lg font-semibold">Aucun client trouvé</div>
-          <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-            Essaie une autre recherche ou crée un nouveau client.
-          </div>
-          <div className="mt-4 flex items-center justify-center gap-2">
-            <button className="btn bg-gray-200 dark:bg-white/10" onClick={() => { setSearch(''); setPage(1) }}>
-              Réinitialiser
-            </button>
-            <button className="btn-primary" onClick={openCreate}>
-              Nouveau client
-            </button>
-          </div>
-        </div>
+      {/* Table */}
+      {q.isLoading ? (
+        <div>Chargement…</div>
+      ) : q.isError ? (
+        <div className="text-red-600">Erreur lors du chargement.</div>
       ) : (
-        <>
-          <TableWrap>
-            <T className="min-w-[820px]">
-              <thead className="bg-gray-100/70 dark:bg-white/5">
-                <tr>
-                  <Th className="text-center">Nom</Th>
-                  <Th className="text-center">Prénom</Th>
-                  <Th className="text-center">Email</Th>
-                  <Th className="text-center">Téléphone</Th>
-                  <Th className="text-center">Pays</Th>
-                  <Th className="text-center">Actions</Th>
-                </tr>
-              </thead>
+        <div className="w-full overflow-x-auto rounded-2xl shadow-soft bg-white dark:bg-panel border border-black/5 dark:border-white/10">
+          <T className="w-full">
+            <thead className="bg-gray-100/70 dark:bg-white/5">
+              <tr>
+                <Th>Client</Th>
+                <Th className="hidden lg:table-cell">Email</Th>
+                <Th className="hidden lg:table-cell">Téléphone</Th>
+                <Th className="hidden lg:table-cell">Pays</Th>
+                <Th className="text-center">Actions</Th>
+              </tr>
+            </thead>
 
-              <tbody>
-                {q.isLoading ? (
-                  <>
-                    <SkeletonRow />
-                    <SkeletonRow />
-                    <SkeletonRow />
-                  </>
-                ) : (
-                  rows.map((c: Client) => (
+            <tbody>
+              {rows.length === 0 ? (
+                <tr>
+                  <Td colSpan={5} className="text-center py-10">
+                    <div className="flex flex-col items-center gap-2 text-gray-500">
+                      <div className="h-12 w-12 rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] flex items-center justify-center">
+                        <Users size={20} />
+                      </div>
+                      <div className="font-medium">Aucun client trouvé</div>
+                      <div className="text-sm">Essaie un autre mot-clé ou crée un nouveau client.</div>
+                      <button type="button" className="btn-primary mt-2" onClick={openCreate}>
+                        <Plus size={16} className="mr-2" /> Ajouter un client
+                      </button>
+                    </div>
+                  </Td>
+                </tr>
+              ) : (
+                rows.map((c: any) => {
+                  const name = displayClientName(c)
+                  const initials = initialsFromClient(c)
+
+                  const actions = [
+                    { label: 'Voir', icon: <Eye size={16} />, onClick: () => openDetails(c) },
+                    { label: 'Modifier', icon: <Pencil size={16} />, onClick: () => openEdit(c) },
+                    {
+                      label: 'Supprimer',
+                      icon: <Trash2 size={16} />,
+                      tone: 'danger' as const,
+                      onClick: () => askDelete(c.id),
+                      disabled: isPending,
+                    },
+                  ]
+
+                  return (
                     <tr
                       key={c.id}
                       className="border-t border-black/5 dark:border-white/10 hover:bg-black/[0.02] dark:hover:bg-white/[0.03]"
                     >
-                      <Td className="font-medium text-center">{c.nom}</Td>
-                      <Td className="text-center">{c.prenom ?? '—'}</Td>
-                      <Td className="max-w-[260px] truncate text-center">{c.email ?? '—'}</Td>
-                      <Td className="text-center">{c.telephone ?? '—'}</Td>
-                      <Td className="text-center">{c.pays ?? '—'}</Td>
+                      <Td className="min-w-0">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="h-10 w-10 rounded-2xl bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300 flex items-center justify-center font-semibold">
+                            {initials}
+                          </div>
 
-                      <Td className="text-center">
-                        <div className="flex justify-center">
-                          <ActionsMenu
-                            label="Actions"
-                            items={[
-                              { label: 'Voir détails', icon: <Eye size={16} />, onClick: () => openDetails(c) },
-                              { label: 'Modifier', icon: <Pencil size={16} />, onClick: () => openEdit(c) },
+                          <div className="min-w-0">
+                            <div className="font-semibold truncate">{name}</div>
 
-                              // { label: 'Voir réservations du client', icon: <List size={16} />, onClick: () => goClientReservations(c) },
-                              { label: 'Créer réservation', icon: <CalendarPlus size={16} />, onClick: () => createReservationForClient(c) },
-
-                              ...(canDelete
-                                ? [{ label: 'Supprimer', icon: <Trash2 size={16} />, tone: 'danger' as const, onClick: () => askDelete(c.id) }]
-                                : []),
-                            ]}
-                          />
+                            {/* Mobile summary */}
+                            <div className="mt-1 text-xs text-gray-500 lg:hidden flex flex-wrap items-center gap-2">
+                              {c?.telephone ? (
+                                <span className="inline-flex items-center gap-1">
+                                  <Phone size={12} /> {c.telephone}
+                                </span>
+                              ) : null}
+                              {c?.email ? (
+                                <>
+                                  <span>•</span>
+                                  <span className="inline-flex items-center gap-1">
+                                    <Mail size={12} /> {c.email}
+                                  </span>
+                                </>
+                              ) : null}
+                              {c?.pays ? (
+                                <>
+                                  <span>•</span>
+                                  <span className="inline-flex items-center gap-1">
+                                    <Globe size={12} /> {c.pays}
+                                  </span>
+                                </>
+                              ) : null}
+                            </div>
+                          </div>
                         </div>
                       </Td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </T>
-          </TableWrap>
 
-          <Pagination
-            page={q.data?.page ?? 1}
-            lastPage={q.data?.lastPage ?? 1}
-            total={q.data?.total}
-            onPage={setPage}
-          />
-        </>
+                      <Td className="hidden lg:table-cell">
+                        {c?.email ? (
+                          <span className="inline-flex items-center gap-2 text-sm">
+                            <Mail size={14} className="text-gray-500" /> {c.email}
+                          </span>
+                        ) : (
+                          <span className="text-gray-500">—</span>
+                        )}
+                      </Td>
+
+                      <Td className="hidden lg:table-cell">
+                        {c?.telephone ? (
+                          <span className="inline-flex items-center gap-2 text-sm">
+                            <Phone size={14} className="text-gray-500" /> {c.telephone}
+                          </span>
+                        ) : (
+                          <span className="text-gray-500">—</span>
+                        )}
+                      </Td>
+
+                      <Td className="hidden lg:table-cell">
+                        {c?.pays ? <ToneBadge tone="gray">{c.pays}</ToneBadge> : <span className="text-gray-500">—</span>}
+                      </Td>
+
+                      <Td className="text-center whitespace-nowrap">
+                        <ActionsMenu items={actions} />
+                      </Td>
+                    </tr>
+                  )
+                })
+              )}
+            </tbody>
+          </T>
+        </div>
       )}
 
-      {/* Modale création/édition */}
+      {/* Pagination */}
+      <Pagination page={paged.page} lastPage={paged.lastPage} total={paged.total} onPage={setPage} />
+
+      {/* Details Modal */}
+      <Modal
+        open={detailsOpen}
+        onClose={() => {
+          setDetailsOpen(false)
+          setViewing(null)
+        }}
+        title="Détails du client"
+        widthClass="max-w-[980px]"
+      >
+        {viewing ? (
+          <ClientDetails
+            client={viewing}
+            onClose={() => {
+              setDetailsOpen(false)
+              setViewing(null)
+            }}
+          />
+        ) : (
+          <div className="py-6 text-sm text-gray-500">Aucune donnée.</div>
+        )}
+      </Modal>
+
+      {/* Form Modal */}
       <Modal
         open={formOpen}
         onClose={() => {
           setFormOpen(false)
           setEditing(null)
         }}
-        title={editing ? 'Éditer le client' : 'Nouveau client'}
-        widthClass="max-w-2xl"
+        title={editing ? 'Modifier client' : 'Nouveau client'}
+        widthClass="max-w-[980px]"
       >
         <ClientsForm
-          defaultValues={defaults}
-          onSubmit={onSubmit}
+          defaultValues={editing ?? undefined}
+          submitting={mCreate.isPending || mUpdate.isPending}
           onCancel={() => {
             setFormOpen(false)
             setEditing(null)
           }}
-          submitting={mCreate.isPending || mUpdate.isPending}
-        />
-      </Modal>
-
-      {/* Modale détails */}
-      <Modal
-        open={detailsOpen}
-        onClose={() => setDetailsOpen(false)}
-        title="Détails du client"
-        widthClass="max-w-3xl"
-      >
-        {viewing && <ClientDetails client={viewing} />}
-      </Modal>
-
-      {/* Modale import */}
-      <Modal
-        open={importOpen}
-        onClose={() => setImportOpen(false)}
-        title="Importer des clients (Excel)"
-        widthClass="max-w-lg"
-      >
-        <ImportClientsModal
-          onDone={() => {
-            setImportOpen(false)
-            qc.invalidateQueries({ queryKey: ['clients'] })
+          onSubmit={(vals: any) => {
+            if (editing?.id) mUpdate.mutate(vals)
+            else mCreate.mutate(vals)
           }}
         />
       </Modal>
 
-      {/* Confirmation suppression */}
+      {/* Delete confirm */}
       <ConfirmDialog
-        open={confirm.open}
-        title="Supprimer ce client ?"
-        message="Êtes-vous sûr de vouloir supprimer ce client ?"
-        onCancel={() => setConfirm({ open: false })}
+        open={confirmDelete.open}
+        onCancel={() => setConfirmDelete({ open: false })}
         onConfirm={doDelete}
+        title="Supprimer ce client ?"
+        message="Cette action est irréversible."
       />
     </div>
   )

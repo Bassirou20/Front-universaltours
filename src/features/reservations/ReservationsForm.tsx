@@ -23,6 +23,9 @@ import {
 export type ReservationType = 'billet_avion' | 'hotel' | 'voiture' | 'evenement' | 'forfait'
 
 export type ReservationInput = {
+  // (utile pour détecter edit si ton parent passe un objet reservation)
+  id?: number
+
   // Client
   client_id?: number | null
   client_mode?: 'existing' | 'new'
@@ -45,7 +48,7 @@ export type ReservationInput = {
   montant_total?: number
   notes?: string | null
 
-  // Billet avion (nouvelle logique)
+  // Billet avion (nouvelle logique store)
   passenger_is_client?: boolean
   passenger?: {
     nom: string
@@ -60,6 +63,15 @@ export type ReservationInput = {
     pnr?: string | null
     classe?: string | null
   }
+
+  // Billet avion (update backend attend à plat)
+  ville_depart?: string | null
+  ville_arrivee?: string | null
+  date_depart?: string | null
+  date_arrivee?: string | null
+  compagnie?: string | null
+  pnr?: string | null
+  classe?: string | null
 
   // Autres
   produit_id?: number | null
@@ -111,16 +123,18 @@ function Stepper({
   steps,
   current,
   onGo,
+  title,
 }: {
   steps: Array<{ title: string; subtitle?: string }>
   current: number
   onGo?: (idx: number) => void
+  title: string
 }) {
   const pct = steps.length <= 1 ? 100 : Math.round((current / (steps.length - 1)) * 100)
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
-        <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">Nouvelle réservation</div>
+        <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">{title}</div>
         <div className="text-xs text-gray-600 dark:text-gray-400">
           Étape {current + 1} / {steps.length}
         </div>
@@ -204,10 +218,11 @@ function normalizeReservationToForm(dv?: Partial<ReservationInput>): Reservation
   const v: any = dv || {}
   const type: ReservationType = (v.type as ReservationType) || 'billet_avion'
 
-  // Essayons de deviner les structures du backend (show includes passenger, flightDetails, participants)
   const clientId = v.client_id ?? v.client?.id ?? null
 
+  // backend show(): flightDetails + reservation columns ville_depart...
   const flightFromBackend = v.flight_details ?? v.flightDetails ?? null
+
   const flight_details =
     type === 'billet_avion'
       ? {
@@ -221,6 +236,7 @@ function normalizeReservationToForm(dv?: Partial<ReservationInput>): Reservation
         }
       : undefined
 
+  // passenger: show() renvoie passenger (Participant) ou passenger_id
   const passengerBackend = v.passenger ?? null
   const passenger_is_client =
     typeof v.passenger_is_client === 'boolean'
@@ -267,12 +283,20 @@ function normalizeReservationToForm(dv?: Partial<ReservationInput>): Reservation
     passenger,
     flight_details,
 
+    // garder aussi les champs à plat (utile update)
+    ville_depart: v.ville_depart ?? flight_details?.ville_depart ?? null,
+    ville_arrivee: v.ville_arrivee ?? flight_details?.ville_arrivee ?? null,
+    date_depart: v.date_depart ?? flight_details?.date_depart ?? null,
+    date_arrivee: v.date_arrivee ?? (flight_details?.date_arrivee as any) ?? null,
+    compagnie: v.compagnie ?? (flight_details?.compagnie as any) ?? null,
+    pnr: v.pnr ?? (flight_details?.pnr as any) ?? null,
+    classe: v.classe ?? (flight_details?.classe as any) ?? null,
+
     produit_id: v.produit_id != null ? Number(v.produit_id) : null,
     forfait_id: v.forfait_id != null ? Number(v.forfait_id) : null,
 
     participants,
 
-    // acompte reste front-only
     acompte: {
       montant: Number(v.acompte?.montant ?? 0),
       mode_paiement: String(v.acompte?.mode_paiement ?? 'especes'),
@@ -282,10 +306,11 @@ function normalizeReservationToForm(dv?: Partial<ReservationInput>): Reservation
 }
 
 export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit }: Props) {
+  const isEdit = Boolean((defaultValues as any)?.id)
+
   const [form, setForm] = useState<ReservationInput>(() => normalizeReservationToForm(defaultValues))
   const [step, setStep] = useState(0)
 
-  // Quand on passe en modification => recharger form
   useEffect(() => {
     setForm(normalizeReservationToForm(defaultValues))
     setStep(0)
@@ -341,7 +366,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
       { title: 'Détails', subtitle: 'Vol / produit / forfait' },
       { title: 'Bénéficiaire', subtitle: 'Passager / participants' },
       { title: 'Montant', subtitle: 'Total + notes' },
-      { title: 'Acompte', subtitle: 'Optionnel (front)' },
+      { title: 'Acompte', subtitle: 'Optionnel' },
     ],
     []
   )
@@ -352,10 +377,23 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
   }
 
   const setFlight = (patch: Partial<NonNullable<ReservationInput['flight_details']>>) => {
-    setForm((s) => ({
-      ...s,
-      flight_details: { ...(s.flight_details || (EMPTY.flight_details as any)), ...patch },
-    }))
+    setForm((s) => {
+      const next = {
+        ...s,
+        flight_details: { ...(s.flight_details || (EMPTY.flight_details as any)), ...patch },
+      }
+      // garder sync à plat (utile update)
+      if (next.type === 'billet_avion' && next.flight_details) {
+        next.ville_depart = next.flight_details.ville_depart
+        next.ville_arrivee = next.flight_details.ville_arrivee
+        next.date_depart = next.flight_details.date_depart
+        next.date_arrivee = (next.flight_details.date_arrivee as any) ?? ''
+        next.compagnie = next.flight_details.compagnie ?? ''
+        next.pnr = next.flight_details.pnr ?? ''
+        next.classe = next.flight_details.classe ?? ''
+      }
+      return next
+    })
   }
 
   const setPassenger = (patch: Partial<NonNullable<ReservationInput['passenger']>>) => {
@@ -385,15 +423,12 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
 
   /* ---------- Business rules ---------- */
   useEffect(() => {
-    // Voiture: 1 personne
     if (form.type === 'voiture' && form.nombre_personnes !== 1) {
       set('nombre_personnes', 1)
     }
-    // Billet avion: souvent 1 (ton backend supporte nombre_personnes, mais UX: 1)
     if (form.type === 'billet_avion' && (form.nombre_personnes ?? 1) < 1) {
       set('nombre_personnes', 1)
     }
-    // reset produit/forfait si type change
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.type])
 
@@ -414,10 +449,15 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
         if (!fd?.ville_depart) return 'Ville départ requise.'
         if (!fd?.ville_arrivee) return 'Ville arrivée requise.'
         if (!fd?.date_depart) return 'Date départ requise.'
+
+        // ✅ IMPORTANT: ton UpdateReservationRequest exige aussi ces champs en modification
+        if (isEdit) {
+          if (!fd?.date_arrivee) return 'Date arrivée requise (modification).'
+          if (!fd?.compagnie) return 'Compagnie requise (modification).'
+        }
       } else if (form.type === 'forfait') {
         if (!form.forfait_id) return 'Veuillez sélectionner un forfait.'
       } else {
-        // produit-based
         if (!form.produit_id) return 'Veuillez sélectionner un produit.'
       }
     }
@@ -459,39 +499,78 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
     }
     delete payload.client_mode
 
-    // backend expects passenger_is_client OR passenger object for billet
-    if (payload.type !== 'billet_avion') {
-      delete payload.passenger_is_client
-      delete payload.passenger
-      delete payload.flight_details
-    } else {
-      // passenger logic
-      if (payload.passenger_is_client) {
-        delete payload.passenger
-      } else {
-        // ensure minimal passenger object
-        payload.passenger = {
-          nom: String(payload.passenger?.nom || '').trim(),
-          prenom: String(payload.passenger?.prenom || '').trim() || undefined,
-        }
-      }
-
+    // --- billet avion ---
+    if (payload.type === 'billet_avion') {
       // clean flight details
-      payload.flight_details = {
+      const fd = {
         ville_depart: String(payload.flight_details?.ville_depart || '').trim(),
         ville_arrivee: String(payload.flight_details?.ville_arrivee || '').trim(),
         date_depart: String(payload.flight_details?.date_depart || '').trim(),
-        date_arrivee: payload.flight_details?.date_arrivee ? String(payload.flight_details.date_arrivee) : null,
-        compagnie: payload.flight_details?.compagnie ? String(payload.flight_details.compagnie) : null,
+        date_arrivee: payload.flight_details?.date_arrivee ? String(payload.flight_details.date_arrivee) : '',
+        compagnie: payload.flight_details?.compagnie ? String(payload.flight_details.compagnie) : '',
         pnr: payload.flight_details?.pnr ? String(payload.flight_details.pnr) : null,
         classe: payload.flight_details?.classe ? String(payload.flight_details.classe) : null,
       }
+
+      if (isEdit) {
+        // ✅ UPDATE: ton UpdateReservationRequest attend des champs à plat
+        payload.ville_depart = fd.ville_depart
+        payload.ville_arrivee = fd.ville_arrivee
+        payload.date_depart = fd.date_depart
+        payload.date_arrivee = fd.date_arrivee
+        payload.compagnie = fd.compagnie
+        payload.pnr = fd.pnr
+        payload.classe = fd.classe
+
+        // on ne poste pas flight_details / passenger en update (sinon risque de validation / non support backend)
+        delete payload.flight_details
+        delete payload.passenger_is_client
+        delete payload.passenger
+      } else {
+        // ✅ CREATE: backend attend flight_details + passenger_is_client/passenger
+        payload.flight_details = {
+          ville_depart: fd.ville_depart,
+          ville_arrivee: fd.ville_arrivee,
+          date_depart: fd.date_depart,
+          date_arrivee: fd.date_arrivee || null,
+          compagnie: fd.compagnie || null,
+          pnr: fd.pnr,
+          classe: fd.classe,
+        }
+
+        if (payload.passenger_is_client) {
+          delete payload.passenger
+        } else {
+          payload.passenger = {
+            nom: String(payload.passenger?.nom || '').trim(),
+            prenom: String(payload.passenger?.prenom || '').trim() || undefined,
+          }
+        }
+      }
+    } else {
+      // not billet_avion
+      delete payload.passenger_is_client
+      delete payload.passenger
+      delete payload.flight_details
+
+      // remove flat flight keys
+      delete payload.ville_depart
+      delete payload.ville_arrivee
+      delete payload.date_depart
+      delete payload.date_arrivee
+      delete payload.compagnie
+      delete payload.pnr
+      delete payload.classe
     }
 
     // produit/forfait rules
     if (payload.type === 'forfait') {
       delete payload.produit_id
     } else if (payload.type !== 'forfait' && payload.type !== 'billet_avion') {
+      delete payload.forfait_id
+    } else if (payload.type === 'billet_avion') {
+      // billet avion: pas de produit/forfait
+      delete payload.produit_id
       delete payload.forfait_id
     }
 
@@ -504,14 +583,11 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
     payload.nombre_personnes = Number(payload.nombre_personnes || 1)
     payload.montant_total = Number(payload.montant_total || 0)
 
-    // acompte: front-only
-    // (ReservationsPage.tsx le traite déjà en post-create)
-    // on le laisse dans l'objet "vals" retourné au parent, mais le parent peut l'exclure côté API
+    // acompte: front-only (géré par ReservationsPage)
     return payload as ReservationInput
   }
 
   const onFinalSubmit = () => {
-    // validate all steps quickly
     for (let i = 0; i < steps.length; i++) {
       const err = validateStep(i)
       if (err) {
@@ -559,7 +635,6 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
               onChange={(e) => {
                 const t = e.target.value as ReservationType
                 set('type', t)
-                // reset dépendances
                 set('produit_id', null)
                 set('forfait_id', null)
               }}
@@ -694,18 +769,25 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                 </div>
               </div>
               <div>
-                <label className="label">Date arrivée</label>
+                <label className="label">{isEdit ? 'Date arrivée *' : 'Date arrivée'}</label>
                 <div className="relative">
                   <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-                  <input type="date" className="input pl-9" value={String(form.flight_details?.date_arrivee ?? '')} onChange={(e) => setFlight({ date_arrivee: e.target.value })} />
+                  <input
+                    type="date"
+                    className="input pl-9"
+                    value={String(form.flight_details?.date_arrivee ?? '')}
+                    onChange={(e) => setFlight({ date_arrivee: e.target.value })}
+                  />
                 </div>
+                {isEdit ? <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">Requis en modification (backend).</div> : null}
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
-                <label className="label">Compagnie</label>
+                <label className="label">{isEdit ? 'Compagnie *' : 'Compagnie'}</label>
                 <input className="input" value={String(form.flight_details?.compagnie ?? '')} onChange={(e) => setFlight({ compagnie: e.target.value })} />
+                {isEdit ? <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">Requis en modification (backend).</div> : null}
               </div>
               <div>
                 <label className="label">Classe</label>
@@ -741,11 +823,11 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                 </option>
               ))}
             </select>
-            {form.type !== 'billet_avion' ? (
-              <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">
-                Produits filtrés automatiquement selon le type ({TYPE_META[form.type].label}).
-              </div>
-            ) : null}
+
+            {/* ✅ correction TS: plus de comparaison "no-overlap" */}
+            <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">
+              Produits filtrés automatiquement selon le type ({TYPE_META[form.type].label}).
+            </div>
           </div>
         )}
       </Card>
@@ -793,11 +875,15 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                 </button>
               </div>
 
-              {form.passenger_is_client ? (
+              {isEdit ? (
                 <div className="mt-3 text-xs text-gray-600 dark:text-gray-400">
-                  Le passager sera automatiquement le client (côté backend via <code>passenger_is_client</code>).
+                  Note: ton backend ne gère pas (encore) la modification du passager côté update. On conserve l’UI, mais on n’envoie pas ces champs au PATCH/PUT.
                 </div>
-              ) : null}
+              ) : (
+                <div className="mt-3 text-xs text-gray-600 dark:text-gray-400">
+                  Le passager sera géré côté backend (via <code>passenger_is_client</code> / <code>passenger</code>).
+                </div>
+              )}
             </div>
 
             {!form.passenger_is_client ? (
@@ -816,9 +902,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
         ) : form.type === 'forfait' || form.type === 'evenement' ? (
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-2">
-              <div className="text-sm text-gray-600 dark:text-gray-400">
-                Ajoute des participants si nécessaire. (Nom requis, le reste optionnel)
-              </div>
+              <div className="text-sm text-gray-600 dark:text-gray-400">Ajoute des participants si nécessaire. (Nom requis)</div>
               <button type="button" className="btn bg-gray-200 dark:bg-white/10" onClick={addParticipant}>
                 + Ajouter
               </button>
@@ -878,12 +962,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
         <div className="text-sm text-gray-700 dark:text-gray-200 space-y-2">
           <div className="rounded-xl bg-black/[0.03] dark:bg-white/[0.06] p-3">
             <div className="font-semibold">Bon workflow</div>
-            <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">
-              Créer la réservation → générer facture/Devis → enregistrer paiements → suivre le reste.
-            </div>
-          </div>
-          <div className="text-xs text-gray-600 dark:text-gray-400">
-            Astuce: si tu veux une référence “simple”, tu peux utiliser le PNR comme référence (billet avion).
+            <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">Créer / modifier → facture → paiements → suivi.</div>
           </div>
         </div>
       </Card>
@@ -903,7 +982,6 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
               value={form.montant_total ?? 0}
               onChange={(e) => set('montant_total', Number(e.target.value || 0))}
             />
-            <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">Taxes: si besoin, gère côté backend (ou ajoute champs plus tard).</div>
           </div>
 
           <div>
@@ -942,7 +1020,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
             </div>
           </div>
           <div className="text-xs text-gray-600 dark:text-gray-400">
-            L’acompte sera traité après création (ton `ReservationsPage.tsx` gère déjà ça).
+            L’acompte est enregistré après {isEdit ? 'modification' : 'création'} (géré dans <code>ReservationsPage.tsx</code>).
           </div>
         </div>
       </Card>
@@ -1021,12 +1099,16 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
   )
 
   const currentStepUI = [Step0, Step1, Step2, Step3, Step4][step]
-
   const stepError = validateStep(step)
 
   return (
     <div className="space-y-4">
-      <Stepper steps={steps} current={step} onGo={(i) => setStep(i)} />
+      <Stepper
+        steps={steps}
+        current={step}
+        onGo={(i) => setStep(i)}
+        title={isEdit ? 'Modifier réservation' : 'Nouvelle réservation'}
+      />
 
       {stepError ? (
         <div className="rounded-2xl border border-red-200 bg-red-50 text-red-800 px-4 py-3 text-sm dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
