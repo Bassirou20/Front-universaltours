@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/axios'
-import { Modal } from '../../ui/Modal'
+import Modal from '../../ui/Modal'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { T, Th, Td } from '../../ui/Table'
 import { Pagination } from '../../ui/Pagination'
@@ -10,16 +10,11 @@ import { useToast } from '../../ui/Toasts'
 import { useAuth } from '../../store/auth'
 import { Badge } from '../../ui/Badge'
 import { ActionsMenu } from '../../ui/ActionsMenu'
-import { Eye, Pencil, Trash2, Plus, Search, Wallet, Calendar } from 'lucide-react'
+import { Eye, Pencil, Trash2, Plus, Search, Wallet, Calendar, X } from 'lucide-react'
 import PaiementsForm, { type PaiementInput, type FactureOption } from './PaiementsForm'
 import PaiementDetails, { type PaiementModel } from './PaiementDetails'
 
-type LaravelPage<T> = {
-  data: T[]
-  current_page: number
-  last_page: number
-  total?: number
-}
+type LaravelPage<T> = { data: T[]; current_page: number; last_page: number; total?: number }
 
 type Facture = {
   id: number
@@ -47,15 +42,10 @@ async function fetchAllPaged<T>(path: string, params?: any): Promise<T[]> {
 
   for (let guard = 0; guard < 60; guard++) {
     const { data } = await api.get(path, { params: { ...params, page, per_page: 100 } })
-
-    // certains endpoints renvoient un array direct
     if (Array.isArray(data)) return data as T[]
-
-    // laravel paginator standard
     const lp = data as LaravelPage<T>
     const items = Array.isArray(lp?.data) ? lp.data : []
     all.push(...items)
-
     last = Number(lp?.last_page ?? 1)
     page = Number(lp?.current_page ?? page) + 1
     if (page > last) break
@@ -83,30 +73,27 @@ const modeTone = (m?: string | null) => {
   return 'gray'
 }
 
-/**
- * ✅ Source de vérité: Paiements
- * - essaie /paiements
- * - sinon récupère /factures et flatten facture.paiements
- */
+const statutTone = (s?: string | null) => {
+  const v = (s || '').toLowerCase()
+  if (v === 'recu' || v === 'reçu') return 'green'
+  if (v === 'en_attente') return 'amber'
+  if (v === 'annule') return 'gray'
+  return 'gray'
+}
+
 async function fetchPaiementsSmart(): Promise<PaiementModel[]> {
-  // 1) tentative GET /paiements si l'API l'a
   try {
     const res = await api.get('/paiements', { params: { page: 1, per_page: 100 } })
     const data = res.data
     if (Array.isArray(data)) return data as PaiementModel[]
     if (Array.isArray(data?.data)) {
-      const first = data.data as PaiementModel[]
       const all = await fetchAllPaged<PaiementModel>('/paiements')
-      return all.length ? all : first
+      return all.length ? all : (data.data as PaiementModel[])
     }
-  } catch {
-    // ignore -> fallback
-  }
+  } catch {}
 
-  // 2) fallback: GET /factures + paiements
   const factures = await fetchAllPaged<Facture>('/factures')
   const flattened: PaiementModel[] = []
-
   for (const f of factures) {
     const pays = Array.isArray(f.paiements) ? f.paiements : []
     for (const p of pays) {
@@ -114,13 +101,13 @@ async function fetchPaiementsSmart(): Promise<PaiementModel[]> {
         ...p,
         facture_id: (p.facture_id ?? f.id) as any,
         facture:
-          p.facture ?? {
+          (p as any).facture ?? {
             id: f.id,
             numero: f.numero ?? null,
             total: (f.total ?? f.montant_total ?? null) as any,
             statut: f.statut ?? null,
           },
-      })
+      } as any)
     }
   }
   return flattened
@@ -141,9 +128,9 @@ export default function PaiementsPage() {
   const isAdmin = (user?.role ?? '').toLowerCase() === 'admin'
 
   const [page, setPage] = useState(1)
-  const [perPage] = useState(10)
+  const perPage = 10
 
-  // search + filters
+  // filters
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebouncedValue(search, 300)
   const [fMode, setFMode] = useState<string>('')
@@ -168,18 +155,16 @@ export default function PaiementsPage() {
     staleTime: 20_000,
   })
 
-  // options factures pour le form
   const qFactures = useQuery({
     queryKey: ['factures-options'],
     queryFn: async () => {
       const factures = await fetchAllPaged<Facture>('/factures')
-      return factures
-        .map((f) => ({
-          id: f.id,
-          numero: f.numero ?? null,
-          total: (f.total ?? f.montant_total ?? null) as any,
-          statut: f.statut ?? null,
-        })) as FactureOption[]
+      return factures.map((f) => ({
+        id: f.id,
+        numero: f.numero ?? null,
+        total: (f.total ?? f.montant_total ?? null) as any,
+        statut: f.statut ?? null,
+      })) as FactureOption[]
     },
     staleTime: 60_000,
   })
@@ -187,12 +172,14 @@ export default function PaiementsPage() {
   const paiements = useMemo(() => qPaiements.data ?? [], [qPaiements.data])
   const factures = useMemo(() => qFactures.data ?? [], [qFactures.data])
 
-  // index: paiements par facture pour calcul "reste estimé"
+  // ✅ payé = seulement "recu"
   const paidByFacture = useMemo(() => {
     const map = new Map<number, number>()
     for (const p of paiements) {
-      const fid = Number(p.facture_id)
-      map.set(fid, (map.get(fid) || 0) + Number(p.montant || 0))
+      const st = String((p as any).statut ?? '').toLowerCase()
+      if (st && st !== 'recu' && st !== 'reçu') continue
+      const fid = Number((p as any).facture_id)
+      map.set(fid, (map.get(fid) || 0) + Number((p as any).montant || 0))
     }
     return map
   }, [paiements])
@@ -202,32 +189,31 @@ export default function PaiementsPage() {
 
     const s = (debouncedSearch || '').trim().toLowerCase()
     if (s) {
-      list = list.filter((p) => {
-        const ref = (p.reference ?? '').toLowerCase()
-        const num = (p.facture?.numero ?? '').toLowerCase()
-        const mode = (p.mode_paiement ?? '').toLowerCase()
+      list = list.filter((p: any) => {
+        const ref = String(p.reference ?? '').toLowerCase()
+        const num = String(p.facture?.numero ?? '').toLowerCase()
+        const mode = String(p.mode_paiement ?? '').toLowerCase()
         return ref.includes(s) || num.includes(s) || mode.includes(s) || String(p.id).includes(s)
       })
     }
 
-    if (fMode) list = list.filter((p) => (p.mode_paiement || '') === fMode)
-
-    if (fFactureId) list = list.filter((p) => String(p.facture_id) === String(fFactureId))
+    if (fMode) list = list.filter((p: any) => String(p.mode_paiement || '') === fMode)
+    if (fFactureId) list = list.filter((p: any) => String(p.facture_id) === String(fFactureId))
 
     const dFrom = (dateFrom || '').trim()
     const dTo = (dateTo || '').trim()
     if (dFrom) {
       const tFrom = +new Date(`${dFrom}T00:00:00`)
-      list = list.filter((p) => {
-        const d = (p.date_paiement || (p as any).created_at || '').slice(0, 10)
+      list = list.filter((p: any) => {
+        const d = String(p.date_paiement || p.created_at || '').slice(0, 10)
         if (!d) return false
         return +new Date(`${d}T00:00:00`) >= tFrom
       })
     }
     if (dTo) {
       const tTo = +new Date(`${dTo}T23:59:59`)
-      list = list.filter((p) => {
-        const d = (p.date_paiement || (p as any).created_at || '').slice(0, 10)
+      list = list.filter((p: any) => {
+        const d = String(p.date_paiement || p.created_at || '').slice(0, 10)
         if (!d) return false
         return +new Date(`${d}T23:59:59`) <= tTo
       })
@@ -235,15 +221,10 @@ export default function PaiementsPage() {
 
     const min = amountMin ? Number(amountMin) : null
     const max = amountMax ? Number(amountMax) : null
-    if (min != null && !Number.isNaN(min)) list = list.filter((p) => Number(p.montant || 0) >= min)
-    if (max != null && !Number.isNaN(max)) list = list.filter((p) => Number(p.montant || 0) <= max)
+    if (min != null && !Number.isNaN(min)) list = list.filter((p: any) => Number(p.montant || 0) >= min)
+    if (max != null && !Number.isNaN(max)) list = list.filter((p: any) => Number(p.montant || 0) <= max)
 
-    list.sort(
-      (a, b) =>
-        +new Date(b.date_paiement || (b as any).created_at || 0) -
-        +new Date(a.date_paiement || (a as any).created_at || 0)
-    )
-
+    list.sort((a: any, b: any) => +new Date(b.date_paiement || b.created_at || 0) - +new Date(a.date_paiement || a.created_at || 0))
     return list
   }, [paiements, debouncedSearch, fMode, fFactureId, dateFrom, dateTo, amountMin, amountMax])
 
@@ -251,7 +232,7 @@ export default function PaiementsPage() {
   const lastPage = Math.max(1, Math.ceil(total / perPage))
 
   useEffect(() => {
-    setPage((p) => Math.min(p, lastPage))
+    setPage((p) => Math.min(Math.max(1, p), lastPage))
   }, [lastPage])
 
   const pageItems = useMemo(() => {
@@ -259,16 +240,13 @@ export default function PaiementsPage() {
     return filtered.slice(start, start + perPage)
   }, [filtered, page, perPage])
 
-  const totalFilteredAmount = useMemo(
-    () => filtered.reduce((sum, p) => sum + Number(p.montant || 0), 0),
-    [filtered]
-  )
+  const totalFilteredAmount = useMemo(() => filtered.reduce((sum: number, p: any) => sum + Number(p.montant || 0), 0), [filtered])
 
   const thisMonthTotal = useMemo(() => {
     const from = startOfMonthISO()
     const tFrom = +new Date(`${from}T00:00:00`)
-    return paiements.reduce((acc, p) => {
-      const d = (p.date_paiement || (p as any).created_at || '').slice(0, 10)
+    return paiements.reduce((acc: number, p: any) => {
+      const d = String(p.date_paiement || p.created_at || '').slice(0, 10)
       if (!d) return acc
       const t = +new Date(`${d}T00:00:00`)
       if (t >= tFrom) return acc + Number(p.montant || 0)
@@ -276,7 +254,6 @@ export default function PaiementsPage() {
     }, 0)
   }, [paiements])
 
-  // Create: OK (backend existe)
   const mCreate = useMutation({
     mutationFn: (vals: PaiementInput) => api.post(`/factures/${vals.facture_id}/paiements`, vals),
     onSuccess: async () => {
@@ -289,7 +266,6 @@ export default function PaiementsPage() {
     onError: (e: any) => toast.push({ title: e?.response?.data?.message || 'Erreur création paiement', tone: 'error' }),
   })
 
-  // ⚠️ Update/Delete: seulement si routes existent. Sinon on les masque.
   const mUpdate = useMutation({
     mutationFn: (vals: PaiementInput) => api.put(`/paiements/${editing?.id}`, vals),
     onSuccess: async () => {
@@ -299,8 +275,7 @@ export default function PaiementsPage() {
       setEditing(null)
       toast.push({ title: 'Paiement mis à jour', tone: 'success' })
     },
-    onError: (e: any) =>
-      toast.push({ title: e?.response?.data?.message || 'Update non disponible sur l’API', tone: 'error' }),
+    onError: (e: any) => toast.push({ title: e?.response?.data?.message || 'Update non disponible sur l’API', tone: 'error' }),
   })
 
   const mDelete = useMutation({
@@ -309,8 +284,7 @@ export default function PaiementsPage() {
       await qc.invalidateQueries({ queryKey: ['paiements-all-smart'] })
       toast.push({ title: 'Paiement supprimé', tone: 'success' })
     },
-    onError: (e: any) =>
-      toast.push({ title: e?.response?.data?.message || 'Delete non disponible sur l’API', tone: 'error' }),
+    onError: (e: any) => toast.push({ title: e?.response?.data?.message || 'Delete non disponible sur l’API', tone: 'error' }),
   })
 
   const openCreate = () => {
@@ -329,12 +303,13 @@ export default function PaiementsPage() {
   const toDefaults = (p?: PaiementModel): Partial<PaiementInput> | undefined => {
     if (!p) return undefined
     return {
-      facture_id: p.facture_id,
-      date_paiement: (p.date_paiement || (p as any).created_at || '').slice(0, 10),
-      montant: Number(p.montant || 0),
-      mode_paiement: (p.mode_paiement as any) || 'especes',
-      reference: p.reference ?? '',
-      note: (p as any).note ?? '',
+      facture_id: (p as any).facture_id,
+      date_paiement: String((p as any).date_paiement || (p as any).created_at || '').slice(0, 10),
+      montant: Number((p as any).montant || 0),
+      mode_paiement: String((p as any).mode_paiement || 'especes'),
+      reference: (p as any).reference ?? '',
+      statut: (p as any).statut ?? 'recu',
+      notes: (p as any).notes ?? '',
     }
   }
 
@@ -349,16 +324,30 @@ export default function PaiementsPage() {
     setPage(1)
   }
 
+  const hasFilters =
+    Boolean(debouncedSearch) || Boolean(fMode) || Boolean(fFactureId) || Boolean(dateFrom) || Boolean(dateTo) || Boolean(amountMin) || Boolean(amountMax)
+
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <Wallet size={18} /> Paiements
-          </h2>
-          <div className="text-xs text-gray-500 dark:text-gray-400">
-            {total} paiements • Total filtré : {Number(totalFilteredAmount).toLocaleString()} XOF
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <div className="h-10 w-10 rounded-2xl bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300 flex items-center justify-center">
+              <Wallet size={18} />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-xl font-semibold truncate">Paiements</h2>
+              <p className="text-sm text-gray-600 dark:text-gray-400 truncate">
+                {total} paiement{total > 1 ? 's' : ''} • Total filtré : {money(totalFilteredAmount)}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Badge tone="gray">{paiements.length} au total</Badge>
+            <Badge tone="blue">Ce mois: {money(thisMonthTotal)}</Badge>
+            {hasFilters ? <Badge tone="amber">Filtres actifs</Badge> : null}
           </div>
         </div>
 
@@ -371,7 +360,7 @@ export default function PaiementsPage() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white dark:bg-panel shadow-soft p-4">
           <div className="text-xs text-gray-500">Total (tous paiements)</div>
-          <div className="text-xl font-bold mt-1">{money(paiements.reduce((a, p) => a + Number(p.montant || 0), 0))}</div>
+          <div className="text-xl font-bold mt-1">{money(paiements.reduce((a: number, p: any) => a + Number(p.montant || 0), 0))}</div>
         </div>
         <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white dark:bg-panel shadow-soft p-4">
           <div className="text-xs text-gray-500">Total (ce mois)</div>
@@ -385,124 +374,91 @@ export default function PaiementsPage() {
 
       {/* Filters */}
       <FiltersBar>
-        <div>
-          <label className="label">Recherche</label>
-          <div className="relative">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 opacity-60" />
-            <input
-              className="input pl-9"
-              placeholder="Référence, facture, mode…"
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value)
-                setPage(1)
-              }}
-            />
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3 w-full">
+          <div className="md:col-span-2">
+            <label className="label">Recherche</label>
+            <div className="relative">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 opacity-60" />
+              <input
+                className="input pl-9 pr-10"
+                placeholder="Référence, facture, mode…"
+                value={search}
+                onChange={(e) => {
+                  setSearch(e.target.value)
+                  setPage(1)
+                }}
+              />
+              {search ? (
+                <button
+                  type="button"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 btn px-2 bg-gray-200 dark:bg-white/10"
+                  onClick={() => {
+                    setSearch('')
+                    setPage(1)
+                  }}
+                  title="Effacer"
+                >
+                  <X size={14} />
+                </button>
+              ) : null}
+            </div>
           </div>
-        </div>
 
-        <div>
-          <label className="label">Mode</label>
-          <select
-            className="input"
-            value={fMode}
-            onChange={(e) => {
-              setFMode(e.target.value)
-              setPage(1)
-            }}
-          >
-            <option value="">Tous</option>
-            {Object.keys(MODE_LABEL).map((k) => (
-              <option key={k} value={k}>
-                {MODE_LABEL[k]}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className="label">Facture</label>
-          <select
-            className="input"
-            value={fFactureId}
-            onChange={(e) => {
-              setFFactureId(e.target.value)
-              setPage(1)
-            }}
-          >
-            <option value="">Toutes</option>
-            {factures.map((f) => (
-              <option key={f.id} value={String(f.id)}>
-                {f.numero ? f.numero : `Facture #${f.id}`}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className="label">Date début</label>
-          <div className="relative">
-            <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 opacity-60" />
-            <input
-              type="date"
-              className="input pl-9"
-              value={dateFrom}
-              onChange={(e) => {
-                setDateFrom(e.target.value)
-                setPage(1)
-              }}
-            />
+          <div>
+            <label className="label">Mode</label>
+            <select className="input" value={fMode} onChange={(e) => { setFMode(e.target.value); setPage(1) }}>
+              <option value="">Tous</option>
+              {Object.keys(MODE_LABEL).map((k) => (
+                <option key={k} value={k}>
+                  {MODE_LABEL[k]}
+                </option>
+              ))}
+            </select>
           </div>
-        </div>
 
-        <div>
-          <label className="label">Date fin</label>
-          <div className="relative">
-            <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 opacity-60" />
-            <input
-              type="date"
-              className="input pl-9"
-              value={dateTo}
-              onChange={(e) => {
-                setDateTo(e.target.value)
-                setPage(1)
-              }}
-            />
+          <div>
+            <label className="label">Facture</label>
+            <select className="input" value={fFactureId} onChange={(e) => { setFFactureId(e.target.value); setPage(1) }}>
+              <option value="">Toutes</option>
+              {factures.map((f) => (
+                <option key={f.id} value={String(f.id)}>
+                  {f.numero ? f.numero : `Facture #${f.id}`}
+                </option>
+              ))}
+            </select>
           </div>
-        </div>
 
-        <div>
-          <label className="label">Montant min</label>
-          <input
-            type="number"
-            className="input"
-            placeholder="0"
-            value={amountMin}
-            onChange={(e) => {
-              setAmountMin(e.target.value)
-              setPage(1)
-            }}
-          />
-        </div>
+          <div>
+            <label className="label">Date début</label>
+            <div className="relative">
+              <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 opacity-60" />
+              <input type="date" className="input pl-9" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPage(1) }} />
+            </div>
+          </div>
 
-        <div>
-          <label className="label">Montant max</label>
-          <input
-            type="number"
-            className="input"
-            placeholder="0"
-            value={amountMax}
-            onChange={(e) => {
-              setAmountMax(e.target.value)
-              setPage(1)
-            }}
-          />
-        </div>
+          <div>
+            <label className="label">Date fin</label>
+            <div className="relative">
+              <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 opacity-60" />
+              <input type="date" className="input pl-9" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(1) }} />
+            </div>
+          </div>
 
-        <div className="flex items-end">
-          <button type="button" className="btn bg-gray-200 dark:bg-white/10 w-full" onClick={clearFilters}>
-            Réinitialiser
-          </button>
+          <div>
+            <label className="label">Montant min</label>
+            <input type="number" className="input" placeholder="0" value={amountMin} onChange={(e) => { setAmountMin(e.target.value); setPage(1) }} />
+          </div>
+
+          <div>
+            <label className="label">Montant max</label>
+            <input type="number" className="input" placeholder="0" value={amountMax} onChange={(e) => { setAmountMax(e.target.value); setPage(1) }} />
+          </div>
+
+          <div className="flex items-end">
+            <button type="button" className="btn bg-gray-200 dark:bg-white/10 w-full" onClick={clearFilters}>
+              Réinitialiser
+            </button>
+          </div>
         </div>
       </FiltersBar>
 
@@ -510,14 +466,14 @@ export default function PaiementsPage() {
       {qPaiements.isLoading ? (
         <p>Chargement…</p>
       ) : qPaiements.isError ? (
-        <div className="card">
+        <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white dark:bg-panel shadow-soft p-4">
           <div className="text-red-600 font-semibold">Erreur chargement paiements</div>
           <div className="text-sm text-gray-500 mt-1">
-            Vérifie que l’API expose bien les données nécessaires (factures + paiements).
+            Vérifie que l’API renvoie bien les paiements (ou factures + paiements).
           </div>
         </div>
       ) : (
-        <div className="rounded-2xl border border-black/5 dark:border-white/10 overflow-hidden">
+        <div className="rounded-2xl border border-black/5 dark:border-white/10 overflow-hidden bg-white dark:bg-panel shadow-soft">
           <T>
             <thead className="bg-gray-100/70 dark:bg-white/5">
               <tr>
@@ -525,6 +481,7 @@ export default function PaiementsPage() {
                 <Th>Facture</Th>
                 <Th>Montant</Th>
                 <Th className="hidden lg:table-cell">Mode</Th>
+                <Th className="hidden lg:table-cell">Statut</Th>
                 <Th className="hidden lg:table-cell">Référence</Th>
                 <Th className="w-[64px]"></Th>
               </tr>
@@ -533,25 +490,27 @@ export default function PaiementsPage() {
             <tbody>
               {pageItems.length === 0 ? (
                 <tr>
-                  <td className="p-3 text-gray-500" colSpan={6}>
-                    Aucun paiement
+                  <td className="p-8 text-gray-500 text-center" colSpan={7}>
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="font-semibold">Aucun paiement</div>
+                      <div className="text-sm">Ajuste les filtres ou crée un nouveau paiement.</div>
+                      <button className="btn-primary mt-2" onClick={openCreate} type="button">
+                        <Plus size={16} className="mr-2" /> Nouveau paiement
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ) : (
-                pageItems.map((p) => {
+                pageItems.map((p: any) => {
                   const factureLabel = p.facture?.numero ?? `Facture #${p.facture_id}`
+                  const st = String(p.statut ?? '').toLowerCase() || 'recu'
 
                   const actions = [
                     { label: 'Voir', icon: <Eye size={16} />, onClick: () => openDetails(p) },
                     ...(isAdmin
                       ? [
                           { label: 'Modifier', icon: <Pencil size={16} />, onClick: () => openEdit(p) },
-                          {
-                            label: 'Supprimer',
-                            icon: <Trash2 size={16} />,
-                            tone: 'danger' as const,
-                            onClick: () => setConfirmId(p.id),
-                          },
+                          { label: 'Supprimer', icon: <Trash2 size={16} />, tone: 'danger' as const, onClick: () => setConfirmId(p.id) },
                         ]
                       : []),
                   ]
@@ -559,14 +518,10 @@ export default function PaiementsPage() {
                   return (
                     <tr key={p.id} className="border-t border-black/5 dark:border-white/10">
                       <Td>
-                        <div className="font-medium">
-                          {(p.date_paiement || (p as any).created_at || '').slice(0, 10) || '—'}
-                        </div>
-
+                        <div className="font-medium">{String(p.date_paiement || p.created_at || '').slice(0, 10) || '—'}</div>
                         <div className="text-xs text-gray-500 lg:hidden mt-1 flex flex-wrap gap-2">
-                          <Badge tone={modeTone(p.mode_paiement) as any}>
-                            {MODE_LABEL[p.mode_paiement || ''] || p.mode_paiement || '—'}
-                          </Badge>
+                          <Badge tone={modeTone(p.mode_paiement) as any}>{MODE_LABEL[p.mode_paiement || ''] || p.mode_paiement || '—'}</Badge>
+                          <Badge tone={statutTone(st) as any}>{st}</Badge>
                           {p.reference ? <Badge tone="gray">{p.reference}</Badge> : null}
                         </div>
                       </Td>
@@ -575,14 +530,16 @@ export default function PaiementsPage() {
                         <Badge tone="blue">{factureLabel}</Badge>
                       </Td>
 
-                      <Td>
+                      <Td className="font-semibold">
                         {Number(p.montant || 0).toLocaleString()} <span className="text-xs text-gray-500">XOF</span>
                       </Td>
 
                       <Td className="hidden lg:table-cell">
-                        <Badge tone={modeTone(p.mode_paiement) as any}>
-                          {MODE_LABEL[p.mode_paiement || ''] || p.mode_paiement || '—'}
-                        </Badge>
+                        <Badge tone={modeTone(p.mode_paiement) as any}>{MODE_LABEL[p.mode_paiement || ''] || p.mode_paiement || '—'}</Badge>
+                      </Td>
+
+                      <Td className="hidden lg:table-cell">
+                        <Badge tone={statutTone(st) as any}>{st}</Badge>
                       </Td>
 
                       <Td className="hidden lg:table-cell">
@@ -639,7 +596,6 @@ export default function PaiementsPage() {
           }}
           submitting={mCreate.isPending || mUpdate.isPending}
         />
-        {/* Note: paidByFacture utilisé en interne via prop paiements */}
       </Modal>
 
       {/* Confirm delete */}

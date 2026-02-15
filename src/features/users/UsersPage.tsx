@@ -11,7 +11,7 @@ import { useToast } from '../../ui/Toasts'
 import { useAuth } from '../../store/auth'
 import { Badge } from '../../ui/Badge'
 import { ActionsMenu } from '../../ui/ActionsMenu'
-import { Eye, Pencil, Trash2, Plus, Search, CheckCircle2, XCircle, Users } from 'lucide-react'
+import { Eye, Pencil, Trash2, Plus, Search, CheckCircle2, XCircle, Users, Shield } from 'lucide-react'
 import UsersForm, { type UserInput } from './UsersForm'
 import UserDetails, { type UserModel } from './UserDetails'
 
@@ -52,28 +52,40 @@ async function fetchAllPaged<T>(path: string, params?: any): Promise<T[]> {
   return all
 }
 
-// ✅ Ton backend expose /users maintenant
 async function fetchUsers(): Promise<UserModel[]> {
-  try {
-    const res = await api.get('/users', { params: { page: 1, per_page: 100 } })
-    const data = res.data
-    if (Array.isArray(data)) return data as UserModel[]
-    if (Array.isArray(data?.data)) {
-      const all = await fetchAllPaged<UserModel>('/users')
-      return all.length ? all : (data.data as UserModel[])
-    }
-    return []
-  } catch (e) {
-    // si API non dispo (ou 403 si non-admin), on remonte l’erreur
-    throw e
+  const res = await api.get('/users', { params: { page: 1, per_page: 100 } })
+  const data = res.data
+  if (Array.isArray(data)) return data as UserModel[]
+  if (Array.isArray(data?.data)) {
+    const all = await fetchAllPaged<UserModel>('/users')
+    return all.length ? all : (data.data as UserModel[])
   }
+  return []
+}
+
+function cx(...cls: Array<string | false | undefined | null>) {
+  return cls.filter(Boolean).join(' ')
 }
 
 const roleTone = (role?: string | null) => {
   const r = String(role || '').toLowerCase()
   if (r.includes('admin')) return 'purple'
-  if (r.includes('employee')) return 'blue'
+  if (r.includes('employee') || r.includes('agent')) return 'blue'
   return 'gray'
+}
+
+function initialsFromUser(u: any) {
+  const a = String(u?.prenom || '').trim()
+  const b = String(u?.nom || '').trim()
+  const s = `${a} ${b}`.trim() || String(u?.email || '').trim() || 'UT'
+  const parts = s.split(/\s+/).filter(Boolean)
+  const i1 = parts[0]?.[0] ?? 'U'
+  const i2 = parts[1]?.[0] ?? parts[0]?.[1] ?? 'T'
+  return `${i1}${i2}`.toUpperCase()
+}
+
+function displayUserName(u: any) {
+  return `${u?.prenom || ''} ${u?.nom || ''}`.trim() || u?.nom || `User #${u?.id ?? '—'}`
 }
 
 export default function UsersPage() {
@@ -81,8 +93,7 @@ export default function UsersPage() {
   const toast = useToast()
   const navigate = useNavigate()
   const { user: me, refreshMe } = useAuth()
-const isAdmin = String(me?.role || '').toLowerCase() === 'admin'
-
+  const isAdmin = String(me?.role || '').toLowerCase() === 'admin'
 
   // ✅ Interdire complètement l’accès aux non-admin
   useEffect(() => {
@@ -92,7 +103,7 @@ const isAdmin = String(me?.role || '').toLowerCase() === 'admin'
   if (me && !isAdmin) return null
 
   const [page, setPage] = useState(1)
-  const [perPage] = useState(10)
+  const perPage = 10
 
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebouncedValue(search, 300)
@@ -106,19 +117,18 @@ const isAdmin = String(me?.role || '').toLowerCase() === 'admin'
   const [confirmId, setConfirmId] = useState<number | null>(null)
 
   const [confirmRole, setConfirmRole] = useState<{
-  open: boolean
-  next?: any
-  oldRole?: string
-  newRole?: string
-}>({ open: false })
-
+    open: boolean
+    next?: UserInput
+    oldRole?: string
+    newRole?: string
+  }>({ open: false })
 
   const qUsers = useQuery({
     queryKey: ['users-all'],
     queryFn: fetchUsers,
     staleTime: 30_000,
     retry: false,
-    enabled: !!me && isAdmin, // ✅ on ne tente même pas si pas admin
+    enabled: !!me && isAdmin,
   })
 
   const users = useMemo(() => qUsers.data ?? [], [qUsers.data])
@@ -162,94 +172,77 @@ const isAdmin = String(me?.role || '').toLowerCase() === 'admin'
   const pageItems = useMemo(() => {
     const start = (page - 1) * perPage
     return filtered.slice(start, start + perPage)
-  }, [filtered, page, perPage])
+  }, [filtered, page])
 
   const mCreate = useMutation({
-  mutationFn: (vals: UserInput) => api.post('/users', vals),
-  onSuccess: async (res) => {
-    const created = res?.data?.data ?? res?.data
-
-    if (created?.id) {
-      qc.setQueryData(['users-all'], (old: any) => {
-        const arr = Array.isArray(old) ? old : []
-        return [created, ...arr.filter((u: any) => u?.id !== created.id)]
-      })
-    }
-
-    await qc.invalidateQueries({ queryKey: ['users-all'], refetchType: 'active' })
-
-    setFormOpen(false)
-    setEditing(null)
-    toast.push({ title: 'Utilisateur créé', tone: 'success' })
-  },
-})
-
-
-const mUpdate = useMutation({
-  mutationFn: (vals: UserInput) => api.put(`/users/${editing?.id}`, vals),
-  onSuccess: async (res) => {
-    const updated = res?.data?.data ?? res?.data
-
-    if (updated?.id) {
-      qc.setQueryData(['users-all'], (old: any) => {
-        const arr = Array.isArray(old) ? old : []
-        return arr.map((u: any) =>
-          u?.id === updated.id ? { ...u, ...updated } : u
-        )
-      })
-
-      // 🔄 si on modifie l'utilisateur connecté
-      if (me?.id === updated.id) {
-        await refreshMe()
+    mutationFn: (vals: UserInput) => api.post('/users', vals),
+    onSuccess: async (res) => {
+      const created = res?.data?.data ?? res?.data
+      if (created?.id) {
+        qc.setQueryData(['users-all'], (old: any) => {
+          const arr = Array.isArray(old) ? old : []
+          return [created, ...arr.filter((u: any) => u?.id !== created.id)]
+        })
       }
-    }
+      await qc.invalidateQueries({ queryKey: ['users-all'], refetchType: 'active' })
+      setFormOpen(false)
+      setEditing(null)
+      toast.push({ title: 'Utilisateur créé', tone: 'success' })
+    },
+    onError: (e: any) => toast.push({ title: e?.response?.data?.message || 'Erreur création utilisateur', tone: 'error' }),
+  })
 
-    await qc.invalidateQueries({ queryKey: ['users-all'], refetchType: 'active' })
-
-    setFormOpen(false)
-    setEditing(null)
-    toast.push({ title: 'Utilisateur mis à jour', tone: 'success' })
-  },
-})
+  const mUpdate = useMutation({
+    mutationFn: (vals: UserInput) => api.put(`/users/${editing?.id}`, vals),
+    onSuccess: async (res) => {
+      const updated = res?.data?.data ?? res?.data
+      if (updated?.id) {
+        qc.setQueryData(['users-all'], (old: any) => {
+          const arr = Array.isArray(old) ? old : []
+          return arr.map((u: any) => (u?.id === updated.id ? { ...u, ...updated } : u))
+        })
+        if (me?.id === updated.id) await refreshMe()
+      }
+      await qc.invalidateQueries({ queryKey: ['users-all'], refetchType: 'active' })
+      setFormOpen(false)
+      setEditing(null)
+      toast.push({ title: 'Utilisateur mis à jour', tone: 'success' })
+    },
+    onError: (e: any) => toast.push({ title: e?.response?.data?.message || 'Erreur update utilisateur', tone: 'error' }),
+  })
 
   const mSetActif = useMutation({
-    mutationFn: ({ id, actif }: { id: number; actif: boolean }) =>
-      api.patch(`/users/${id}`, { actif: actif ? 1 : 0 }),
+    mutationFn: ({ id, actif }: { id: number; actif: boolean }) => api.patch(`/users/${id}`, { actif: actif ? 1 : 0 }),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ['users-all'] })
       toast.push({ title: 'Statut mis à jour', tone: 'success' })
     },
-    onError: (e: any) =>
-      toast.push({ title: e?.response?.data?.message || 'Action impossible', tone: 'error' }),
+    onError: (e: any) => toast.push({ title: e?.response?.data?.message || 'Action impossible', tone: 'error' }),
   })
 
-  // ton backend “destroy” désactive (actif=0) => parfait
   const mDelete = useMutation({
     mutationFn: (id: number) => api.delete(`/users/${id}`),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ['users-all'] })
       toast.push({ title: 'Utilisateur désactivé', tone: 'success' })
     },
-    onError: (e: any) =>
-      toast.push({ title: e?.response?.data?.message || 'Suppression impossible', tone: 'error' }),
+    onError: (e: any) => toast.push({ title: e?.response?.data?.message || 'Suppression impossible', tone: 'error' }),
   })
 
   const openCreate = () => {
     setEditing(null)
     setFormOpen(true)
   }
-
   const openEdit = (u: UserModel) => {
     setEditing(u)
     setFormOpen(true)
   }
-
   const openDetails = (u: UserModel) => {
     setSelected(u)
     setDetailsOpen(true)
   }
 
-  const toDefaults = (u?: UserModel): Partial<UserInput> | undefined => {
+  const toDefaults = (u?: UserModel | null): Partial<UserInput> | undefined => {
     if (!u) return undefined
     return {
       prenom: u.prenom ?? '',
@@ -260,18 +253,34 @@ const mUpdate = useMutation({
     }
   }
 
-  // ✅ affichage
+  const headerBadges = (
+    <div className="flex items-center gap-2 flex-wrap">
+      <Badge tone="gray">{total} utilisateur{total > 1 ? 's' : ''}</Badge>
+      {debouncedSearch ? <Badge tone="blue">Filtre: “{debouncedSearch}”</Badge> : null}
+      {fRole ? <Badge tone={roleTone(fRole) as any}>{fRole}</Badge> : null}
+      <Badge tone={fActif === 'all' ? 'amber' : fActif === '1' ? 'green' : 'red'}>
+        {fActif === 'all' ? 'Tous' : fActif === '1' ? 'Actifs' : 'Inactifs'}
+      </Badge>
+    </div>
+  )
+
   return (
     <div className="space-y-4">
-      {/* Header */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <Users size={18} /> Utilisateurs
-          </h2>
-          <div className="text-xs text-gray-500 dark:text-gray-400">
-            {total} utilisateurs
+      {/* Header pro */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <div className="h-10 w-10 rounded-2xl bg-purple-100 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300 flex items-center justify-center">
+              <Shield size={18} />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-xl font-semibold truncate">Utilisateurs</h2>
+              <p className="text-sm text-gray-600 dark:text-gray-400 truncate">
+                Gestion des accès (admin-only) : rôles, activation et désactivation.
+              </p>
+            </div>
           </div>
+          <div className="mt-3">{headerBadges}</div>
         </div>
 
         <button className="btn-primary inline-flex items-center gap-2" onClick={openCreate}>
@@ -309,7 +318,9 @@ const mUpdate = useMutation({
           >
             <option value="">Tous</option>
             {roles.map((r) => (
-              <option key={r} value={r}>{r}</option>
+              <option key={r} value={r}>
+                {r}
+              </option>
             ))}
           </select>
         </div>
@@ -335,41 +346,40 @@ const mUpdate = useMutation({
       {qUsers.isLoading ? (
         <p>Chargement…</p>
       ) : qUsers.isError ? (
-        <div className="card">
+        <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white dark:bg-panel shadow-soft p-4">
           <div className="text-red-600 font-semibold">Impossible de charger les utilisateurs</div>
           <div className="text-sm text-gray-500 mt-1">
-            Vérifie que tu es bien connecté en admin et que l’endpoint <span className="font-mono">/users</span> est actif.
+            Vérifie que tu es bien connecté en admin et que l’endpoint <span className="font-mono">/users</span> est accessible.
           </div>
         </div>
       ) : (
-        <div className="rounded-2xl border border-black/5 dark:border-white/10 overflow-hidden">
-          <T>
+        <div className="w-full overflow-x-auto rounded-2xl shadow-soft bg-white dark:bg-panel border border-black/5 dark:border-white/10">
+          <T className="w-full">
             <thead className="bg-gray-100/70 dark:bg-white/5">
               <tr>
                 <Th>Utilisateur</Th>
                 <Th className="hidden lg:table-cell">Rôle</Th>
-                <Th className="hidden lg:table-cell">Actif</Th>
-                <Th className="w-[64px]"></Th>
+                <Th className="hidden lg:table-cell">Statut</Th>
+                <Th className="text-center w-[64px]">Actions</Th>
               </tr>
             </thead>
 
             <tbody>
               {pageItems.length === 0 ? (
                 <tr>
-                  <td className="p-3 text-gray-500" colSpan={4}>Aucun utilisateur</td>
+                  <Td colSpan={4} className="text-center py-10">
+                    <div className="text-gray-500">Aucun utilisateur</div>
+                  </Td>
                 </tr>
               ) : (
                 pageItems.map((u) => {
                   const isActive = !!u.actif
-                  const fullName = `${u.prenom || ''} ${u.nom || ''}`.trim() || '—'
+                  const fullName = displayUserName(u)
+                  const initials = initialsFromUser(u)
 
                   const actions = [
                     { label: 'Voir', icon: <Eye size={16} />, onClick: () => openDetails(u) },
-                    {
-                      label: 'Modifier',
-                      icon: <Pencil size={16} />,
-                      onClick: () => openEdit(u),
-                    },
+                    { label: 'Modifier', icon: <Pencil size={16} />, onClick: () => openEdit(u) },
                     {
                       label: isActive ? 'Désactiver' : 'Activer',
                       icon: isActive ? <XCircle size={16} /> : <CheckCircle2 size={16} />,
@@ -386,14 +396,25 @@ const mUpdate = useMutation({
                   ]
 
                   return (
-                    <tr key={u.id} className="border-t border-black/5 dark:border-white/10">
-                      <Td>
-                        <div className="font-medium">{fullName}</div>
-                        <div className="text-xs text-gray-500">{u.email || '—'}</div>
+                    <tr key={u.id} className="border-t border-black/5 dark:border-white/10 hover:bg-black/[0.02] dark:hover:bg-white/[0.03]">
+                      <Td className="min-w-0">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className={cx(
+                            'h-10 w-10 rounded-2xl flex items-center justify-center font-semibold',
+                            'bg-purple-100 text-purple-700 dark:bg-purple-500/15 dark:text-purple-300'
+                          )}>
+                            {initials}
+                          </div>
 
-                        <div className="lg:hidden mt-2 flex flex-wrap gap-2">
-                          <Badge tone={roleTone(u.role) as any}>{u.role || '—'}</Badge>
-                          <Badge tone={isActive ? 'green' : 'red'}>{isActive ? 'Actif' : 'Inactif'}</Badge>
+                          <div className="min-w-0">
+                            <div className="font-semibold truncate">{fullName}</div>
+                            <div className="text-xs text-gray-500 truncate">{u.email || '—'}</div>
+
+                            <div className="lg:hidden mt-2 flex flex-wrap gap-2">
+                              <Badge tone={roleTone(u.role) as any}>{u.role || '—'}</Badge>
+                              <Badge tone={isActive ? 'green' : 'red'}>{isActive ? 'Actif' : 'Inactif'}</Badge>
+                            </div>
+                          </div>
                         </div>
                       </Td>
 
@@ -405,10 +426,8 @@ const mUpdate = useMutation({
                         <Badge tone={isActive ? 'green' : 'red'}>{isActive ? 'Actif' : 'Inactif'}</Badge>
                       </Td>
 
-                      <Td>
-                        <div className="flex justify-end">
-                          <ActionsMenu items={actions} />
-                        </div>
+                      <Td className="text-center">
+                        <ActionsMenu items={actions} />
                       </Td>
                     </tr>
                   )
@@ -431,7 +450,8 @@ const mUpdate = useMutation({
         title="Détails utilisateur"
         widthClass="max-w-3xl"
       >
-        {selected ? <UserDetails user={selected} /> : null}
+        {/* ✅ SAFE même si Modal garde le contenu monté */}
+        <UserDetails user={selected} />
       </Modal>
 
       {/* Form */}
@@ -445,20 +465,19 @@ const mUpdate = useMutation({
         widthClass="max-w-3xl"
       >
         <UsersForm
-          defaultValues={toDefaults(editing ?? undefined)}
-          onSubmit={(vals) => {
-            if (editing && (vals.role || '') !== (editing.role || '')) {
-                setConfirmRole({
+          defaultValues={toDefaults(editing)}
+          onSubmit={(vals: UserInput) => {
+            if (editing && String(vals.role || '') !== String(editing.role || '')) {
+              setConfirmRole({
                 open: true,
                 next: vals,
                 oldRole: String(editing.role || ''),
                 newRole: String(vals.role || ''),
-                })
-                return
+              })
+              return
             }
             editing ? mUpdate.mutate(vals) : mCreate.mutate(vals)
-            }}
-
+          }}
           onCancel={() => {
             setFormOpen(false)
             setEditing(null)
@@ -479,17 +498,17 @@ const mUpdate = useMutation({
         }}
       />
 
+      {/* Confirm role change */}
       <ConfirmDialog
         open={confirmRole.open}
         title="Confirmer le changement de rôle"
         message={`Rôle: ${confirmRole.oldRole} → ${confirmRole.newRole}. Continuer ?`}
         onCancel={() => setConfirmRole({ open: false })}
         onConfirm={() => {
-            if (confirmRole.next) mUpdate.mutate(confirmRole.next)
-            setConfirmRole({ open: false })
+          if (confirmRole.next) mUpdate.mutate(confirmRole.next)
+          setConfirmRole({ open: false })
         }}
-        />
-
+      />
     </div>
   )
 }

@@ -6,282 +6,75 @@ import { Badge } from '../../ui/Badge'
 import { Receipt, Users, TrendingUp, AlertTriangle } from 'lucide-react'
 import { Link } from 'react-router-dom'
 
-type Reservation = {
-  id: number
-  created_at?: string
-  statut?: string
-  total?: number
-  client?: { prenom?: string; nom?: string; email?: string }
-  client_id?: number
+type DashboardPayload = {
+  kpis?: {
+    reservations_7d?: number
+    ca_month?: number
+    follow_count?: number
+    clients_total?: number
+    new_clients_month?: number
+    range?: {
+      start7?: string
+      start30?: string
+      monthStart?: string
+      monthEnd?: string
+    }
+  }
+  series?: {
+    reservations_7d?: Array<{ date: string; label: string; value: number }>
+    ca_30d?: Array<{ date: string; label: string; value: number }>
+  }
+  lists?: {
+    last_reservations?: Array<{
+      id: number
+      created_at?: string
+      statut?: string
+      reference?: string
+      client?: { prenom?: string; nom?: string; email?: string }
+    }>
+    factures_follow?: Array<{
+      id: number
+      numero?: string
+      statut?: string
+      montant_total?: number
+      created_at?: string
+    }>
+  }
 }
-
-type Facture = {
-  id: number
-  numero?: string
-  statut?: 'payee' | 'impayee' | 'partielle'
-  total?: number
-  created_at?: string
-  due_date?: string
-  reservation_id?: number
-}
-
-type Client = {
-  id: number
-  prenom?: string | null
-  nom: string
-  email?: string | null
-  created_at?: string
-}
-
-type LaravelPage<T> = {
-  data: T[]
-  current_page: number
-  last_page: number
-}
-
-const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate())
-const isoDate = (d: Date) => d.toISOString().slice(0, 10)
 
 const moneyXOF = (n: any) => `${Number(n || 0).toLocaleString()} XOF`
 
 const toneFacture = (s?: string) => (s === 'payee' ? 'green' : s === 'impayee' ? 'red' : 'amber')
-
-async function fetchAllPaged<T>(path: string, params?: any): Promise<T[]> {
-  const all: T[] = []
-  let page = 1
-  let last = 1
-
-  for (let guard = 0; guard < 60; guard++) {
-    const { data } = await api.get(path, { params: { ...params, page, per_page: 100 } })
-
-    // certains endpoints peuvent retourner array direct
-    if (Array.isArray(data)) return data as T[]
-
-    const lp = data as LaravelPage<T>
-    const items = Array.isArray(lp?.data) ? lp.data : []
-    all.push(...items)
-
-    last = Number(lp?.last_page ?? 1)
-    page = Number(lp?.current_page ?? page) + 1
-    if (page > last) break
-  }
-
-  return all
-}
+const toneReservation = (s?: string) => (s === 'confirmee' ? 'green' : s === 'annulee' ? 'red' : 'amber')
 
 export default function Dashboard() {
-  const now = new Date()
-  const today = startOfDay(now)
-
-  // périodes
-  const last7Start = new Date(today)
-  last7Start.setDate(last7Start.getDate() - 6)
-
-  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
-  const nextMonthStart = new Date(today.getFullYear(), today.getMonth() + 1, 1)
-
-  const last30Start = new Date(today)
-  last30Start.setDate(last30Start.getDate() - 29)
-
-  // --- Queries (sync API) ---
-  const qReservations = useQuery({
-    queryKey: ['dashboard', 'reservations-all'],
-    queryFn: () => fetchAllPaged<Reservation>('/reservations'),
-    staleTime: 30_000,
-  })
-
-  const qClients = useQuery({
-    queryKey: ['dashboard', 'clients-all'],
-    queryFn: () => fetchAllPaged<Client>('/clients'),
-    staleTime: 60_000,
-  })
-
-  // Factures payées du mois (pour CA)
-  const qFacturesPaidMonth = useQuery({
-    queryKey: ['dashboard', 'factures-paid-month', isoDate(monthStart), isoDate(nextMonthStart)],
+  const q = useQuery({
+    queryKey: ['dashboard-v1'],
     queryFn: async () => {
-      // backend supporte date_from/date_to/statut (déjà utilisé dans FacturesPage)
-      const all: Facture[] = []
-      let page = 1
-      let last = 1
-      for (let guard = 0; guard < 40; guard++) {
-        const { data } = await api.get('/factures', {
-          params: {
-            page,
-            per_page: 100,
-            statut: 'payee',
-            date_from: isoDate(monthStart),
-            date_to: isoDate(nextMonthStart),
-          },
-        })
-        // fromLaravel-like
-        const items = Array.isArray(data?.data) ? data.data : []
-        all.push(...items)
-        last = Number(data?.last_page ?? 1)
-        page = Number(data?.current_page ?? page) + 1
-        if (page > last) break
-      }
-      return all
+      const { data } = await api.get<DashboardPayload>('/dashboard')
+      return data
     },
     staleTime: 30_000,
   })
 
-  // Factures à suivre (impayée/partielle) du mois (ou global)
-  const qFacturesToFollow = useQuery({
-    queryKey: ['dashboard', 'factures-follow', isoDate(monthStart), isoDate(nextMonthStart)],
-    queryFn: async () => {
-      // on récupère sur période mensuelle (plus utile), tu peux enlever la date si tu veux global
-      const statuses: Array<'impayee' | 'partielle'> = ['impayee', 'partielle']
-      const all: Facture[] = []
+  const d = q.data
 
-      for (const statut of statuses) {
-        let page = 1
-        let last = 1
-        for (let guard = 0; guard < 40; guard++) {
-          const { data } = await api.get('/factures', {
-            params: {
-              page,
-              per_page: 100,
-              statut,
-              date_from: isoDate(monthStart),
-              date_to: isoDate(nextMonthStart),
-            },
-          })
-          const items = Array.isArray(data?.data) ? data.data : []
-          all.push(...items)
-          last = Number(data?.last_page ?? 1)
-          page = Number(data?.current_page ?? page) + 1
-          if (page > last) break
-        }
-      }
+  const kpis = {
+    r7: Number(d?.kpis?.reservations_7d ?? 0),
+    caMonth: Number(d?.kpis?.ca_month ?? 0),
+    followCount: Number(d?.kpis?.follow_count ?? 0),
+    clientsTotal: Number(d?.kpis?.clients_total ?? 0),
+    newClientsMonth: Number(d?.kpis?.new_clients_month ?? 0),
+  }
 
-      // tri newest first
-      all.sort((a, b) => +new Date(b.created_at || 0) - +new Date(a.created_at || 0))
-      return all
-    },
-    staleTime: 30_000,
-  })
+  // ✅ sécurisation: series toujours un array
+  const chartReservations7 = useMemo(() => d?.series?.reservations_7d ?? [], [d])
+  const chartCA30 = useMemo(() => d?.series?.ca_30d ?? [], [d])
 
-  // Factures payées (30 jours) pour courbe CA
-  const qFacturesPaid30 = useQuery({
-    queryKey: ['dashboard', 'factures-paid-30', isoDate(last30Start), isoDate(today)],
-    queryFn: async () => {
-      const all: Facture[] = []
-      let page = 1
-      let last = 1
-      for (let guard = 0; guard < 60; guard++) {
-        const { data } = await api.get('/factures', {
-          params: {
-            page,
-            per_page: 100,
-            statut: 'payee',
-            date_from: isoDate(last30Start),
-            date_to: isoDate(today),
-          },
-        })
-        const items = Array.isArray(data?.data) ? data.data : []
-        all.push(...items)
-        last = Number(data?.last_page ?? 1)
-        page = Number(data?.current_page ?? page) + 1
-        if (page > last) break
-      }
-      return all
-    },
-    staleTime: 30_000,
-  })
+  const lastReservations = useMemo(() => d?.lists?.last_reservations ?? [], [d])
+  const followTop = useMemo(() => d?.lists?.factures_follow ?? [], [d])
 
-  const reservations = qReservations.data ?? []
-  const clients = qClients.data ?? []
-  const facturesPaidMonth = qFacturesPaidMonth.data ?? []
-  const facturesFollow = qFacturesToFollow.data ?? []
-  const facturesPaid30 = qFacturesPaid30.data ?? []
-
-  // --- Derived metrics ---
-  const kpis = useMemo(() => {
-    // reservations 7 jours
-    const r7 = reservations.filter((r) => {
-      const d = r.created_at ? startOfDay(new Date(r.created_at)) : null
-      return d ? d >= last7Start && d <= today : false
-    }).length
-
-    // CA mois: somme factures payées
-    const caMonth = facturesPaidMonth.reduce((sum, f) => sum + Number(f.total || 0), 0)
-
-    // factures à suivre
-    const followCount = facturesFollow.length
-
-    // clients total + nouveaux ce mois
-    const newClientsMonth = clients.filter((c) => {
-      const d = c.created_at ? startOfDay(new Date(c.created_at)) : null
-      return d ? d >= monthStart && d < nextMonthStart : false
-    }).length
-
-    return {
-      r7,
-      caMonth,
-      followCount,
-      clientsTotal: clients.length,
-      newClientsMonth,
-    }
-  }, [reservations, clients, facturesPaidMonth, facturesFollow, last7Start, today, monthStart, nextMonthStart])
-
-  const chartReservations7 = useMemo(() => {
-    // map last 7 days labels
-    const days: { d: string; date: string; count: number }[] = []
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(last7Start)
-      d.setDate(d.getDate() + i)
-      const key = isoDate(d)
-      days.push({
-        d: d.toLocaleDateString(undefined, { weekday: 'short' }),
-        date: key,
-        count: 0,
-      })
-    }
-
-    const byDate = new Map<string, number>()
-    for (const r of reservations) {
-      if (!r.created_at) continue
-      const key = isoDate(startOfDay(new Date(r.created_at)))
-      if (key < isoDate(last7Start) || key > isoDate(today)) continue
-      byDate.set(key, (byDate.get(key) || 0) + 1)
-    }
-
-    return days.map((x) => ({ d: x.d, v: byDate.get(x.date) || 0 }))
-  }, [reservations, last7Start, today])
-
-  const chartCA30 = useMemo(() => {
-    const days: { label: string; date: string }[] = []
-    for (let i = 0; i < 30; i++) {
-      const d = new Date(last30Start)
-      d.setDate(d.getDate() + i)
-      days.push({
-        label: d.toLocaleDateString(undefined, { day: '2-digit', month: 'short' }),
-        date: isoDate(d),
-      })
-    }
-
-    const byDate = new Map<string, number>()
-    for (const f of facturesPaid30) {
-      if (!f.created_at) continue
-      const key = isoDate(startOfDay(new Date(f.created_at)))
-      if (key < isoDate(last30Start) || key > isoDate(today)) continue
-      byDate.set(key, (byDate.get(key) || 0) + Number(f.total || 0))
-    }
-
-    return days.map((x) => ({ d: x.label, v: byDate.get(x.date) || 0 }))
-  }, [facturesPaid30, last30Start, today])
-
-  const lastReservations = useMemo(() => {
-    const copy = [...reservations]
-    copy.sort((a, b) => +new Date(b.created_at || 0) - +new Date(a.created_at || 0))
-    return copy.slice(0, 6)
-  }, [reservations])
-
-  const followTop = useMemo(() => facturesFollow.slice(0, 6), [facturesFollow])
-
-  const loading =
-    qReservations.isLoading || qClients.isLoading || qFacturesPaidMonth.isLoading || qFacturesToFollow.isLoading
+  const loading = q.isLoading
 
   return (
     <div className="space-y-4">
@@ -290,13 +83,17 @@ export default function Dashboard() {
         <div>
           <h2 className="text-lg font-semibold">Dashboard</h2>
           <div className="text-xs text-gray-500 dark:text-gray-400">
-            Synthèse — {today.toLocaleDateString()}
+            Synthèse — {new Date().toLocaleDateString()}
           </div>
         </div>
 
         <div className="flex gap-2">
-          <Link className="btn bg-gray-200 dark:bg-white/10" to="/reservations">Voir réservations</Link>
-          <Link className="btn-primary" to="/reservations">Nouvelle réservation</Link>
+          <Link className="btn bg-gray-200 dark:bg-white/10" to="/reservations">
+            Voir réservations
+          </Link>
+          <Link className="btn-primary" to="/reservations">
+            Nouvelle réservation
+          </Link>
         </div>
       </div>
 
@@ -354,17 +151,11 @@ export default function Dashboard() {
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartReservations7} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="ut-res" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="var(--ut-sky)" stopOpacity={0.55} />
-                    <stop offset="95%" stopColor="var(--ut-sky)" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
-                <XAxis dataKey="d" stroke="currentColor" opacity={0.6} />
+                <XAxis dataKey="label" stroke="currentColor" opacity={0.6} />
                 <YAxis stroke="currentColor" opacity={0.6} allowDecimals={false} />
-                <Tooltip />
-                <Area type="monotone" dataKey="v" stroke="var(--ut-sky)" fill="url(#ut-res)" />
+                <Tooltip formatter={(v: any) => String(v)} />
+                <Area type="monotone" dataKey="value" stroke="var(--ut-sky)" fill="var(--ut-sky)" fillOpacity={0.15} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -375,17 +166,11 @@ export default function Dashboard() {
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chartCA30}>
-                <defs>
-                  <linearGradient id="ut-ca" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="var(--ut-orange)" stopOpacity={0.45} />
-                    <stop offset="95%" stopColor="var(--ut-orange)" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
                 <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
-                <XAxis dataKey="d" stroke="currentColor" opacity={0.6} hide />
+                <XAxis dataKey="label" stroke="currentColor" opacity={0.6} hide />
                 <YAxis stroke="currentColor" opacity={0.6} />
                 <Tooltip formatter={(v: any) => moneyXOF(v)} />
-                <Area type="monotone" dataKey="v" stroke="var(--ut-orange)" fill="url(#ut-ca)" />
+                <Area type="monotone" dataKey="value" stroke="var(--ut-orange)" fill="var(--ut-orange)" fillOpacity={0.15} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -397,7 +182,9 @@ export default function Dashboard() {
         <div className="card">
           <div className="flex items-center justify-between mb-3">
             <div className="font-semibold">Dernières réservations</div>
-            <Link to="/reservations" className="text-sm text-primary hover:underline">Tout voir</Link>
+            <Link to="/reservations" className="text-sm text-primary hover:underline">
+              Tout voir
+            </Link>
           </div>
 
           {lastReservations.length === 0 ? (
@@ -407,16 +194,10 @@ export default function Dashboard() {
               {lastReservations.map((r) => (
                 <div key={r.id} className="py-2 flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-sm font-medium truncate">
-                      Réservation #{r.id}
-                    </div>
-                    <div className="text-xs text-gray-500 truncate">
-                      {r.created_at ? new Date(r.created_at).toLocaleString() : '—'}
-                    </div>
+                    <div className="text-sm font-medium truncate">{r.reference ? `Réservation ${r.reference}` : `Réservation #${r.id}`}</div>
+                    <div className="text-xs text-gray-500 truncate">{r.created_at ? new Date(r.created_at).toLocaleString() : '—'}</div>
                   </div>
-                  <Badge tone={r.statut === 'confirmee' ? 'green' : r.statut === 'annulee' ? 'red' : 'amber'}>
-                    {r.statut || '—'}
-                  </Badge>
+                  <Badge tone={toneReservation(r.statut)}>{r.statut || '—'}</Badge>
                 </div>
               ))}
             </div>
@@ -426,7 +207,9 @@ export default function Dashboard() {
         <div className="card">
           <div className="flex items-center justify-between mb-3">
             <div className="font-semibold">Factures à suivre (mois)</div>
-            <Link to="/factures" className="text-sm text-primary hover:underline">Tout voir</Link>
+            <Link to="/factures" className="text-sm text-primary hover:underline">
+              Tout voir
+            </Link>
           </div>
 
           {followTop.length === 0 ? (
@@ -436,11 +219,9 @@ export default function Dashboard() {
               {followTop.map((f) => (
                 <div key={f.id} className="py-2 flex items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-sm font-medium truncate">
-                      Facture {f.numero ?? `#${f.id}`}
-                    </div>
+                    <div className="text-sm font-medium truncate">Facture {f.numero ?? `#${f.id}`}</div>
                     <div className="text-xs text-gray-500 truncate">
-                      Total: {moneyXOF(f.total)} • {f.created_at ? new Date(f.created_at).toLocaleDateString() : '—'}
+                      Total: {moneyXOF(f.montant_total)} • {f.created_at ? new Date(f.created_at).toLocaleDateString() : '—'}
                     </div>
                   </div>
                   <Badge tone={toneFacture(f.statut)}>{f.statut || '—'}</Badge>
@@ -450,6 +231,13 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* Error visible */}
+      {q.isError ? (
+        <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4 text-sm text-red-700 dark:text-red-300">
+          Impossible de charger le dashboard. Vérifie l’endpoint <code>/dashboard</code> côté API.
+        </div>
+      ) : null}
     </div>
   )
 }
