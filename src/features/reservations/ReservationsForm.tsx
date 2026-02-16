@@ -979,10 +979,13 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
               type="number"
               min={0}
               className="input"
-              value={form.montant_total ?? 0}
-              onChange={(e) => set('montant_total', Number(e.target.value || 0))}
+              value={form.montant_total ?? ''}
+              onChange={(e) =>
+                set('montant_total', e.target.value === '' ? undefined : Number(e.target.value))
+              }
             />
           </div>
+
 
           <div>
             <label className="label">Référence (optionnel)</label>
@@ -1037,8 +1040,21 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
               type="number"
               min={0}
               className="input"
-              value={form.acompte?.montant ?? 0}
-              onChange={(e) => set('acompte', { ...(form.acompte || {}), montant: Number(e.target.value || 0) })}
+              // value={form.acompte?.montant ?? 0}
+              value={form.acompte?.montant === undefined || form.acompte?.montant === null ? '' : String(form.acompte.montant)}
+              onChange={(e) => {
+                const raw = e.target.value
+
+                // vide => pas de montant (et surtout pas 0 affiché)
+                if (raw === '') {
+                  const next = { ...(form.acompte || {}) }
+                  delete (next as any).montant // optionnel, sinon: montant: undefined
+                  set('acompte', next)
+                  return
+                }
+
+                set('acompte', { ...(form.acompte || {}), montant: Number(raw) })
+              }}
             />
           </div>
           <div>
