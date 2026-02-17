@@ -127,6 +127,33 @@ function normalizeStatut(s: any) {
   return v
 }
 
+function normalizeTypeKey(t: any) {
+  // backend can return: "billet_avion", "billet avion", "Billet d'avion", etc.
+  const raw = String(t || '').trim().toLowerCase()
+  if (!raw) return 'billet_avion'
+  const v = raw
+    .replace(/['’]/g, '')
+    .replace(/\s+/g, '_')
+    .replace(/-+/g, '_')
+
+  // common aliases
+  if (v.includes('billet') && v.includes('avion')) return 'billet_avion'
+  if (v.includes('evenement') || v.includes('event')) return 'evenement'
+  if (v.includes('forfait') || v.includes('package')) return 'forfait'
+  if (v.includes('hotel')) return 'hotel'
+  if (v.includes('voiture') || v.includes('car')) return 'voiture'
+
+  return v
+}
+
+function normalizeArray<T>(input: any): T[] {
+  if (!input) return []
+  if (Array.isArray(input)) return input as T[]
+  if (Array.isArray(input?.data)) return input.data as T[]
+  if (Array.isArray(input?.items)) return input.items as T[]
+  return []
+}
+
 function StatutBadge({ statut }: { statut: any }) {
   const v = normalizeStatut(statut)
   const label =
@@ -232,7 +259,7 @@ export function ReservationDetails({ reservation, onViewClientHistory }: Props) 
   const [busyInvoiceId, setBusyInvoiceId] = useState<number | null>(null)
 
   const r = data
-  const typeKey = String(r?.type || 'billet_avion')
+  const typeKey = normalizeTypeKey(r?.type)
   const typeMeta = TYPE_META[typeKey] ?? { label: typeKey, icon: <ClipboardList size={16} />, tone: 'gray' as const }
 
   const client = r?.client ?? null
@@ -241,24 +268,56 @@ export function ReservationDetails({ reservation, onViewClientHistory }: Props) 
   const pay = useMemo(() => computePay(r), [r])
   const flight = r?.flight_details ?? r?.flightDetails ?? null
 
-  // passager (nouvelle logique backend)
+  // passager / bénéficiaire (billet avion)
+  // Backends peuvent renvoyer:
+  // - passenger_is_client (bool)
+  // - passenger { prenom, nom, ... }
+  // - passenger_name / beneficiary_name
+  // - ou rien (=> client bénéficiaire par défaut)
   const passengerIsClient =
     typeof r?.passenger_is_client === 'boolean'
       ? r.passenger_is_client
-      : r?.passenger
-      ? false
-      : true
+      : typeof r?.passenger_is_client === 'number'
+      ? !!r.passenger_is_client
+      : false
+
+  const passenger = useMemo(() => {
+    const p =
+      r?.passenger ??
+      r?.beneficiaire ??
+      r?.beneficiary ??
+      r?.passager ??
+      null
+
+    // si objet vide -> null
+    if (p && typeof p === 'object') {
+      const hasName = !!([p?.prenom, p?.nom, p?.name, p?.full_name].filter(Boolean).join(' ').trim())
+      if (!hasName) return null
+      return p
+    }
+    return null
+  }, [r?.passenger, r?.beneficiaire, r?.beneficiary, r?.passager])
 
   const passengerName = useMemo(() => {
     if (typeKey !== 'billet_avion') return null
-    if (passengerIsClient) {
-      const n = [client?.prenom, client?.nom].filter(Boolean).join(' ').trim()
-      return n || client?.nom || null
+
+    // 1) string direct du backend
+    const direct =
+      (r?.passenger_name ?? r?.beneficiary_name ?? r?.beneficiaire_nom ?? null) as any
+    if (direct && String(direct).trim()) return String(direct).trim()
+
+    // 2) objet passenger
+    if (passenger) {
+      const n = [passenger?.prenom, passenger?.nom].filter(Boolean).join(' ').trim()
+      if (n) return n
+      if (passenger?.name) return String(passenger.name)
+      if (passenger?.full_name) return String(passenger.full_name)
     }
-    const p = r?.passenger ?? null
-    const n = [p?.prenom, p?.nom].filter(Boolean).join(' ').trim()
-    return n || p?.nom || null
-  }, [typeKey, passengerIsClient, client?.prenom, client?.nom, client?.nom, r?.passenger])
+
+    // 3) fallback client
+    const n = [client?.prenom, client?.nom].filter(Boolean).join(' ').trim()
+    return n || client?.nom || null
+  }, [typeKey, r?.passenger_name, r?.beneficiary_name, r?.beneficiaire_nom, passenger, client?.prenom, client?.nom, client?.nom])
 
   const headerRef = r?.reference ?? `#${r?.id ?? '—'}`
 
@@ -346,7 +405,6 @@ export function ReservationDetails({ reservation, onViewClientHistory }: Props) 
         return
       }
 
-      // endpoint que tu utilises côté page: POST /factures/:id/emettre
       await api.post(`/factures/${facture.id}/emettre`)
       toast.push({ title: 'Facture émise', tone: 'success' })
       await refreshReservation()
@@ -404,10 +462,9 @@ export function ReservationDetails({ reservation, onViewClientHistory }: Props) 
 
   const showProduit = !!r?.produit
   const showForfait = !!r?.forfait
-  const showParticipants =
-    typeKey === 'evenement' || typeKey === 'forfait'
-      ? Array.isArray(r?.participants) && r.participants.length > 0
-      : false
+
+  const participants = useMemo(() => normalizeArray<any>(r?.participants), [r?.participants])
+  const showParticipants = typeKey === 'evenement' || typeKey === 'forfait'
 
   const topBadges = (
     <div className="flex items-center gap-2 flex-wrap justify-end">
@@ -461,15 +518,18 @@ export function ReservationDetails({ reservation, onViewClientHistory }: Props) 
               <span>Créée le {safeDateTime(r?.created_at)}</span>
               <span>•</span>
               <span>Mise à jour {safeDateTime(r?.updated_at)}</span>
-              {passengerName ? (
+
+              {typeKey === 'billet_avion' ? (
                 <>
                   <span>•</span>
                   <span className="inline-flex items-center gap-1">
                     <User size={12} />
-                    <span className="font-medium text-gray-800 dark:text-gray-200">Bénéficiaire:</span> {passengerName}
+                    <span className="font-medium text-gray-800 dark:text-gray-200">Bénéficiaire:</span>{' '}
+                    {passengerName || '—'}
                   </span>
                 </>
               ) : null}
+
               {busy ? (
                 <>
                   <span>•</span>
@@ -523,7 +583,11 @@ export function ReservationDetails({ reservation, onViewClientHistory }: Props) 
         {/* LEFT */}
         <div className="space-y-4">
           {/* Client */}
-          <Card title="Client" icon={<User size={18} />} right={client?.id ? <ToneBadge tone="gray">#{client.id}</ToneBadge> : undefined}>
+          <Card
+            title="Client"
+            icon={<User size={18} />}
+            right={client?.id ? <ToneBadge tone="gray">#{client.id}</ToneBadge> : undefined}
+          >
             {client ? (
               <div className="space-y-3">
                 <KV label="Nom" value={[client?.prenom, client?.nom].filter(Boolean).join(' ') || client?.nom || '—'} />
@@ -621,6 +685,33 @@ export function ReservationDetails({ reservation, onViewClientHistory }: Props) 
             </Card>
           ) : null}
 
+          {/* Bénéficiaire / Passager */}
+          {typeKey === 'billet_avion' ? (
+            <Card
+              title="Bénéficiaire du billet"
+              icon={<User size={18} />}
+              right={passengerIsClient ? <ToneBadge tone="gray">Client</ToneBadge> : undefined}
+            >
+              <div className="space-y-3">
+                <KV label="Nom" value={passengerName || '—'} />
+                {passenger && !passengerIsClient ? (
+                  <>
+                    {passenger?.passport ? <KV label="Passeport" value={passenger.passport} /> : null}
+                    {passenger?.sexe ? <KV label="Sexe" value={passenger.sexe} /> : null}
+                    {passenger?.telephone ? <KV label="Téléphone" value={passenger.telephone} /> : null}
+                    {passenger?.email ? <KV label="Email" value={passenger.email} /> : null}
+                  </>
+                ) : null}
+
+                {!passenger && passengerIsClient ? (
+                  <div className="text-xs text-gray-600 dark:text-gray-400">
+                    Bénéficiaire = client sélectionné pour cette réservation.
+                  </div>
+                ) : null}
+              </div>
+            </Card>
+          ) : null}
+
           {/* Produit / Forfait */}
           {showProduit ? (
             <Card title="Produit" icon={<ClipboardList size={18} />}>
@@ -642,32 +733,40 @@ export function ReservationDetails({ reservation, onViewClientHistory }: Props) 
 
           {/* Participants */}
           {showParticipants ? (
-            <Card title="Participants" icon={<Users size={18} />}>
-              <div className="space-y-2">
-                {r.participants.map((p: any, idx: number) => {
-                  const name = [p?.prenom, p?.nom].filter(Boolean).join(' ') || p?.nom || `Participant ${idx + 1}`
-                  return (
-                    <div
-                      key={p?.id ?? idx}
-                      className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] p-3 flex items-start justify-between gap-3"
-                    >
-                      <div className="min-w-0">
-                        <div className="font-semibold truncate">{name}</div>
-                        <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">
-                          {p?.passport ? <>Passeport: {p.passport}</> : null}
-                          {p?.age != null ? (
-                            <>
-                              {p?.passport ? ' • ' : ''}
-                              Âge: {p.age}
-                            </>
-                          ) : null}
+            <Card title="Participants" icon={<Users size={18} />} right={<ToneBadge tone="gray">{participants.length}</ToneBadge>}>
+              {participants.length === 0 ? (
+                <div className="text-sm text-gray-500">Aucun participant enregistré pour cette réservation.</div>
+              ) : (
+                <div className="space-y-2">
+                  {participants.map((p: any, idx: number) => {
+                    const name = [p?.prenom, p?.nom].filter(Boolean).join(' ') || p?.nom || `Participant ${idx + 1}`
+                    const subtitleParts: string[] = []
+                    if (p?.passport) subtitleParts.push(`Passeport: ${p.passport}`)
+                    if (p?.sexe) subtitleParts.push(`Sexe: ${p.sexe}`)
+                    if (p?.age != null) subtitleParts.push(`Âge: ${p.age}`)
+                    if (p?.telephone) subtitleParts.push(`Tél: ${p.telephone}`)
+
+                    return (
+                      <div
+                        key={p?.id ?? idx}
+                        className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] p-3 flex items-start justify-between gap-3"
+                      >
+                        <div className="min-w-0">
+                          <div className="font-semibold truncate">{name}</div>
+                          {subtitleParts.length ? (
+                            <div className="mt-1 text-xs text-gray-600 dark:text-gray-400 truncate">
+                              {subtitleParts.join(' • ')}
+                            </div>
+                          ) : (
+                            <div className="mt-1 text-xs text-gray-500">—</div>
+                          )}
                         </div>
+                        {p?.role ? <ToneBadge tone="gray">{p.role}</ToneBadge> : null}
                       </div>
-                      {p?.role ? <ToneBadge tone="gray">{p.role}</ToneBadge> : null}
-                    </div>
-                  )
-                })}
-              </div>
+                    )
+                  })}
+                </div>
+              )}
             </Card>
           ) : null}
 
@@ -754,10 +853,20 @@ export function ReservationDetails({ reservation, onViewClientHistory }: Props) 
                 </div>
 
                 <div className="mt-3 flex items-center justify-end gap-2">
-                  <button type="button" className="btn bg-gray-200 dark:bg-white/10" onClick={() => setPayFormOpen(false)} disabled={busy}>
+                  <button
+                    type="button"
+                    className="btn bg-gray-200 dark:bg-white/10"
+                    onClick={() => setPayFormOpen(false)}
+                    disabled={busy}
+                  >
                     Annuler
                   </button>
-                  <button type="button" className="btn bg-gray-900 text-white dark:bg-white dark:text-black" onClick={addPayment} disabled={busy}>
+                  <button
+                    type="button"
+                    className="btn bg-gray-900 text-white dark:bg-white dark:text-black"
+                    onClick={addPayment}
+                    disabled={busy}
+                  >
                     Enregistrer paiement
                   </button>
                 </div>
@@ -820,7 +929,8 @@ export function ReservationDetails({ reservation, onViewClientHistory }: Props) 
                       {[...pay.paiements]
                         .sort(
                           (a: any, b: any) =>
-                            +new Date(b?.date_paiement || b?.created_at || 0) - +new Date(a?.date_paiement || a?.created_at || 0)
+                            +new Date(b?.date_paiement || b?.created_at || 0) -
+                            +new Date(a?.date_paiement || a?.created_at || 0)
                         )
                         .map((p: any) => {
                           const st = normalizeStatut(p?.statut)

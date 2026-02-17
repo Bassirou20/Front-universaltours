@@ -25,13 +25,22 @@ function useDebouncedValue<T>(value: T, delay = 300) {
   return debounced
 }
 
+// ✅ FIX: support Laravel ResourceCollection shapes: { data: { data: [...] } } etc.
 const normalizePaged = (input: any) => {
-  const items = Array.isArray(input?.data) ? input.data : Array.isArray(input?.items) ? input.items : []
+  const root = input?.data && !Array.isArray(input.data) ? input.data : input
+
+  const items =
+    Array.isArray(root?.data) ? root.data
+    : Array.isArray(root?.items) ? root.items
+    : Array.isArray(root?.data?.data) ? root.data.data
+    : Array.isArray(root?.data?.items) ? root.data.items
+    : []
+
   return {
     items,
-    page: input?.current_page ?? input?.page ?? 1,
-    lastPage: input?.last_page ?? input?.lastPage ?? 1,
-    total: input?.total ?? 0,
+    page: root?.current_page ?? root?.page ?? root?.data?.current_page ?? 1,
+    lastPage: root?.last_page ?? root?.lastPage ?? root?.data?.last_page ?? 1,
+    total: root?.total ?? root?.data?.total ?? 0,
   }
 }
 
@@ -233,15 +242,24 @@ export default function ReservationsPage() {
   const q = useQuery({
     queryKey: ['reservations', { page, perPage, search: debouncedSearch, type, statut, clientIdFilter }] as const,
     queryFn: async () => {
+      const s = (debouncedSearch || '').trim()
+
       const { data } = await api.get('/reservations', {
         params: {
           page,
           per_page: perPage,
+
+          // ✅ envoie plusieurs noms possibles (selon ton backend)
           search: debouncedSearch || undefined,
+          q: debouncedSearch || undefined,
+          query: debouncedSearch || undefined,
+          keyword: debouncedSearch || undefined,
+
           type: type || undefined,
           statut: statut || undefined,
           client_id: clientIdFilter || undefined,
         },
+
       })
       return data
     },
@@ -328,18 +346,13 @@ export default function ReservationsPage() {
 
     const date_facture = new Date().toISOString().slice(0, 10)
 
-    // 1) récupérer ou créer facture via endpoint reservations/:id/factures
     const factureRes = await api.post(`/reservations/${reservation.id}/factures`, { date_facture })
     const facture = factureRes.data?.data ?? factureRes.data
 
-    // 2) émettre (si endpoint existe)
     try {
       await api.post(`/factures/${facture.id}/emettre`)
-    } catch {
-      // si ton backend n’a pas emettre() ou route: ignorer
-    }
+    } catch {}
 
-    // 3) paiement
     await api.post(`/factures/${facture.id}/paiements`, {
       montant,
       mode_paiement: acompte.mode_paiement,
@@ -378,56 +391,53 @@ export default function ReservationsPage() {
   })
 
   const mUpdate = useMutation({
-  mutationFn: async (vals: ReservationInput) => {
-    const { acompte, ...payload } = vals as any
-    const res = await api.put(`/reservations/${editing?.id}`, payload)
-    return { reservation: res.data?.data ?? res.data, acompte }
-  },
-  onSuccess: async ({ reservation, acompte }) => {
-    try {
-      qc.invalidateQueries({ queryKey: ['reservations'] })
-      if (reservation?.id) qc.invalidateQueries({ queryKey: ['reservation', reservation.id] })
+    mutationFn: async (vals: ReservationInput) => {
+      const { acompte, ...payload } = vals as any
+      const res = await api.put(`/reservations/${editing?.id}`, payload)
+      return { reservation: res.data?.data ?? res.data, acompte }
+    },
+    onSuccess: async ({ reservation, acompte }) => {
+      try {
+        qc.invalidateQueries({ queryKey: ['reservations'] })
+        if (reservation?.id) qc.invalidateQueries({ queryKey: ['reservation', reservation.id] })
 
-      const montant = Number(acompte?.montant || 0)
-      if (reservation?.id && montant > 0) {
-        // 1) assurer facture
-        const date_facture = new Date().toISOString().slice(0, 10)
-        const factureRes = await api.post(`/reservations/${reservation.id}/factures`, { date_facture })
-        const facture = factureRes.data?.data ?? factureRes.data
+        const montant = Number(acompte?.montant || 0)
+        if (reservation?.id && montant > 0) {
+          const date_facture = new Date().toISOString().slice(0, 10)
+          const factureRes = await api.post(`/reservations/${reservation.id}/factures`, { date_facture })
+          const facture = factureRes.data?.data ?? factureRes.data
 
-        // 2) émettre (si ton backend a la route; sinon supprime ce bloc)
-        try {
-          await api.post(`/factures/${facture.id}/emettre`)
-        } catch {}
+          try {
+            await api.post(`/factures/${facture.id}/emettre`)
+          } catch {}
 
-        // 3) paiement
-        await api.post(`/factures/${facture.id}/paiements`, {
-          montant,
-          mode_paiement: acompte?.mode_paiement || 'especes',
-          reference: acompte?.reference || null,
-          statut: 'recu',
-        })
+          await api.post(`/factures/${facture.id}/paiements`, {
+            montant,
+            mode_paiement: acompte?.mode_paiement || 'especes',
+            reference: acompte?.reference || null,
+            statut: 'recu',
+          })
 
-        toast.push({ title: 'Réservation mise à jour + acompte enregistré', tone: 'success' })
-      } else {
-        toast.push({ title: 'Réservation mise à jour', tone: 'success' })
+          toast.push({ title: 'Réservation mise à jour + acompte enregistré', tone: 'success' })
+        } else {
+          toast.push({ title: 'Réservation mise à jour', tone: 'success' })
+        }
+
+        setFormOpen(false)
+        setEditing(null)
+      } catch (err: any) {
+        const msg = err?.response?.data?.message || "Réservation modifiée, mais échec lors de l'enregistrement de l'acompte."
+        toast.push({ title: msg, tone: 'error' })
+      } finally {
+        qc.invalidateQueries({ queryKey: ['reservations'] })
+        if (reservation?.id) qc.invalidateQueries({ queryKey: ['reservation', reservation.id] })
       }
-
-      setFormOpen(false)
-      setEditing(null)
-    } catch (err: any) {
-      const msg = err?.response?.data?.message || "Réservation modifiée, mais échec lors de l'enregistrement de l'acompte."
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.message || 'Erreur lors de la mise à jour.'
       toast.push({ title: msg, tone: 'error' })
-    } finally {
-      qc.invalidateQueries({ queryKey: ['reservations'] })
-      if (reservation?.id) qc.invalidateQueries({ queryKey: ['reservation', reservation.id] })
-    }
-  },
-  onError: (err: any) => {
-    const msg = err?.response?.data?.message || 'Erreur lors de la mise à jour.'
-    toast.push({ title: msg, tone: 'error' })
-  },
-})
+    },
+  })
 
   const mDelete = useMutation({
     mutationFn: (id: number) => api.delete(`/reservations/${id}`),
@@ -488,18 +498,16 @@ export default function ReservationsPage() {
     setFormOpen(true)
   }
 
-  // ✅ FIX: charger tous les champs en edit via GET /reservations/:id
   const openEdit = async (r: any) => {
-  try {
-    const { data } = await api.get(`/reservations/${r.id}`)
-    const full = data?.data ?? data
-    setEditing(full)
-    setFormOpen(true)
-  } catch (err: any) {
-    toast.push({ title: "Impossible de charger la réservation pour modification.", tone: 'error' })
+    try {
+      const { data } = await api.get(`/reservations/${r.id}`)
+      const full = data?.data ?? data
+      setEditing(full)
+      setFormOpen(true)
+    } catch (err: any) {
+      toast.push({ title: 'Impossible de charger la réservation pour modification.', tone: 'error' })
+    }
   }
-}
-
 
   const openDetails = (rOrId: any) => {
     const id = typeof rOrId === 'number' ? rOrId : rOrId?.id ?? rOrId?.reservation_id ?? null
@@ -539,7 +547,9 @@ export default function ReservationsPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-xl font-semibold">Réservations</h2>
-          <p className="text-sm text-gray-600 dark:text-gray-400">Gérez les réservations (vol, hôtel, voiture, événement, forfait).</p>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Gérez les réservations (vol, hôtel, voiture, événement, forfait).
+          </p>
         </div>
 
         <button className="btn-primary" onClick={openCreate} type="button">
@@ -553,7 +563,12 @@ export default function ReservationsPage() {
           <div className="inline-flex items-center gap-2 rounded-full border border-black/10 dark:border-white/10 bg-white dark:bg-panel px-3 py-1.5 text-sm shadow-soft">
             <span className="text-gray-600 dark:text-gray-300">Historique :</span>
             <span className="font-medium">{clientLabelFilter || `Client #${clientIdFilter}`}</span>
-            <button type="button" className="btn px-2 bg-gray-200 dark:bg-white/10" onClick={clearClientHistoryFilter} title="Réinitialiser">
+            <button
+              type="button"
+              className="btn px-2 bg-gray-200 dark:bg-white/10"
+              onClick={clearClientHistoryFilter}
+              title="Réinitialiser"
+            >
               <X size={14} />
             </button>
           </div>
@@ -641,6 +656,7 @@ export default function ReservationsPage() {
           <T className="w-full">
             <thead className="bg-gray-100/70 dark:bg-white/5">
               <tr>
+                <Th>date</Th>
                 <Th>Référence</Th>
                 <Th className="hidden lg:table-cell">Type</Th>
                 <Th>Client</Th>
@@ -654,13 +670,14 @@ export default function ReservationsPage() {
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <Td colSpan={7} className="text-center py-6 text-gray-500">
+                  <Td colSpan={8} className="text-center py-6 text-gray-500">
                     Aucune réservation trouvée
                   </Td>
                 </tr>
               ) : (
                 rows.map((r: any) => {
-                  const clientName = [r?.client?.prenom, r?.client?.nom].filter(Boolean).join(' ') || r?.client?.nom || '—'
+                  const clientName =
+                    [r?.client?.prenom, r?.client?.nom].filter(Boolean).join(' ') || r?.client?.nom || '—'
                   const canConfirm = r?.statut === 'en_attente' || r?.statut === 'brouillon'
                   const canCancel = r?.statut === 'en_attente' || r?.statut === 'brouillon'
                   const factureId = pickFactureIdFromReservation(r)
@@ -668,12 +685,7 @@ export default function ReservationsPage() {
                   const actions = [
                     { label: 'Voir', icon: <Eye size={16} />, onClick: () => openDetails(r) },
                     { label: 'Modifier', icon: <Pencil size={16} />, onClick: () => openEdit(r) },
-                    {
-                      label: 'Devis (PDF)',
-                      icon: <FileText size={16} />,
-                      disabled: false,
-                      onClick: () => downloadDevisPdf(r.id),
-                    },
+                    { label: 'Devis (PDF)', icon: <FileText size={16} />, disabled: false, onClick: () => downloadDevisPdf(r.id) },
                     {
                       label: 'Télécharger facture',
                       icon: <Receipt size={16} />,
@@ -692,33 +704,19 @@ export default function ReservationsPage() {
                         }
                       },
                     },
-                    {
-                      label: 'Confirmer',
-                      icon: <CheckCircle2 size={16} />,
-                      disabled: !canConfirm || isPendingMutation,
-                      onClick: () => mConfirmer.mutate(r.id),
-                    },
-                    {
-                      label: 'Annuler',
-                      icon: <XCircle size={16} />,
-                      disabled: !canCancel || isPendingMutation,
-                      onClick: () => mAnnuler.mutate(r.id),
-                    },
+                    { label: 'Confirmer', icon: <CheckCircle2 size={16} />, disabled: !canConfirm || isPendingMutation, onClick: () => mConfirmer.mutate(r.id) },
+                    { label: 'Annuler', icon: <XCircle size={16} />, disabled: !canCancel || isPendingMutation, onClick: () => mAnnuler.mutate(r.id) },
                     ...(isAdmin
-                      ? [
-                          {
-                            label: 'Supprimer',
-                            icon: <Trash2 size={16} />,
-                            tone: 'danger' as const,
-                            disabled: isPendingMutation,
-                            onClick: () => askDelete(r.id),
-                          },
-                        ]
+                      ? [{ label: 'Supprimer', icon: <Trash2 size={16} />, tone: 'danger' as const, disabled: isPendingMutation, onClick: () => askDelete(r.id) }]
                       : []),
                   ]
 
                   return (
                     <tr key={r.id} className="border-t border-black/5 dark:border-white/10 hover:bg-black/[0.02] dark:hover:bg-white/[0.03]">
+                      <Td className="hidden lg:table-cell whitespace-nowrap">
+                        {r.created_at ? new Date(r.created_at).toLocaleDateString() : '—'}
+                      </Td>
+
                       <Td className="font-medium whitespace-nowrap">{r.reference ?? `#${r.id}`}</Td>
                       <Td className="hidden lg:table-cell">{r.type_label ?? r.type ?? '—'}</Td>
 
@@ -778,7 +776,9 @@ export default function ReservationsPage() {
                   {viewingReservation?.reference ? `Réservation ${viewingReservation.reference}` : 'Réservation'}
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                  {viewingReservation?.client ? `${viewingReservation.client?.prenom ?? ''} ${viewingReservation.client?.nom ?? ''}`.trim() : ''}
+                  {viewingReservation?.client
+                    ? `${viewingReservation.client?.prenom ?? ''} ${viewingReservation.client?.nom ?? ''}`.trim()
+                    : ''}
                 </div>
               </div>
 
