@@ -29,7 +29,9 @@ import {
 type Props = {
   reservation: any
   onViewClientHistory?: (clientId: number, label?: string) => void
+  onChanged?: () => void
 }
+
 
 /* -------------------- UI helpers -------------------- */
 function cx(...cls: Array<string | false | undefined | null>) {
@@ -248,7 +250,7 @@ function computePay(r: any) {
 }
 
 /* -------------------- Main -------------------- */
-export function ReservationDetails({ reservation, onViewClientHistory }: Props) {
+export function ReservationDetails({ reservation, onViewClientHistory,onChanged }: Props) {
   const toast = useToast()
 
   // ✅ copie locale pour pouvoir refresh après actions rapides
@@ -387,6 +389,7 @@ export function ReservationDetails({ reservation, onViewClientHistory }: Props) 
       }
       await downloadFacturePdf(Number(facture.id), facture?.numero)
       await refreshReservation()
+      onChanged?.()
     } catch (err: any) {
       const msg = err?.response?.data?.message || 'Impossible de télécharger la facture.'
       toast.push({ title: msg, tone: 'error' })
@@ -408,6 +411,7 @@ export function ReservationDetails({ reservation, onViewClientHistory }: Props) 
       await api.post(`/factures/${facture.id}/emettre`)
       toast.push({ title: 'Facture émise', tone: 'success' })
       await refreshReservation()
+      onChanged?.()
     } catch (err: any) {
       const msg =
         err?.response?.data?.message ||
@@ -452,6 +456,7 @@ export function ReservationDetails({ reservation, onViewClientHistory }: Props) 
       setPaymentForm({ montant: 0, mode_paiement: 'especes', reference: '' })
       setPayFormOpen(false)
       await refreshReservation()
+      onChanged?.()
     } catch (err: any) {
       const msg = err?.response?.data?.message || 'Impossible d’enregistrer le paiement.'
       toast.push({ title: msg, tone: 'error' })

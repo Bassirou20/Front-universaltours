@@ -13,7 +13,7 @@ import { ReservationsForm, type ReservationInput } from './ReservationsForm'
 import { ReservationDetails } from './ReservationDetails'
 import { useAuth } from '../../store/auth'
 import { useSearchParams } from 'react-router-dom'
-import { Plus, Search, Eye, Pencil, Trash2, CheckCircle2, XCircle, X, Receipt, FileText } from 'lucide-react'
+import { Plus, Search, Eye, Pencil, Trash2, CheckCircle2, XCircle, X, Receipt, FileText, RefreshCw  } from 'lucide-react'
 
 // -------------------- helpers --------------------
 function useDebouncedValue<T>(value: T, delay = 300) {
@@ -25,22 +25,13 @@ function useDebouncedValue<T>(value: T, delay = 300) {
   return debounced
 }
 
-// ✅ FIX: support Laravel ResourceCollection shapes: { data: { data: [...] } } etc.
 const normalizePaged = (input: any) => {
-  const root = input?.data && !Array.isArray(input.data) ? input.data : input
-
-  const items =
-    Array.isArray(root?.data) ? root.data
-    : Array.isArray(root?.items) ? root.items
-    : Array.isArray(root?.data?.data) ? root.data.data
-    : Array.isArray(root?.data?.items) ? root.data.items
-    : []
-
+  const items = Array.isArray(input?.data) ? input.data : Array.isArray(input?.items) ? input.items : []
   return {
     items,
-    page: root?.current_page ?? root?.page ?? root?.data?.current_page ?? 1,
-    lastPage: root?.last_page ?? root?.lastPage ?? root?.data?.last_page ?? 1,
-    total: root?.total ?? root?.data?.total ?? 0,
+    page: input?.current_page ?? input?.page ?? 1,
+    lastPage: input?.last_page ?? input?.lastPage ?? 1,
+    total: input?.total ?? 0,
   }
 }
 
@@ -140,6 +131,8 @@ function computePaymentSummaryFromReservation(r: any): {
   return { total, paid, percent, label: 'Partiel', tone: 'amber' }
 }
 
+
+
 function PaymentBadge({ reservation }: { reservation: any }) {
   const base = 'inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium whitespace-nowrap'
   const s = computePaymentSummaryFromReservation(reservation)
@@ -161,6 +154,24 @@ function PaymentBadge({ reservation }: { reservation: any }) {
   )
 }
 
+// ✅ options "mois"
+function buildMonthOptions(count = 12) {
+  const out: Array<{ value: string; label: string }> = []
+  const now = new Date()
+  // on se place au 1er du mois pour éviter les bugs de date
+  const base = new Date(now.getFullYear(), now.getMonth(), 1)
+
+  for (let i = 0; i < count; i++) {
+    const d = new Date(base.getFullYear(), base.getMonth() - i, 1)
+    const yyyy = d.getFullYear()
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    const value = `${yyyy}-${mm}` // YYYY-MM
+    const label = d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+    out.push({ value, label })
+  }
+  return out
+}
+
 type Reservation = any
 
 export default function ReservationsPage() {
@@ -168,6 +179,9 @@ export default function ReservationsPage() {
   const toast = useToast()
   const [sp] = useSearchParams()
   const [prefillCreate, setPrefillCreate] = useState<{ client_id?: number } | null>(null)
+  const refreshList = () => {
+    q.refetch()
+  }
 
   const { user } = useAuth()
   const isAdmin = String(user?.role || '').toLowerCase() === 'admin'
@@ -178,7 +192,9 @@ export default function ReservationsPage() {
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebouncedValue(search, 300)
   const [type, setType] = useState<string>('')
-  const [statut, setStatut] = useState<string>('')
+
+  // ✅ remplace "statut" par "month"
+  const [month, setMonth] = useState<string>('') // format YYYY-MM
 
   const [clientIdFilter, setClientIdFilter] = useState<number | null>(null)
   const [clientLabelFilter, setClientLabelFilter] = useState<string>('')
@@ -190,6 +206,8 @@ export default function ReservationsPage() {
   const [viewingId, setViewingId] = useState<number | null>(null)
 
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id?: number }>({ open: false })
+
+  const monthOptions = useMemo(() => buildMonthOptions(12), [])
 
   useEffect(() => {
     const cid = sp.get('client_id')
@@ -240,26 +258,17 @@ export default function ReservationsPage() {
 
   // -------------------- Queries --------------------
   const q = useQuery({
-    queryKey: ['reservations', { page, perPage, search: debouncedSearch, type, statut, clientIdFilter }] as const,
+    queryKey: ['reservations', { page, perPage, search: debouncedSearch, type, month, clientIdFilter }] as const,
     queryFn: async () => {
-      const s = (debouncedSearch || '').trim()
-
       const { data } = await api.get('/reservations', {
         params: {
           page,
           per_page: perPage,
-
-          // ✅ envoie plusieurs noms possibles (selon ton backend)
           search: debouncedSearch || undefined,
-          q: debouncedSearch || undefined,
-          query: debouncedSearch || undefined,
-          keyword: debouncedSearch || undefined,
-
           type: type || undefined,
-          statut: statut || undefined,
+          month: month || undefined, // ✅ filtre mois (YYYY-MM)
           client_id: clientIdFilter || undefined,
         },
-
       })
       return data
     },
@@ -545,17 +554,33 @@ export default function ReservationsPage() {
     <div className="space-y-4">
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-xl font-semibold">Réservations</h2>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            Gérez les réservations (vol, hôtel, voiture, événement, forfait).
-          </p>
-        </div>
+  <div>
+    <h2 className="text-xl font-semibold">Réservations</h2>
+    <p className="text-sm text-gray-600 dark:text-gray-400">
+      Gérez les réservations (vol, hôtel, voiture, événement, forfait).
+    </p>
+  </div>
 
-        <button className="btn-primary" onClick={openCreate} type="button">
-          <Plus size={16} className="mr-2" /> Nouvelle réservation
-        </button>
-      </div>
+  <div className="flex items-center gap-2">
+    <button
+      type="button"
+      onClick={refreshList}
+      className="btn bg-gray-200 dark:bg-white/10 inline-flex items-center gap-2"
+      title="Actualiser la liste"
+    >
+      <RefreshCw
+        size={16}
+        className={q.isFetching ? 'animate-spin' : ''}
+      />
+      Actualiser
+    </button>
+
+    <button className="btn-primary" onClick={openCreate} type="button">
+      <Plus size={16} className="mr-2" /> Nouvelle réservation
+    </button>
+  </div>
+</div>
+
 
       {/* Chip filtre historique client */}
       {clientIdFilter ? (
@@ -563,12 +588,7 @@ export default function ReservationsPage() {
           <div className="inline-flex items-center gap-2 rounded-full border border-black/10 dark:border-white/10 bg-white dark:bg-panel px-3 py-1.5 text-sm shadow-soft">
             <span className="text-gray-600 dark:text-gray-300">Historique :</span>
             <span className="font-medium">{clientLabelFilter || `Client #${clientIdFilter}`}</span>
-            <button
-              type="button"
-              className="btn px-2 bg-gray-200 dark:bg-white/10"
-              onClick={clearClientHistoryFilter}
-              title="Réinitialiser"
-            >
+            <button type="button" className="btn px-2 bg-gray-200 dark:bg-white/10" onClick={clearClientHistoryFilter} title="Réinitialiser">
               <X size={14} />
             </button>
           </div>
@@ -626,21 +646,23 @@ export default function ReservationsPage() {
             </select>
           </div>
 
+          {/* ✅ Remplace statut par mois */}
           <div>
-            <label className="label">Statut</label>
+            <label className="label">Mois</label>
             <select
               className="input"
-              value={statut}
+              value={month}
               onChange={(e) => {
-                setStatut(e.target.value)
+                setMonth(e.target.value)
                 setPage(1)
               }}
             >
               <option value="">Tous</option>
-              <option value="brouillon">Brouillon</option>
-              <option value="en_attente">En attente</option>
-              <option value="confirmee">Confirmée</option>
-              <option value="annulee">Annulée</option>
+              {monthOptions.map((m) => (
+                <option key={m.value} value={m.value}>
+                  {m.label}
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -676,8 +698,7 @@ export default function ReservationsPage() {
                 </tr>
               ) : (
                 rows.map((r: any) => {
-                  const clientName =
-                    [r?.client?.prenom, r?.client?.nom].filter(Boolean).join(' ') || r?.client?.nom || '—'
+                  const clientName = [r?.client?.prenom, r?.client?.nom].filter(Boolean).join(' ') || r?.client?.nom || '—'
                   const canConfirm = r?.statut === 'en_attente' || r?.statut === 'brouillon'
                   const canCancel = r?.statut === 'en_attente' || r?.statut === 'brouillon'
                   const factureId = pickFactureIdFromReservation(r)
@@ -685,7 +706,12 @@ export default function ReservationsPage() {
                   const actions = [
                     { label: 'Voir', icon: <Eye size={16} />, onClick: () => openDetails(r) },
                     { label: 'Modifier', icon: <Pencil size={16} />, onClick: () => openEdit(r) },
-                    { label: 'Devis (PDF)', icon: <FileText size={16} />, disabled: false, onClick: () => downloadDevisPdf(r.id) },
+                    {
+                      label: 'Devis (PDF)',
+                      icon: <FileText size={16} />,
+                      disabled: false,
+                      onClick: () => downloadDevisPdf(r.id),
+                    },
                     {
                       label: 'Télécharger facture',
                       icon: <Receipt size={16} />,
@@ -704,15 +730,36 @@ export default function ReservationsPage() {
                         }
                       },
                     },
-                    { label: 'Confirmer', icon: <CheckCircle2 size={16} />, disabled: !canConfirm || isPendingMutation, onClick: () => mConfirmer.mutate(r.id) },
-                    { label: 'Annuler', icon: <XCircle size={16} />, disabled: !canCancel || isPendingMutation, onClick: () => mAnnuler.mutate(r.id) },
+                    {
+                      label: 'Confirmer',
+                      icon: <CheckCircle2 size={16} />,
+                      disabled: !canConfirm || isPendingMutation,
+                      onClick: () => mConfirmer.mutate(r.id),
+                    },
+                    {
+                      label: 'Annuler',
+                      icon: <XCircle size={16} />,
+                      disabled: !canCancel || isPendingMutation,
+                      onClick: () => mAnnuler.mutate(r.id),
+                    },
                     ...(isAdmin
-                      ? [{ label: 'Supprimer', icon: <Trash2 size={16} />, tone: 'danger' as const, disabled: isPendingMutation, onClick: () => askDelete(r.id) }]
+                      ? [
+                          {
+                            label: 'Supprimer',
+                            icon: <Trash2 size={16} />,
+                            tone: 'danger' as const,
+                            disabled: isPendingMutation,
+                            onClick: () => askDelete(r.id),
+                          },
+                        ]
                       : []),
                   ]
 
                   return (
-                    <tr key={r.id} className="border-t border-black/5 dark:border-white/10 hover:bg-black/[0.02] dark:hover:bg-white/[0.03]">
+                    <tr
+                      key={r.id}
+                      className="border-t border-black/5 dark:border-white/10 hover:bg-black/[0.02] dark:hover:bg-white/[0.03]"
+                    >
                       <Td className="hidden lg:table-cell whitespace-nowrap">
                         {r.created_at ? new Date(r.created_at).toLocaleDateString() : '—'}
                       </Td>
@@ -776,9 +823,7 @@ export default function ReservationsPage() {
                   {viewingReservation?.reference ? `Réservation ${viewingReservation.reference}` : 'Réservation'}
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                  {viewingReservation?.client
-                    ? `${viewingReservation.client?.prenom ?? ''} ${viewingReservation.client?.nom ?? ''}`.trim()
-                    : ''}
+                  {viewingReservation?.client ? `${viewingReservation.client?.prenom ?? ''} ${viewingReservation.client?.nom ?? ''}`.trim() : ''}
                 </div>
               </div>
 
