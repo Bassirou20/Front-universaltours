@@ -13,7 +13,19 @@ import { ReservationsForm, type ReservationInput } from './ReservationsForm'
 import { ReservationDetails } from './ReservationDetails'
 import { useAuth } from '../../store/auth'
 import { useSearchParams } from 'react-router-dom'
-import { Plus, Search, Eye, Pencil, Trash2, CheckCircle2, XCircle, X, Receipt, FileText, RefreshCw  } from 'lucide-react'
+import {
+  Plus,
+  Search,
+  Eye,
+  Pencil,
+  Trash2,
+  CheckCircle2,
+  XCircle,
+  X,
+  Receipt,
+  FileText,
+  RefreshCw,
+} from 'lucide-react'
 
 // -------------------- helpers --------------------
 function useDebouncedValue<T>(value: T, delay = 300) {
@@ -131,8 +143,6 @@ function computePaymentSummaryFromReservation(r: any): {
   return { total, paid, percent, label: 'Partiel', tone: 'amber' }
 }
 
-
-
 function PaymentBadge({ reservation }: { reservation: any }) {
   const base = 'inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium whitespace-nowrap'
   const s = computePaymentSummaryFromReservation(reservation)
@@ -158,14 +168,13 @@ function PaymentBadge({ reservation }: { reservation: any }) {
 function buildMonthOptions(count = 12) {
   const out: Array<{ value: string; label: string }> = []
   const now = new Date()
-  // on se place au 1er du mois pour éviter les bugs de date
   const base = new Date(now.getFullYear(), now.getMonth(), 1)
 
   for (let i = 0; i < count; i++) {
     const d = new Date(base.getFullYear(), base.getMonth() - i, 1)
     const yyyy = d.getFullYear()
     const mm = String(d.getMonth() + 1).padStart(2, '0')
-    const value = `${yyyy}-${mm}` // YYYY-MM
+    const value = `${yyyy}-${mm}`
     const label = d.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
     out.push({ value, label })
   }
@@ -179,9 +188,6 @@ export default function ReservationsPage() {
   const toast = useToast()
   const [sp] = useSearchParams()
   const [prefillCreate, setPrefillCreate] = useState<{ client_id?: number } | null>(null)
-  const refreshList = () => {
-    q.refetch()
-  }
 
   const { user } = useAuth()
   const isAdmin = String(user?.role || '').toLowerCase() === 'admin'
@@ -193,8 +199,7 @@ export default function ReservationsPage() {
   const debouncedSearch = useDebouncedValue(search, 300)
   const [type, setType] = useState<string>('')
 
-  // ✅ remplace "statut" par "month"
-  const [month, setMonth] = useState<string>('') // format YYYY-MM
+  const [month, setMonth] = useState<string>('') // YYYY-MM
 
   const [clientIdFilter, setClientIdFilter] = useState<number | null>(null)
   const [clientLabelFilter, setClientLabelFilter] = useState<string>('')
@@ -208,6 +213,37 @@ export default function ReservationsPage() {
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id?: number }>({ open: false })
 
   const monthOptions = useMemo(() => buildMonthOptions(12), [])
+
+  // -------------------- Queries --------------------
+  const q = useQuery({
+    queryKey: ['reservations', { page, perPage, search: debouncedSearch, type, month, clientIdFilter }] as const,
+    queryFn: async () => {
+      const { data } = await api.get('/reservations', {
+        params: {
+          page,
+          per_page: perPage,
+          search: debouncedSearch || undefined,
+          type: type || undefined,
+          month: month || undefined,
+          client_id: clientIdFilter || undefined,
+        },
+      })
+      return data
+    },
+    placeholderData: keepPreviousData,
+  })
+
+  const refreshList = () => {
+    // ✅ refetch direct (comme dans ReservationForm où ça marche)
+    q.refetch()
+  }
+
+  // ✅ fermeture du modal détails => refresh liste
+  const closeDetails = () => {
+    setDetailsOpen(false)
+    setViewingId(null)
+    refreshList()
+  }
 
   useEffect(() => {
     const cid = sp.get('client_id')
@@ -233,47 +269,6 @@ export default function ReservationsPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-
-  const patchReservationInCache = (id: number, patch: Partial<any>) => {
-    qc.setQueriesData({ queryKey: ['reservations'] }, (old: any) => {
-      if (!old) return old
-      const data = old?.data ?? old
-      const items = Array.isArray(data?.data) ? data.data : Array.isArray(data?.items) ? data.items : null
-      if (!items) return old
-
-      const nextItems = items.map((r: any) => (Number(r.id) === Number(id) ? { ...r, ...patch } : r))
-
-      if (Array.isArray(data?.data)) return { ...old, data: { ...data, data: nextItems } }
-      if (Array.isArray(data?.items)) return { ...old, items: nextItems }
-      return old
-    })
-
-    qc.setQueryData(['reservation', id], (old: any) => {
-      if (!old) return old
-      const data = old?.data ?? old
-      const next = { ...data, ...patch }
-      return old?.data ? { ...old, data: next } : next
-    })
-  }
-
-  // -------------------- Queries --------------------
-  const q = useQuery({
-    queryKey: ['reservations', { page, perPage, search: debouncedSearch, type, month, clientIdFilter }] as const,
-    queryFn: async () => {
-      const { data } = await api.get('/reservations', {
-        params: {
-          page,
-          per_page: perPage,
-          search: debouncedSearch || undefined,
-          type: type || undefined,
-          month: month || undefined, // ✅ filtre mois (YYYY-MM)
-          client_id: clientIdFilter || undefined,
-        },
-      })
-      return data
-    },
-    placeholderData: keepPreviousData,
-  })
 
   const paged = useMemo(() => normalizePaged(q.data), [q.data])
   const rows: Reservation[] = useMemo(() => paged.items ?? [], [paged.items])
@@ -462,18 +457,13 @@ export default function ReservationsPage() {
 
   const mConfirmer = useMutation({
     mutationFn: (id: number) => api.post(`/reservations/${id}/confirmer`),
-    onMutate: async (id) => {
-      await qc.cancelQueries({ queryKey: ['reservations'] })
-      patchReservationInCache(id, { statut: 'confirmee' })
-    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['reservations'] })
       if (detailsOpen && viewingId) qc.invalidateQueries({ queryKey: ['reservation', viewingId] })
       toast.push({ title: 'Réservation confirmée', tone: 'success' })
     },
-    onError: (err: any, id) => {
+    onError: (err: any) => {
       qc.invalidateQueries({ queryKey: ['reservations'] })
-      qc.invalidateQueries({ queryKey: ['reservation', id] })
       const msg = err?.response?.data?.message || 'Impossible de confirmer.'
       toast.push({ title: msg, tone: 'error' })
     },
@@ -481,18 +471,13 @@ export default function ReservationsPage() {
 
   const mAnnuler = useMutation({
     mutationFn: (id: number) => api.post(`/reservations/${id}/annuler`),
-    onMutate: async (id) => {
-      await qc.cancelQueries({ queryKey: ['reservations'] })
-      patchReservationInCache(id, { statut: 'annulee' })
-    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['reservations'] })
       if (detailsOpen && viewingId) qc.invalidateQueries({ queryKey: ['reservation', viewingId] })
       toast.push({ title: 'Réservation annulée', tone: 'success' })
     },
-    onError: (err: any, id) => {
+    onError: (err: any) => {
       qc.invalidateQueries({ queryKey: ['reservations'] })
-      qc.invalidateQueries({ queryKey: ['reservation', id] })
       const msg = err?.response?.data?.message || "Impossible d'annuler."
       toast.push({ title: msg, tone: 'error' })
     },
@@ -513,7 +498,7 @@ export default function ReservationsPage() {
       const full = data?.data ?? data
       setEditing(full)
       setFormOpen(true)
-    } catch (err: any) {
+    } catch {
       toast.push({ title: 'Impossible de charger la réservation pour modification.', tone: 'error' })
     }
   }
@@ -554,33 +539,29 @@ export default function ReservationsPage() {
     <div className="space-y-4">
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-  <div>
-    <h2 className="text-xl font-semibold">Réservations</h2>
-    <p className="text-sm text-gray-600 dark:text-gray-400">
-      Gérez les réservations (vol, hôtel, voiture, événement, forfait).
-    </p>
-  </div>
+        <div>
+          <h2 className="text-xl font-semibold">Réservations</h2>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Gérez les réservations (vol, hôtel, voiture, événement, forfait).
+          </p>
+        </div>
 
-  <div className="flex items-center gap-2">
-    <button
-      type="button"
-      onClick={refreshList}
-      className="btn bg-gray-200 dark:bg-white/10 inline-flex items-center gap-2"
-      title="Actualiser la liste"
-    >
-      <RefreshCw
-        size={16}
-        className={q.isFetching ? 'animate-spin' : ''}
-      />
-      Actualiser
-    </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={refreshList}
+            className="btn bg-gray-200 dark:bg-white/10 inline-flex items-center gap-2"
+            title="Actualiser la liste"
+          >
+            <RefreshCw size={16} className={q.isFetching ? 'animate-spin' : ''} />
+            Actualiser
+          </button>
 
-    <button className="btn-primary" onClick={openCreate} type="button">
-      <Plus size={16} className="mr-2" /> Nouvelle réservation
-    </button>
-  </div>
-</div>
-
+          <button className="btn-primary" onClick={openCreate} type="button">
+            <Plus size={16} className="mr-2" /> Nouvelle réservation
+          </button>
+        </div>
+      </div>
 
       {/* Chip filtre historique client */}
       {clientIdFilter ? (
@@ -588,7 +569,12 @@ export default function ReservationsPage() {
           <div className="inline-flex items-center gap-2 rounded-full border border-black/10 dark:border-white/10 bg-white dark:bg-panel px-3 py-1.5 text-sm shadow-soft">
             <span className="text-gray-600 dark:text-gray-300">Historique :</span>
             <span className="font-medium">{clientLabelFilter || `Client #${clientIdFilter}`}</span>
-            <button type="button" className="btn px-2 bg-gray-200 dark:bg-white/10" onClick={clearClientHistoryFilter} title="Réinitialiser">
+            <button
+              type="button"
+              className="btn px-2 bg-gray-200 dark:bg-white/10"
+              onClick={clearClientHistoryFilter}
+              title="Réinitialiser"
+            >
               <X size={14} />
             </button>
           </div>
@@ -646,7 +632,6 @@ export default function ReservationsPage() {
             </select>
           </div>
 
-          {/* ✅ Remplace statut par mois */}
           <div>
             <label className="label">Mois</label>
             <select
@@ -698,7 +683,9 @@ export default function ReservationsPage() {
                 </tr>
               ) : (
                 rows.map((r: any) => {
-                  const clientName = [r?.client?.prenom, r?.client?.nom].filter(Boolean).join(' ') || r?.client?.nom || '—'
+                  const clientName =
+                    [r?.client?.prenom, r?.client?.nom].filter(Boolean).join(' ') || r?.client?.nom || '—'
+
                   const canConfirm = r?.statut === 'en_attente' || r?.statut === 'brouillon'
                   const canCancel = r?.statut === 'en_attente' || r?.statut === 'brouillon'
                   const factureId = pickFactureIdFromReservation(r)
@@ -806,15 +793,7 @@ export default function ReservationsPage() {
       <Pagination page={paged.page} lastPage={paged.lastPage} total={paged.total} onPage={setPage} />
 
       {/* Details Modal */}
-      <Modal
-        open={detailsOpen}
-        onClose={() => {
-          setDetailsOpen(false)
-          setViewingId(null)
-        }}
-        title="Détails de la réservation"
-        widthClass="max-w-[1200px]"
-      >
+      <Modal open={detailsOpen} onClose={closeDetails} title="Détails de la réservation" widthClass="max-w-[1200px]">
         <div className={['h-[85vh] lg:h-[88vh]', 'flex flex-col', 'min-w-0'].join(' ')}>
           <div className="sticky top-0 z-10 -mx-4 -mt-4 mb-3 px-4 pt-4 pb-3 bg-white dark:bg-panel border-b border-black/5 dark:border-white/10">
             <div className="flex items-center justify-between gap-3">
@@ -823,18 +802,13 @@ export default function ReservationsPage() {
                   {viewingReservation?.reference ? `Réservation ${viewingReservation.reference}` : 'Réservation'}
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                  {viewingReservation?.client ? `${viewingReservation.client?.prenom ?? ''} ${viewingReservation.client?.nom ?? ''}`.trim() : ''}
+                  {viewingReservation?.client
+                    ? `${viewingReservation.client?.prenom ?? ''} ${viewingReservation.client?.nom ?? ''}`.trim()
+                    : ''}
                 </div>
               </div>
 
-              <button
-                type="button"
-                className="btn px-3 bg-gray-200 dark:bg-white/10"
-                onClick={() => {
-                  setDetailsOpen(false)
-                  setViewingId(null)
-                }}
-              >
+              <button type="button" className="btn px-3 bg-gray-200 dark:bg-white/10" onClick={closeDetails}>
                 Fermer
               </button>
             </div>
@@ -847,7 +821,15 @@ export default function ReservationsPage() {
               ) : qDetails.isError ? (
                 <div className="py-6 text-sm text-red-600">Impossible de charger les détails.</div>
               ) : viewingReservation ? (
-                <ReservationDetails reservation={viewingReservation} {...({ onViewClientHistory: viewClientHistory } as any)} />
+                <ReservationDetails
+                  reservation={viewingReservation}
+                  onViewClientHistory={viewClientHistory as any}
+                  onChanged={() => {
+                    // ✅ après paiement / facture: refresh détails + liste
+                    qDetails.refetch()
+                    refreshList()
+                  }}
+                />
               ) : (
                 <div className="py-6 text-sm text-gray-500">Aucune donnée.</div>
               )

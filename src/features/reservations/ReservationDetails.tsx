@@ -24,6 +24,11 @@ import {
   Download,
   CreditCard,
   Zap,
+  Building2,
+  Route,
+  Clock,
+  Ticket,
+  Tag,
 } from 'lucide-react'
 
 type Props = {
@@ -32,13 +37,12 @@ type Props = {
   onChanged?: () => void
 }
 
-
 /* -------------------- UI helpers -------------------- */
 function cx(...cls: Array<string | false | undefined | null>) {
   return cls.filter(Boolean).join(' ')
 }
 
-const money = (n: any, devise = 'XOF') => `${Number(n || 0).toLocaleString()} ${devise}`
+const money = (n: any, devise = 'XOF') => `${Number(String(n).replace(/[^\d.-]/g, '') || 0).toLocaleString()} ${devise}`
 
 function safeDateTime(d: any) {
   if (!d) return '—'
@@ -65,63 +69,6 @@ function downloadBlob(blob: Blob, filename: string) {
   window.URL.revokeObjectURL(url)
 }
 
-function Card({
-  title,
-  icon,
-  right,
-  children,
-}: {
-  title: string
-  icon?: React.ReactNode
-  right?: React.ReactNode
-  children: React.ReactNode
-}) {
-  return (
-    <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white dark:bg-panel shadow-soft">
-      <div className="px-4 py-3 border-b border-black/5 dark:border-white/10 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 min-w-0">
-          {icon ? <span className="text-gray-700 dark:text-gray-200">{icon}</span> : null}
-          <div className="font-semibold text-gray-900 dark:text-gray-100 truncate">{title}</div>
-        </div>
-        {right ? <div className="shrink-0">{right}</div> : null}
-      </div>
-      <div className="p-4">{children}</div>
-    </div>
-  )
-}
-
-function KV({ label, value }: { label: string; value: React.ReactNode }) {
-  return (
-    <div className="flex items-start justify-between gap-4">
-      <div className="text-sm text-gray-600 dark:text-gray-400">{label}</div>
-      <div className="text-sm font-medium text-gray-900 dark:text-gray-100 text-right max-w-[65%] break-words">
-        {value ?? '—'}
-      </div>
-    </div>
-  )
-}
-
-function ToneBadge({
-  tone,
-  children,
-}: {
-  tone: 'gray' | 'green' | 'amber' | 'red' | 'blue'
-  children: React.ReactNode
-}) {
-  const base = 'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap'
-  const cls =
-    tone === 'green'
-      ? 'bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300'
-      : tone === 'amber'
-      ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
-      : tone === 'red'
-      ? 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300'
-      : tone === 'blue'
-      ? 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300'
-      : 'bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-gray-200'
-  return <span className={`${base} ${cls}`}>{children}</span>
-}
-
 function normalizeStatut(s: any) {
   const v = String(s || '').trim().toLowerCase()
   if (v === 'confirmée') return 'confirmee'
@@ -130,15 +77,10 @@ function normalizeStatut(s: any) {
 }
 
 function normalizeTypeKey(t: any) {
-  // backend can return: "billet_avion", "billet avion", "Billet d'avion", etc.
   const raw = String(t || '').trim().toLowerCase()
   if (!raw) return 'billet_avion'
-  const v = raw
-    .replace(/['’]/g, '')
-    .replace(/\s+/g, '_')
-    .replace(/-+/g, '_')
+  const v = raw.replace(/['’]/g, '').replace(/\s+/g, '_').replace(/-+/g, '_')
 
-  // common aliases
   if (v.includes('billet') && v.includes('avion')) return 'billet_avion'
   if (v.includes('evenement') || v.includes('event')) return 'evenement'
   if (v.includes('forfait') || v.includes('package')) return 'forfait'
@@ -156,6 +98,28 @@ function normalizeArray<T>(input: any): T[] {
   return []
 }
 
+function ToneBadge({
+  tone,
+  children,
+}: {
+  tone: 'gray' | 'green' | 'amber' | 'red' | 'blue'
+  children: React.ReactNode
+}) {
+  const base =
+    'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap'
+  const cls =
+    tone === 'green'
+      ? 'bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300'
+      : tone === 'amber'
+      ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
+      : tone === 'red'
+      ? 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300'
+      : tone === 'blue'
+      ? 'bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300'
+      : 'bg-gray-100 text-gray-700 dark:bg-white/10 dark:text-gray-200'
+  return <span className={`${base} ${cls}`}>{children}</span>
+}
+
 function StatutBadge({ statut }: { statut: any }) {
   const v = normalizeStatut(statut)
   const label =
@@ -170,30 +134,86 @@ function StatutBadge({ statut }: { statut: any }) {
       : statut || '—'
 
   const tone =
-    v === 'confirmee'
-      ? 'green'
-      : v === 'annulee'
-      ? 'red'
-      : v === 'brouillon'
-      ? 'gray'
-      : 'amber'
+    v === 'confirmee' ? 'green' : v === 'annulee' ? 'red' : v === 'brouillon' ? 'gray' : 'amber'
 
   return <ToneBadge tone={tone as any}>{label}</ToneBadge>
 }
 
-const TYPE_META: Record<string, { label: string; icon: React.ReactNode; tone: 'blue' | 'gray' | 'amber' | 'green' }> =
-  {
-    billet_avion: { label: "Billet d'avion", icon: <Plane size={16} />, tone: 'blue' },
-    hotel: { label: 'Hôtel', icon: <Hotel size={16} />, tone: 'green' },
-    voiture: { label: 'Voiture', icon: <Car size={16} />, tone: 'amber' },
-    evenement: { label: 'Événement', icon: <PartyPopper size={16} />, tone: 'blue' },
-    forfait: { label: 'Forfait', icon: <Package size={16} />, tone: 'green' },
-  }
+function Card({
+  title,
+  icon,
+  right,
+  children,
+}: {
+  title: string
+  icon?: React.ReactNode
+  right?: React.ReactNode
+  children: React.ReactNode
+}) {
+  return (
+    <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white dark:bg-panel shadow-soft overflow-hidden">
+      <div className="px-4 py-3 border-b border-black/5 dark:border-white/10 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          {icon ? <span className="text-gray-700 dark:text-gray-200">{icon}</span> : null}
+          <div className="font-semibold text-gray-900 dark:text-gray-100 truncate">{title}</div>
+        </div>
+        {right ? <div className="shrink-0">{right}</div> : null}
+      </div>
+      <div className="p-4">{children}</div>
+    </div>
+  )
+}
 
+function Field({
+  label,
+  value,
+  icon,
+}: {
+  label: string
+  value: React.ReactNode
+  icon?: React.ReactNode
+}) {
+  return (
+    <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] p-3 border border-black/5 dark:border-white/10">
+      <div className="text-xs text-gray-600 dark:text-gray-400 flex items-center gap-2">
+        {icon ? <span className="opacity-70">{icon}</span> : null}
+        {label}
+      </div>
+      <div className="mt-1 text-sm font-semibold text-gray-900 dark:text-gray-100 break-words">
+        {value ?? '—'}
+      </div>
+    </div>
+  )
+}
+
+function KV({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <div className="text-sm text-gray-600 dark:text-gray-400">{label}</div>
+      <div className="text-sm font-medium text-gray-900 dark:text-gray-100 text-right max-w-[65%] break-words">
+        {value ?? '—'}
+      </div>
+    </div>
+  )
+}
+
+const TYPE_META: Record<
+  string,
+  { label: string; icon: React.ReactNode; tone: 'blue' | 'gray' | 'amber' | 'green' }
+> = {
+  billet_avion: { label: "Billet d'avion", icon: <Plane size={16} />, tone: 'blue' },
+  hotel: { label: 'Hôtel', icon: <Hotel size={16} />, tone: 'green' },
+  voiture: { label: 'Voiture', icon: <Car size={16} />, tone: 'amber' },
+  evenement: { label: 'Événement', icon: <PartyPopper size={16} />, tone: 'blue' },
+  forfait: { label: 'Forfait', icon: <Package size={16} />, tone: 'green' },
+}
+
+/* -------------------- Facture/paiements -------------------- */
 function pickLatestInvoice(r: any) {
   if (!r) return null
   if (r.facture && typeof r.facture === 'object') return r.facture
-  if (r.factures && typeof r.factures === 'object' && !Array.isArray(r.factures) && r.factures.id) return r.factures
+  if (r.factures && typeof r.factures === 'object' && !Array.isArray(r.factures) && r.factures.id)
+    return r.factures
 
   const fs = r.factures
   let arr: any[] = []
@@ -249,11 +269,61 @@ function computePay(r: any) {
   return { total, paid, remaining, percent, label, tone, facture: f, paiements }
 }
 
+/* -------------------- Domain extractors (tolérants) -------------------- */
+function firstOf(...vals: any[]) {
+  for (const v of vals) {
+    if (v !== undefined && v !== null && String(v).trim() !== '') return v
+  }
+  return null
+}
+
+function extractPeriod(r: any) {
+  // supporte plusieurs conventions (hotel / voiture / event / forfait)
+  const start = firstOf(
+    r?.date_debut,
+    r?.start_date,
+    r?.check_in,
+    r?.date_depart, // au cas où
+    r?.debut
+  )
+  const end = firstOf(
+    r?.date_fin,
+    r?.end_date,
+    r?.check_out,
+    r?.date_retour,
+    r?.fin
+  )
+  return { start, end }
+}
+
+function extractLocation(r: any) {
+  // essaye produit ou champs directs
+  const p = r?.produit
+  const city = firstOf(r?.ville, r?.city, p?.ville, p?.city, p?.lieu, r?.lieu)
+  const address = firstOf(p?.adresse, p?.address, r?.adresse, r?.address)
+  return { city, address }
+}
+
+function extractOptions(r: any) {
+  // options "communes" (affichées si présentes)
+  return {
+    nombre_personnes: firstOf(r?.nombre_personnes, r?.nb_personnes),
+    nombre_nuits: firstOf(r?.nombre_nuits, r?.nb_nuits, r?.nights),
+    nombre_jours: firstOf(r?.nombre_jours, r?.nb_jours, r?.days),
+    chambre: firstOf(r?.chambre, r?.room_type, r?.type_chambre),
+    pension: firstOf(r?.pension, r?.meal_plan),
+    categorie: firstOf(r?.categorie, r?.category, r?.classement),
+    kilometrage: firstOf(r?.kilometrage, r?.km),
+    assurance: firstOf(r?.assurance, r?.insurance),
+    note: firstOf(r?.notes, r?.note),
+  }
+}
+
 /* -------------------- Main -------------------- */
-export function ReservationDetails({ reservation, onViewClientHistory,onChanged }: Props) {
+export function ReservationDetails({ reservation, onViewClientHistory, onChanged }: Props) {
   const toast = useToast()
 
-  // ✅ copie locale pour pouvoir refresh après actions rapides
+  // ✅ copie locale
   const [data, setData] = useState<any>(reservation)
   useEffect(() => setData(reservation), [reservation])
 
@@ -262,7 +332,11 @@ export function ReservationDetails({ reservation, onViewClientHistory,onChanged 
 
   const r = data
   const typeKey = normalizeTypeKey(r?.type)
-  const typeMeta = TYPE_META[typeKey] ?? { label: typeKey, icon: <ClipboardList size={16} />, tone: 'gray' as const }
+  const typeMeta = TYPE_META[typeKey] ?? {
+    label: typeKey,
+    icon: <ClipboardList size={16} />,
+    tone: 'gray' as const,
+  }
 
   const client = r?.client ?? null
   const devise = String(r?.devise || 'XOF')
@@ -270,12 +344,7 @@ export function ReservationDetails({ reservation, onViewClientHistory,onChanged 
   const pay = useMemo(() => computePay(r), [r])
   const flight = r?.flight_details ?? r?.flightDetails ?? null
 
-  // passager / bénéficiaire (billet avion)
-  // Backends peuvent renvoyer:
-  // - passenger_is_client (bool)
-  // - passenger { prenom, nom, ... }
-  // - passenger_name / beneficiary_name
-  // - ou rien (=> client bénéficiaire par défaut)
+  // passager billet avion
   const passengerIsClient =
     typeof r?.passenger_is_client === 'boolean'
       ? r.passenger_is_client
@@ -284,14 +353,7 @@ export function ReservationDetails({ reservation, onViewClientHistory,onChanged 
       : false
 
   const passenger = useMemo(() => {
-    const p =
-      r?.passenger ??
-      r?.beneficiaire ??
-      r?.beneficiary ??
-      r?.passager ??
-      null
-
-    // si objet vide -> null
+    const p = r?.passenger ?? r?.beneficiaire ?? r?.beneficiary ?? r?.passager ?? null
     if (p && typeof p === 'object') {
       const hasName = !!([p?.prenom, p?.nom, p?.name, p?.full_name].filter(Boolean).join(' ').trim())
       if (!hasName) return null
@@ -302,26 +364,38 @@ export function ReservationDetails({ reservation, onViewClientHistory,onChanged 
 
   const passengerName = useMemo(() => {
     if (typeKey !== 'billet_avion') return null
-
-    // 1) string direct du backend
-    const direct =
-      (r?.passenger_name ?? r?.beneficiary_name ?? r?.beneficiaire_nom ?? null) as any
+    const direct = (r?.passenger_name ?? r?.beneficiary_name ?? r?.beneficiaire_nom ?? null) as any
     if (direct && String(direct).trim()) return String(direct).trim()
-
-    // 2) objet passenger
     if (passenger) {
       const n = [passenger?.prenom, passenger?.nom].filter(Boolean).join(' ').trim()
       if (n) return n
       if (passenger?.name) return String(passenger.name)
       if (passenger?.full_name) return String(passenger.full_name)
     }
-
-    // 3) fallback client
     const n = [client?.prenom, client?.nom].filter(Boolean).join(' ').trim()
     return n || client?.nom || null
-  }, [typeKey, r?.passenger_name, r?.beneficiary_name, r?.beneficiaire_nom, passenger, client?.prenom, client?.nom, client?.nom])
+  }, [
+    typeKey,
+    r?.passenger_name,
+    r?.beneficiary_name,
+    r?.beneficiaire_nom,
+    passenger,
+    client?.prenom,
+    client?.nom,
+    client?.nom,
+  ])
 
   const headerRef = r?.reference ?? `#${r?.id ?? '—'}`
+
+  const showProduit = !!r?.produit
+  const showForfait = !!r?.forfait
+
+  const participants = useMemo(() => normalizeArray<any>(r?.participants), [r?.participants])
+  const showParticipants = typeKey === 'evenement' || typeKey === 'forfait'
+
+  const period = useMemo(() => extractPeriod(r), [r])
+  const loc = useMemo(() => extractLocation(r), [r])
+  const opts = useMemo(() => extractOptions(r), [r])
 
   const refreshReservation = async () => {
     const id = Number(r?.id)
@@ -331,7 +405,7 @@ export function ReservationDetails({ reservation, onViewClientHistory,onChanged 
       const res = await api.get(`/reservations/${id}`)
       setData(res.data?.data ?? res.data)
     } catch {
-      // on ne bloque pas
+      // silence
     } finally {
       setBusy(false)
     }
@@ -398,7 +472,6 @@ export function ReservationDetails({ reservation, onViewClientHistory,onChanged 
     }
   }
 
-  // ✅ Action rapide: Émettre facture
   const emitInvoice = async () => {
     setBusy(true)
     try {
@@ -422,7 +495,7 @@ export function ReservationDetails({ reservation, onViewClientHistory,onChanged 
     }
   }
 
-  // ✅ Action rapide: Ajouter paiement
+  // ✅ Paiement (important)
   const [payFormOpen, setPayFormOpen] = useState(false)
   const [paymentForm, setPaymentForm] = useState({
     montant: 0,
@@ -441,7 +514,10 @@ export function ReservationDetails({ reservation, onViewClientHistory,onChanged 
     try {
       const facture = await ensureInvoice()
       if (!facture?.id) {
-        toast.push({ title: 'Impossible de créer la facture pour enregistrer le paiement.', tone: 'error' })
+        toast.push({
+          title: 'Impossible de créer la facture pour enregistrer le paiement.',
+          tone: 'error',
+        })
         return
       }
 
@@ -465,15 +541,12 @@ export function ReservationDetails({ reservation, onViewClientHistory,onChanged 
     }
   }
 
-  const showProduit = !!r?.produit
-  const showForfait = !!r?.forfait
-
-  const participants = useMemo(() => normalizeArray<any>(r?.participants), [r?.participants])
-  const showParticipants = typeKey === 'evenement' || typeKey === 'forfait'
-
+  /* -------------------- UI blocks -------------------- */
   const topBadges = (
     <div className="flex items-center gap-2 flex-wrap justify-end">
-      <ToneBadge tone={typeMeta.tone}>{typeMeta.label}</ToneBadge>
+      <ToneBadge tone={typeMeta.tone}>
+        <span className="inline-flex items-center gap-1">{typeMeta.icon}{typeMeta.label}</span>
+      </ToneBadge>
       <StatutBadge statut={r?.statut} />
       <ToneBadge tone={pay.tone}>
         {pay.label} • {pay.percent}%
@@ -482,22 +555,28 @@ export function ReservationDetails({ reservation, onViewClientHistory,onChanged 
     </div>
   )
 
-  const totalsCard = (
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-      <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] p-3">
-        <div className="text-xs text-gray-600 dark:text-gray-400">Total</div>
-        <div className="text-lg font-semibold">{money(pay.total || r?.montant_total, devise)}</div>
-      </div>
-      <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] p-3">
-        <div className="text-xs text-gray-600 dark:text-gray-400">Payé</div>
-        <div className="text-lg font-semibold">{money(pay.paid, devise)}</div>
-      </div>
-      <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] p-3">
-        <div className="text-xs text-gray-600 dark:text-gray-400">Reste</div>
-        <div className="text-lg font-semibold">{money(pay.remaining, devise)}</div>
-      </div>
+  const amountCards = (
+    <div className={cx('grid grid-cols-1 sm:grid-cols-5 gap-3')}>
+      {typeKey === 'billet_avion' ? (
+        <>
+          <Field
+            label="Achat (hors fees)"
+            value={money(r?.montant_sous_total, devise)}
+            icon={<Tag size={14} />}
+          />
+          <Field
+            label="Fees (commission)"
+            value={money(r?.montant_taxes, devise)}
+            icon={<Ticket size={14} />}
+          />
+        </>
+      ) : null}
 
-      <div className="sm:col-span-3">
+      <Field label="Total" value={money(pay.total || r?.montant_total, devise)} icon={<Receipt size={14} />} />
+      <Field label="Payé" value={money(pay.paid, devise)} icon={<CreditCard size={14} />} />
+      <Field label="Reste" value={money(pay.remaining, devise)} icon={<Clock size={14} />} />
+
+      <div className={cx('sm:col-span-5')}>
         <div className="text-xs text-gray-600 dark:text-gray-400">% payé</div>
         <div className="mt-1 h-2 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
           <div className="h-full bg-primary" style={{ width: `${pay.percent}%` }} />
@@ -506,80 +585,301 @@ export function ReservationDetails({ reservation, onViewClientHistory,onChanged 
     </div>
   )
 
+  const ProductBlock = () => {
+    if (!showProduit) return null
+    const p = r?.produit
+    return (
+      <Card title="Produit" icon={<ClipboardList size={18} />} right={p?.id ? <ToneBadge tone="gray">#{p.id}</ToneBadge> : undefined}>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <Field label="Nom" value={p?.nom || '—'} icon={<Building2 size={14} />} />
+          <Field label="Type" value={p?.type_label ?? p?.type ?? '—'} icon={<Tag size={14} />} />
+          {loc?.city ? <Field label="Lieu" value={loc.city} icon={<MapPin size={14} />} /> : null}
+          {loc?.address ? <Field label="Adresse" value={loc.address} icon={<MapPin size={14} />} /> : null}
+        </div>
+      </Card>
+    )
+  }
+
+  const ForfaitBlock = () => {
+    if (!showForfait) return null
+    const f = r?.forfait
+    return (
+      <Card title="Forfait" icon={<Package size={18} />} right={f?.id ? <ToneBadge tone="gray">#{f.id}</ToneBadge> : undefined}>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <Field label="Nom" value={f?.nom || '—'} icon={<Package size={14} />} />
+          <Field label="Type" value={f?.type ?? '—'} icon={<Tag size={14} />} />
+          {f?.prix != null ? <Field label="Prix forfait" value={money(f.prix, devise)} icon={<Receipt size={14} />} /> : null}
+          {f?.nombre_max_personnes != null ? (
+            <Field label="Max personnes" value={String(f.nombre_max_personnes)} icon={<Users size={14} />} />
+          ) : null}
+        </div>
+      </Card>
+    )
+  }
+
+  const PeriodBlock = () => {
+    // On affiche pour hotel/voiture/evenement/forfait (et même billet si besoin)
+    const start = period?.start
+    const end = period?.end
+    const hasAny = Boolean(start || end)
+    if (!hasAny) return null
+
+    const label =
+      typeKey === 'hotel'
+        ? 'Séjour'
+        : typeKey === 'voiture'
+        ? 'Location'
+        : typeKey === 'evenement'
+        ? 'Date / période'
+        : typeKey === 'forfait'
+        ? 'Période du forfait'
+        : 'Période'
+
+    return (
+      <Card title={label} icon={<Calendar size={18} />}>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <Field label="Début" value={safeDate(start)} icon={<Calendar size={14} />} />
+          <Field label="Fin" value={safeDate(end)} icon={<Calendar size={14} />} />
+        </div>
+      </Card>
+    )
+  }
+
+  const OptionsBlock = () => {
+    // on affiche seulement ce qui existe
+    const rows: Array<{ label: string; value: any; icon?: React.ReactNode }> = [
+      { label: 'Nombre de personnes', value: opts.nombre_personnes, icon: <Users size={14} /> },
+      { label: 'Nombre de nuits', value: opts.nombre_nuits, icon: <Clock size={14} /> },
+      { label: 'Nombre de jours', value: opts.nombre_jours, icon: <Clock size={14} /> },
+      { label: 'Type de chambre', value: opts.chambre, icon: <Hotel size={14} /> },
+      { label: 'Pension', value: opts.pension, icon: <Hotel size={14} /> },
+      { label: 'Catégorie', value: opts.categorie, icon: <Tag size={14} /> },
+      { label: 'Kilométrage', value: opts.kilometrage, icon: <Route size={14} /> },
+      { label: 'Assurance', value: opts.assurance, icon: <Info size={14} /> },
+    ].filter((x) => x.value !== null && x.value !== undefined && String(x.value).trim() !== '')
+
+    if (!rows.length) return null
+
+    const title =
+      typeKey === 'hotel' ? 'Options hôtel' : typeKey === 'voiture' ? 'Options voiture' : 'Options'
+
+    return (
+      <Card title={title} icon={<SettingsIcon />}>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {rows.map((row) => (
+            <Field key={row.label} label={row.label} value={String(row.value)} icon={row.icon} />
+          ))}
+        </div>
+      </Card>
+    )
+  }
+
+  function SettingsIcon() {
+    // petit icon “settings” style sans importer lucide Settings (si tu ne l’as pas déjà)
+    return <Zap size={18} />
+  }
+
+  const FlightBlock = () => {
+    if (typeKey !== 'billet_avion') return null
+    return (
+      <Card
+        title="Détails du vol"
+        icon={<Plane size={18} />}
+        right={
+          flight?.pnr ? (
+            <ToneBadge tone="blue">
+              PNR: <span className="ml-1 font-bold">{String(flight.pnr).toUpperCase()}</span>
+            </ToneBadge>
+          ) : undefined
+        }
+      >
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <Field
+            label="Trajet"
+            value={`${flight?.ville_depart || '—'} → ${flight?.ville_arrivee || '—'}`}
+            icon={<MapPin size={14} />}
+          />
+          <Field label="Compagnie" value={flight?.compagnie || '—'} icon={<Plane size={14} />} />
+          <Field label="Départ" value={safeDate(flight?.date_depart)} icon={<Calendar size={14} />} />
+          <Field label="Arrivée" value={safeDate(flight?.date_arrivee)} icon={<Calendar size={14} />} />
+          <div className="md:col-span-2">
+            <KV label="Classe" value={flight?.classe || '—'} />
+          </div>
+        </div>
+      </Card>
+    )
+  }
+
+  const BeneficiaryBlock = () => {
+    if (typeKey !== 'billet_avion') return null
+    return (
+      <Card
+        title="Bénéficiaire du billet"
+        icon={<User size={18} />}
+        right={passengerIsClient ? <ToneBadge tone="gray">Client</ToneBadge> : undefined}
+      >
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <Field label="Nom" value={passengerName || '—'} icon={<User size={14} />} />
+          {passenger && !passengerIsClient ? (
+            <>
+              {passenger?.passport ? (
+                <Field label="Passeport" value={passenger.passport} icon={<Ticket size={14} />} />
+              ) : null}
+              {passenger?.sexe ? <Field label="Sexe" value={passenger.sexe} icon={<Info size={14} />} /> : null}
+              {passenger?.telephone ? (
+                <Field label="Téléphone" value={passenger.telephone} icon={<Phone size={14} />} />
+              ) : null}
+              {passenger?.email ? <Field label="Email" value={passenger.email} icon={<Mail size={14} />} /> : null}
+            </>
+          ) : null}
+          {!passenger && passengerIsClient ? (
+            <div className="md:col-span-2 text-xs text-gray-600 dark:text-gray-400">
+              Bénéficiaire = client sélectionné pour cette réservation.
+            </div>
+          ) : null}
+        </div>
+      </Card>
+    )
+  }
+
+  const ParticipantsBlock = () => {
+    if (!showParticipants) return null
+    return (
+      <Card
+        title="Participants"
+        icon={<Users size={18} />}
+        right={<ToneBadge tone="gray">{participants.length}</ToneBadge>}
+      >
+        {participants.length === 0 ? (
+          <div className="text-sm text-gray-500">Aucun participant enregistré pour cette réservation.</div>
+        ) : (
+          <div className="space-y-2">
+            {participants.map((p: any, idx: number) => {
+              const name = [p?.prenom, p?.nom].filter(Boolean).join(' ') || p?.nom || `Participant ${idx + 1}`
+              const subtitleParts: string[] = []
+              if (p?.passport) subtitleParts.push(`Passeport: ${p.passport}`)
+              if (p?.sexe) subtitleParts.push(`Sexe: ${p.sexe}`)
+              if (p?.age != null) subtitleParts.push(`Âge: ${p.age}`)
+              if (p?.telephone) subtitleParts.push(`Tél: ${p.telephone}`)
+
+              return (
+                <div
+                  key={p?.id ?? idx}
+                  className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] p-3 border border-black/5 dark:border-white/10"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-semibold truncate">{name}</div>
+                      {subtitleParts.length ? (
+                        <div className="mt-1 text-xs text-gray-600 dark:text-gray-400 truncate">
+                          {subtitleParts.join(' • ')}
+                        </div>
+                      ) : (
+                        <div className="mt-1 text-xs text-gray-500">—</div>
+                      )}
+                    </div>
+                    {p?.role ? <ToneBadge tone="gray">{p.role}</ToneBadge> : null}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </Card>
+    )
+  }
+
+  const NotesBlock = () => {
+    if (!r?.notes) return null
+    return (
+      <Card title="Notes" icon={<Info size={18} />}>
+        <div className="whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-200">{r.notes}</div>
+      </Card>
+    )
+  }
+
+  /* -------------------- Render -------------------- */
   return (
     <div className="space-y-4">
-      {/* Header pro */}
-      <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white dark:bg-panel shadow-soft p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-gray-700 dark:text-gray-200">{typeMeta.icon}</span>
-              <div className="text-lg font-semibold text-gray-900 dark:text-gray-100 truncate">
-                {r?.reference ? `Réservation ${r.reference}` : 'Détails de la réservation'}
+      {/* Header premium */}
+      <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white dark:bg-panel shadow-soft overflow-hidden">
+        <div className="p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="text-gray-700 dark:text-gray-200">{typeMeta.icon}</span>
+                <div className="text-lg font-semibold text-gray-900 dark:text-gray-100 truncate">
+                  {r?.reference ? `Réservation ${r.reference}` : 'Détails de la réservation'}
+                </div>
+              </div>
+
+              <div className="mt-1 text-xs text-gray-600 dark:text-gray-400 flex flex-wrap items-center gap-2">
+                <span>Créée le {safeDateTime(r?.created_at)}</span>
+                <span>•</span>
+                <span>Mise à jour {safeDateTime(r?.updated_at)}</span>
+
+                {typeKey === 'billet_avion' ? (
+                  <>
+                    <span>•</span>
+                    <span className="inline-flex items-center gap-1">
+                      <User size={12} />
+                      <span className="font-medium text-gray-800 dark:text-gray-200">Bénéficiaire:</span>{' '}
+                      {passengerName || '—'}
+                    </span>
+                  </>
+                ) : null}
+
+                {busy ? (
+                  <>
+                    <span>•</span>
+                    <span className="text-xs text-gray-500">Actualisation…</span>
+                  </>
+                ) : null}
               </div>
             </div>
 
-            <div className="mt-1 text-xs text-gray-600 dark:text-gray-400 flex flex-wrap items-center gap-2">
-              <span>Créée le {safeDateTime(r?.created_at)}</span>
-              <span>•</span>
-              <span>Mise à jour {safeDateTime(r?.updated_at)}</span>
-
-              {typeKey === 'billet_avion' ? (
-                <>
-                  <span>•</span>
-                  <span className="inline-flex items-center gap-1">
-                    <User size={12} />
-                    <span className="font-medium text-gray-800 dark:text-gray-200">Bénéficiaire:</span>{' '}
-                    {passengerName || '—'}
-                  </span>
-                </>
-              ) : null}
-
-              {busy ? (
-                <>
-                  <span>•</span>
-                  <span className="text-xs text-gray-500">Actualisation…</span>
-                </>
-              ) : null}
-            </div>
+            <div className="shrink-0">{topBadges}</div>
           </div>
 
-          <div className="shrink-0">{topBadges}</div>
-        </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button type="button" className="btn bg-gray-200 dark:bg-white/10" onClick={refreshReservation} disabled={busy}>
+              <ClipboardList size={16} className="mr-2" />
+              Rafraîchir
+            </button>
 
-        <div className="mt-3 flex flex-wrap gap-2">
-          <button type="button" className="btn bg-gray-200 dark:bg-white/10" onClick={downloadDevisPdf} disabled={busy}>
-            <FileText size={16} className="mr-2" />
-            Devis (PDF)
-          </button>
+            <button type="button" className="btn bg-gray-200 dark:bg-white/10" onClick={downloadDevisPdf} disabled={busy}>
+              <FileText size={16} className="mr-2" />
+              Devis (PDF)
+            </button>
 
-          <button
-            type="button"
-            className={cx('btn', 'bg-gray-200 dark:bg-white/10')}
-            onClick={ensureAndDownloadInvoice}
-            disabled={!!busyInvoiceId || busy}
-            title="Télécharger la facture (création auto si manquante)"
-          >
-            <Download size={16} className="mr-2" />
-            Facture (PDF)
-          </button>
-
-          {client?.id && onViewClientHistory ? (
             <button
               type="button"
               className="btn bg-gray-200 dark:bg-white/10"
-              onClick={() =>
-                onViewClientHistory(
-                  Number(client.id),
-                  [client?.prenom, client?.nom].filter(Boolean).join(' ') || client?.nom
-                )
-              }
-              disabled={busy}
+              onClick={ensureAndDownloadInvoice}
+              disabled={!!busyInvoiceId || busy}
+              title="Télécharger la facture (création auto si manquante)"
             >
-              <Users size={16} className="mr-2" />
-              Historique du client
+              <Download size={16} className="mr-2" />
+              Facture (PDF)
             </button>
-          ) : null}
+
+            {client?.id && onViewClientHistory ? (
+              <button
+                type="button"
+                className="btn bg-gray-200 dark:bg-white/10"
+                onClick={() =>
+                  onViewClientHistory(
+                    Number(client.id),
+                    [client?.prenom, client?.nom].filter(Boolean).join(' ') || client?.nom
+                  )
+                }
+                disabled={busy}
+              >
+                <Users size={16} className="mr-2" />
+                Historique du client
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
 
@@ -588,15 +888,15 @@ export function ReservationDetails({ reservation, onViewClientHistory,onChanged 
         {/* LEFT */}
         <div className="space-y-4">
           {/* Client */}
-          <Card
-            title="Client"
-            icon={<User size={18} />}
-            right={client?.id ? <ToneBadge tone="gray">#{client.id}</ToneBadge> : undefined}
-          >
+          <Card title="Client" icon={<User size={18} />} right={client?.id ? <ToneBadge tone="gray">#{client.id}</ToneBadge> : undefined}>
             {client ? (
-              <div className="space-y-3">
-                <KV label="Nom" value={[client?.prenom, client?.nom].filter(Boolean).join(' ') || client?.nom || '—'} />
-                <KV
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <Field
+                  label="Nom"
+                  value={[client?.prenom, client?.nom].filter(Boolean).join(' ') || client?.nom || '—'}
+                  icon={<User size={14} />}
+                />
+                <Field
                   label="Téléphone"
                   value={
                     client?.telephone ? (
@@ -607,8 +907,9 @@ export function ReservationDetails({ reservation, onViewClientHistory,onChanged 
                       '—'
                     )
                   }
+                  icon={<Phone size={14} />}
                 />
-                <KV
+                <Field
                   label="Email"
                   value={
                     client?.email ? (
@@ -619,8 +920,9 @@ export function ReservationDetails({ reservation, onViewClientHistory,onChanged 
                       '—'
                     )
                   }
+                  icon={<Mail size={14} />}
                 />
-                <KV
+                <Field
                   label="Pays"
                   value={
                     client?.pays ? (
@@ -631,6 +933,7 @@ export function ReservationDetails({ reservation, onViewClientHistory,onChanged 
                       '—'
                     )
                   }
+                  icon={<Globe size={14} />}
                 />
               </div>
             ) : (
@@ -638,159 +941,27 @@ export function ReservationDetails({ reservation, onViewClientHistory,onChanged 
             )}
           </Card>
 
-          {/* Vol */}
-          {typeKey === 'billet_avion' ? (
-            <Card
-              title="Détails du vol"
-              icon={<Plane size={18} />}
-              right={
-                flight?.pnr ? (
-                  <ToneBadge tone="blue">
-                    PNR: <span className="ml-1 font-bold">{String(flight.pnr).toUpperCase()}</span>
-                  </ToneBadge>
-                ) : undefined
-              }
-            >
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] p-3">
-                  <div className="text-xs text-gray-600 dark:text-gray-400">Trajet</div>
-                  <div className="mt-1 font-semibold flex items-center gap-2">
-                    <MapPin size={16} className="opacity-70" />
-                    <span className="truncate">
-                      {flight?.ville_depart || '—'} → {flight?.ville_arrivee || '—'}
-                    </span>
-                  </div>
-                </div>
+          {/* Billet avion */}
+          <FlightBlock />
+          <BeneficiaryBlock />
 
-                <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] p-3">
-                  <div className="text-xs text-gray-600 dark:text-gray-400">Compagnie</div>
-                  <div className="mt-1 font-semibold">{flight?.compagnie || '—'}</div>
-                </div>
-
-                <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] p-3">
-                  <div className="text-xs text-gray-600 dark:text-gray-400">Départ</div>
-                  <div className="mt-1 font-semibold inline-flex items-center gap-2">
-                    <Calendar size={16} className="opacity-70" />
-                    {safeDate(flight?.date_depart)}
-                  </div>
-                </div>
-
-                <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] p-3">
-                  <div className="text-xs text-gray-600 dark:text-gray-400">Arrivée</div>
-                  <div className="mt-1 font-semibold inline-flex items-center gap-2">
-                    <Calendar size={16} className="opacity-70" />
-                    {safeDate(flight?.date_arrivee)}
-                  </div>
-                </div>
-
-                <div className="md:col-span-2">
-                  <KV label="Classe" value={flight?.classe || '—'} />
-                </div>
-              </div>
-            </Card>
-          ) : null}
-
-          {/* Bénéficiaire / Passager */}
-          {typeKey === 'billet_avion' ? (
-            <Card
-              title="Bénéficiaire du billet"
-              icon={<User size={18} />}
-              right={passengerIsClient ? <ToneBadge tone="gray">Client</ToneBadge> : undefined}
-            >
-              <div className="space-y-3">
-                <KV label="Nom" value={passengerName || '—'} />
-                {passenger && !passengerIsClient ? (
-                  <>
-                    {passenger?.passport ? <KV label="Passeport" value={passenger.passport} /> : null}
-                    {passenger?.sexe ? <KV label="Sexe" value={passenger.sexe} /> : null}
-                    {passenger?.telephone ? <KV label="Téléphone" value={passenger.telephone} /> : null}
-                    {passenger?.email ? <KV label="Email" value={passenger.email} /> : null}
-                  </>
-                ) : null}
-
-                {!passenger && passengerIsClient ? (
-                  <div className="text-xs text-gray-600 dark:text-gray-400">
-                    Bénéficiaire = client sélectionné pour cette réservation.
-                  </div>
-                ) : null}
-              </div>
-            </Card>
-          ) : null}
-
-          {/* Produit / Forfait */}
-          {showProduit ? (
-            <Card title="Produit" icon={<ClipboardList size={18} />}>
-              <div className="space-y-2">
-                <KV label="Nom" value={r?.produit?.nom || `Produit #${r?.produit?.id ?? '—'}`} />
-                <KV label="Type" value={r?.produit?.type_label ?? r?.produit?.type ?? '—'} />
-              </div>
-            </Card>
-          ) : null}
-
-          {showForfait ? (
-            <Card title="Forfait" icon={<Package size={18} />}>
-              <div className="space-y-2">
-                <KV label="Nom" value={r?.forfait?.nom || `Forfait #${r?.forfait?.id ?? '—'}`} />
-                <KV label="Type" value={r?.forfait?.type ?? '—'} />
-              </div>
-            </Card>
-          ) : null}
-
-          {/* Participants */}
-          {showParticipants ? (
-            <Card title="Participants" icon={<Users size={18} />} right={<ToneBadge tone="gray">{participants.length}</ToneBadge>}>
-              {participants.length === 0 ? (
-                <div className="text-sm text-gray-500">Aucun participant enregistré pour cette réservation.</div>
-              ) : (
-                <div className="space-y-2">
-                  {participants.map((p: any, idx: number) => {
-                    const name = [p?.prenom, p?.nom].filter(Boolean).join(' ') || p?.nom || `Participant ${idx + 1}`
-                    const subtitleParts: string[] = []
-                    if (p?.passport) subtitleParts.push(`Passeport: ${p.passport}`)
-                    if (p?.sexe) subtitleParts.push(`Sexe: ${p.sexe}`)
-                    if (p?.age != null) subtitleParts.push(`Âge: ${p.age}`)
-                    if (p?.telephone) subtitleParts.push(`Tél: ${p.telephone}`)
-
-                    return (
-                      <div
-                        key={p?.id ?? idx}
-                        className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] p-3 flex items-start justify-between gap-3"
-                      >
-                        <div className="min-w-0">
-                          <div className="font-semibold truncate">{name}</div>
-                          {subtitleParts.length ? (
-                            <div className="mt-1 text-xs text-gray-600 dark:text-gray-400 truncate">
-                              {subtitleParts.join(' • ')}
-                            </div>
-                          ) : (
-                            <div className="mt-1 text-xs text-gray-500">—</div>
-                          )}
-                        </div>
-                        {p?.role ? <ToneBadge tone="gray">{p.role}</ToneBadge> : null}
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </Card>
-          ) : null}
-
-          {/* Notes */}
-          {r?.notes ? (
-            <Card title="Notes" icon={<Info size={18} />}>
-              <div className="whitespace-pre-wrap text-sm text-gray-800 dark:text-gray-200">{r.notes}</div>
-            </Card>
-          ) : null}
+          {/* Tous les types: produit / forfait / dates / options / participants */}
+          <ProductBlock />
+          <ForfaitBlock />
+          <PeriodBlock />
+          <OptionsBlock />
+          <ParticipantsBlock />
+          <NotesBlock />
         </div>
 
         {/* RIGHT */}
         <div className="space-y-4">
           {/* Résumé financier */}
           <Card title="Résumé financier" icon={pay.percent >= 100 ? <BadgeCheck size={18} /> : <BadgeAlert size={18} />}>
-            {totalsCard}
+            {amountCards}
           </Card>
 
-          {/* ✅ Actions rapides */}
+          {/* Actions rapides */}
           <Card title="Actions rapides" icon={<Zap size={18} />}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <button
@@ -798,7 +969,7 @@ export function ReservationDetails({ reservation, onViewClientHistory,onChanged 
                 className="btn bg-gray-200 dark:bg-white/10"
                 onClick={emitInvoice}
                 disabled={busy}
-                title="Émettre la facture (si route disponible)"
+                title="Émettre la facture"
               >
                 <Receipt size={16} className="mr-2" />
                 Émettre facture
@@ -824,10 +995,24 @@ export function ReservationDetails({ reservation, onViewClientHistory,onChanged 
                     <label className="label">Montant *</label>
                     <input
                       className="input"
-                      type="number"
-                      min={0}
-                      value={paymentForm.montant}
-                      onChange={(e) => setPaymentForm((s) => ({ ...s, montant: Number(e.target.value || 0) }))}
+                      inputMode="numeric"
+                      type="text"
+                      placeholder="0"
+                      value={paymentForm.montant === 0 ? '' : String(paymentForm.montant)}
+                      onChange={(e) => {
+                        const raw = e.target.value ?? ''
+
+                        // garde uniquement les chiffres
+                        let digits = raw.replace(/[^\d]/g, '')
+
+                        // supprime les zéros en tête (mais garde "0" si c'est la seule valeur)
+                        digits = digits.replace(/^0+(?=\d)/, '')
+
+                        setPaymentForm((s) => ({
+                          ...s,
+                          montant: digits === '' ? 0 : Number(digits),
+                        }))
+                      }}
                     />
                   </div>
 
@@ -866,12 +1051,7 @@ export function ReservationDetails({ reservation, onViewClientHistory,onChanged 
                   >
                     Annuler
                   </button>
-                  <button
-                    type="button"
-                    className="btn bg-gray-900 text-white dark:bg-white dark:text-black"
-                    onClick={addPayment}
-                    disabled={busy}
-                  >
+                  <button type="button" className="btn bg-gray-900 text-white dark:bg-white dark:text-black" onClick={addPayment} disabled={busy}>
                     Enregistrer paiement
                   </button>
                 </div>
@@ -920,7 +1100,7 @@ export function ReservationDetails({ reservation, onViewClientHistory,onChanged 
                 </div>
 
                 {Array.isArray(pay.paiements) && pay.paiements.length > 0 ? (
-                  <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white/70 dark:bg-black/10">
+                  <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white/70 dark:bg-black/10 overflow-hidden">
                     <div className="px-3 py-2 border-b border-black/5 dark:border-white/10 flex items-center justify-between">
                       <div className="text-sm font-semibold inline-flex items-center gap-2">
                         <CreditCard size={16} /> Paiements
@@ -944,13 +1124,15 @@ export function ReservationDetails({ reservation, onViewClientHistory,onChanged 
                           return (
                             <div
                               key={p?.id || `${p?.mode_paiement}-${p?.created_at}`}
-                              className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] px-3 py-2"
+                              className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] px-3 py-2 border border-black/5 dark:border-white/10"
                             >
                               <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0">
                                   <div className="font-semibold truncate">
                                     {p?.mode_paiement ?? '—'}{' '}
-                                    {ref ? <span className="text-xs text-gray-600 dark:text-gray-400">({ref})</span> : null}
+                                    {ref ? (
+                                      <span className="text-xs text-gray-600 dark:text-gray-400">({ref})</span>
+                                    ) : null}
                                   </div>
                                   <div className="text-xs text-gray-600 dark:text-gray-400">
                                     {safeDate(p?.date_paiement || p?.created_at)}
@@ -960,7 +1142,9 @@ export function ReservationDetails({ reservation, onViewClientHistory,onChanged 
                                   </div>
                                 </div>
 
-                                <div className="text-right font-semibold whitespace-nowrap">{money(p?.montant, devise)}</div>
+                                <div className="text-right font-semibold whitespace-nowrap">
+                                  {money(p?.montant, devise)}
+                                </div>
                               </div>
                             </div>
                           )
@@ -974,7 +1158,7 @@ export function ReservationDetails({ reservation, onViewClientHistory,onChanged 
             )}
           </Card>
 
-          {/* Infos techniques */}
+          {/* Infos */}
           <Card title="Infos" icon={<Info size={18} />}>
             <div className="space-y-2">
               <KV label="ID" value={r?.id ?? '—'} />

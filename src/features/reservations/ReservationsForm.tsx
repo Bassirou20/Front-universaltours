@@ -23,7 +23,6 @@ import {
 export type ReservationType = 'billet_avion' | 'hotel' | 'voiture' | 'evenement' | 'forfait'
 
 export type ReservationInput = {
-  // (utile pour détecter edit si ton parent passe un objet reservation)
   id?: number
 
   // Client
@@ -48,7 +47,7 @@ export type ReservationInput = {
   montant_total?: number
   notes?: string | null
 
-  // Billet avion (nouvelle logique store)
+  // Billet avion (store)
   passenger_is_client?: boolean
   passenger?: {
     nom: string
@@ -111,6 +110,15 @@ function money(n: any, devise = 'XOF') {
   return `${Number(n || 0).toLocaleString()} ${devise}`
 }
 
+function extractList(data: any): any[] {
+  if (Array.isArray(data)) return data
+  if (Array.isArray(data?.data)) return data.data
+  if (Array.isArray(data?.items)) return data.items
+  if (Array.isArray(data?.data?.data)) return data.data.data
+  if (Array.isArray(data?.result)) return data.result
+  return []
+}
+
 const TYPE_META: Record<ReservationType, { label: string; icon: React.ReactNode; hint: string }> = {
   billet_avion: { label: "Billet d'avion", icon: <Plane size={16} />, hint: 'Vol + passager + PNR optionnel.' },
   hotel: { label: 'Hôtel', icon: <Hotel size={16} />, hint: 'Produit hôtel + montant.' },
@@ -144,7 +152,7 @@ function Stepper({
         <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
         {steps.map((s, i) => {
           const active = i === current
           const done = i < current
@@ -310,6 +318,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
 
   const [form, setForm] = useState<ReservationInput>(() => normalizeReservationToForm(defaultValues))
   const [step, setStep] = useState(0)
+  const [clientSearch, setClientSearch] = useState('')
 
   useEffect(() => {
     setForm(normalizeReservationToForm(defaultValues))
@@ -319,19 +328,57 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
 
   /* ---------- Data sources (selects) ---------- */
   const qClients = useQuery({
-    queryKey: ['clients', 'select-all'],
-    queryFn: async () => {
-      const { data } = await api.get('/clients', { params: { per_page: 200 } })
-      const list = Array.isArray(data?.data) ? data.data : Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : []
-      return list
-    },
-  })
+  queryKey: ['clients', 'select-all'],
+  queryFn: async () => {
+    const all: any[] = []
+    const seen = new Set<number>()
+
+    let page = 1
+    const PER_PAGE = 200
+    const MAX_PAGES = 200 // sécurité
+    const MAX_ITEMS = 20000 // sécurité
+
+    for (let i = 0; i < MAX_PAGES; i++) {
+      // On tente plusieurs noms de params au cas où ton backend n'accepte pas per_page
+      const { data } = await api.get('/clients', {
+        params: { page, per_page: PER_PAGE, perPage: PER_PAGE, limit: PER_PAGE },
+      })
+
+      const list = extractList(data)
+      if (!list.length) break
+
+      // Ajout + dédup
+      let newCount = 0
+      for (const c of list) {
+        const id = Number(c?.id)
+        if (!id) continue
+        if (seen.has(id)) continue
+        seen.add(id)
+        all.push(c)
+        newCount++
+      }
+
+      // Si la page n'apporte rien de nouveau -> stop (évite boucle infinie)
+      if (newCount === 0) break
+
+      // Heuristique: si on reçoit moins que PER_PAGE, on est probablement à la fin
+      if (list.length < PER_PAGE) break
+
+      // Limite globale
+      if (all.length >= MAX_ITEMS) break
+
+      page += 1
+    }
+
+    return all
+  },
+})
 
   const qProduits = useQuery({
     queryKey: ['produits', 'select-all'],
     queryFn: async () => {
       const { data } = await api.get('/produits', { params: { per_page: 300 } })
-      const list = Array.isArray(data?.data) ? data.data : Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : []
+      const list = extractList(data)
       return list
     },
   })
@@ -340,12 +387,23 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
     queryKey: ['forfaits', 'select-all'],
     queryFn: async () => {
       const { data } = await api.get('/forfaits', { params: { per_page: 300 } })
-      const list = Array.isArray(data?.data) ? data.data : Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : []
+      const list = extractList(data)
       return list
     },
   })
 
   const clients: any[] = qClients.data || []
+  const filteredClients = useMemo(() => {
+    const q = clientSearch.trim().toLowerCase()
+    if (!q) return clients
+    return clients.filter((c) => {
+      const name = [c?.prenom, c?.nom].filter(Boolean).join(' ').toLowerCase()
+      const phone = String(c?.telephone || '').toLowerCase()
+      const email = String(c?.email || '').toLowerCase()
+      return name.includes(q) || phone.includes(q) || email.includes(q)
+    })
+  }, [clients, clientSearch])
+
   const produits: any[] = qProduits.data || []
   const forfaits: any[] = qForfaits.data || []
 
@@ -449,12 +507,6 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
         if (!fd?.ville_depart) return 'Ville départ requise.'
         if (!fd?.ville_arrivee) return 'Ville arrivée requise.'
         if (!fd?.date_depart) return 'Date départ requise.'
-
-        // ✅ IMPORTANT: ton UpdateReservationRequest exige aussi ces champs en modification
-        if (isEdit) {
-          if (!fd?.date_arrivee) return 'Date arrivée requise (modification).'
-          if (!fd?.compagnie) return 'Compagnie requise (modification).'
-        }
       } else if (form.type === 'forfait') {
         if (!form.forfait_id) return 'Veuillez sélectionner un forfait.'
       } else {
@@ -471,7 +523,12 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
     }
 
     if (s === 3) {
-      if (Number(form.montant_total || 0) <= 0) return 'Montant total requis.'
+      if (form.type === 'billet_avion') {
+        if (Number(form.montant_sous_total || 0) <= 0) return 'Achat (hors fees) requis.'
+        if (Number(form.montant_taxes || 0) < 0) return 'Fees invalides.'
+      } else {
+        if (Number(form.montant_total || 0) <= 0) return 'Montant total requis.'
+      }
     }
 
     return null
@@ -522,7 +579,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
         payload.pnr = fd.pnr
         payload.classe = fd.classe
 
-        // on ne poste pas flight_details / passenger en update (sinon risque de validation / non support backend)
+        // on ne poste pas flight_details / passenger en update
         delete payload.flight_details
         delete payload.passenger_is_client
         delete payload.passenger
@@ -581,7 +638,19 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
 
     // Montants
     payload.nombre_personnes = Number(payload.nombre_personnes || 1)
-    payload.montant_total = Number(payload.montant_total || 0)
+
+    if (payload.type === 'billet_avion') {
+      const st = payload.montant_sous_total == null ? 0 : Number(payload.montant_sous_total)
+      const tx = payload.montant_taxes == null ? 0 : Number(payload.montant_taxes)
+      payload.montant_sous_total = st
+      payload.montant_taxes = tx
+      // compat: on envoie un total cohérent (le backend peut recalculer)
+      payload.montant_total = st + tx
+    } else {
+      payload.montant_total = Number(payload.montant_total || 0)
+      delete payload.montant_sous_total
+      delete payload.montant_taxes
+    }
 
     // acompte: front-only (géré par ReservationsPage)
     return payload as ReservationInput
@@ -616,7 +685,10 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
         : produits.find((p) => Number(p?.id) === Number(form.produit_id))?.nom || '—'
 
     const pay = Number(form.acompte?.montant || 0)
-    const total = Number(form.montant_total || 0)
+    const total =
+      form.type === 'billet_avion'
+        ? Number(form.montant_sous_total || 0) + Number(form.montant_taxes || 0)
+        : Number(form.montant_total || 0)
     const pct = total > 0 ? Math.min(100, Math.round((pay / total) * 100)) : 0
 
     return { typeMeta, clientLabel, details, total, pay, pct }
@@ -686,13 +758,30 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
         {form.client_mode === 'existing' ? (
           <div>
             <label className="label">Client *</label>
+            <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">
+              {qClients.isLoading
+                ? 'Chargement des clients...'
+                : qClients.isError
+                ? 'Erreur de chargement des clients.'
+                : `${filteredClients.length} / ${clients.length} client(s)`}
+            </div>
+
+            <div className="mt-2">
+              <input
+                className="input"
+                placeholder="Rechercher un client (nom, téléphone, email)"
+                value={clientSearch}
+                onChange={(e) => setClientSearch(e.target.value)}
+              />
+            </div>
+
             <select
               className="input"
               value={form.client_id ?? ''}
               onChange={(e) => set('client_id', e.target.value ? Number(e.target.value) : null)}
             >
               <option value="">— Choisir —</option>
-              {clients.map((c) => {
+              {filteredClients.map((c) => {
                 const name = [c?.prenom, c?.nom].filter(Boolean).join(' ') || c?.nom || `Client #${c?.id}`
                 return (
                   <option key={c.id} value={c.id}>
@@ -701,6 +790,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                 )
               })}
             </select>
+
             {selectedClient ? (
               <div className="mt-2 rounded-xl bg-black/[0.03] dark:bg-white/[0.06] p-3 text-xs text-gray-700 dark:text-gray-200">
                 <div className="font-semibold">{[selectedClient?.prenom, selectedClient?.nom].filter(Boolean).join(' ')}</div>
@@ -824,7 +914,6 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
               ))}
             </select>
 
-            {/* ✅ correction TS: plus de comparaison "no-overlap" */}
             <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">
               Produits filtrés automatiquement selon le type ({TYPE_META[form.type].label}).
             </div>
@@ -973,19 +1062,70 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
     <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_0.85fr] gap-4">
       <Card title="Montants & Notes" icon={<Receipt size={16} />}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div>
-            <label className="label">Montant total *</label>
-            <input
-              type="number"
-              min={0}
-              className="input"
-              value={form.montant_total ?? ''}
-              onChange={(e) =>
-                set('montant_total', e.target.value === '' ? undefined : Number(e.target.value))
-              }
-            />
-          </div>
+          {form.type === 'billet_avion' ? (
+            <>
+              <div className="md:col-span-2 rounded-2xl border border-black/5 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.04] p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">Billet d&apos;avion — Tarification</div>
+                    <div className="text-xs text-gray-600 dark:text-gray-400">
+                      Saisis l&apos;achat (hors fees) et les fees (commission). Le total est calculé au backend.
+                    </div>
+                  </div>
+                  <span className="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary">Achat + Fees</span>
+                </div>
+              </div>
 
+              <div>
+                <label className="label">Achat (hors fees) *</label>
+                <input
+                  type="number"
+                  min={0}
+                  className="input"
+                  value={form.montant_sous_total ?? ''}
+                  onChange={(e) => set('montant_sous_total', e.target.value === '' ? null : Number(e.target.value))}
+                  placeholder="Ex: 700000"
+                />
+                <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">Prix d&apos;achat (hors commission).</div>
+              </div>
+
+              <div>
+                <label className="label">Fees (commission)</label>
+                <input
+                  type="number"
+                  min={0}
+                  className="input"
+                  value={form.montant_taxes ?? ''}
+                  onChange={(e) => set('montant_taxes', e.target.value === '' ? null : Number(e.target.value))}
+                  placeholder="Ex: 150000"
+                />
+                <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">Marge/commission de l&apos;agence.</div>
+              </div>
+
+              <div className="md:col-span-2">
+                <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white dark:bg-panel p-3">
+                  <div className="flex items-center justify-between gap-3 text-sm">
+                    <span className="text-gray-600 dark:text-gray-400">Total estimé</span>
+                    <span className="font-semibold text-gray-900 dark:text-gray-100">
+                      {money(Number(form.montant_sous_total || 0) + Number(form.montant_taxes || 0))}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">Affichage uniquement (backend calcule le total réel).</div>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div>
+              <label className="label">Montant total *</label>
+              <input
+                type="number"
+                min={0}
+                className="input"
+                value={form.montant_total ?? ''}
+                onChange={(e) => set('montant_total', e.target.value === '' ? undefined : Number(e.target.value))}
+              />
+            </div>
+          )}
 
           <div>
             <label className="label">Référence (optionnel)</label>
@@ -1040,15 +1180,13 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
               type="number"
               min={0}
               className="input"
-              // value={form.acompte?.montant ?? 0}
               value={form.acompte?.montant === undefined || form.acompte?.montant === null ? '' : String(form.acompte.montant)}
               onChange={(e) => {
                 const raw = e.target.value
 
-                // vide => pas de montant (et surtout pas 0 affiché)
                 if (raw === '') {
                   const next = { ...(form.acompte || {}) }
-                  delete (next as any).montant // optionnel, sinon: montant: undefined
+                  delete (next as any).montant
                   set('acompte', next)
                   return
                 }
@@ -1085,7 +1223,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
         <div className="mt-3 rounded-xl bg-black/[0.03] dark:bg-white/[0.06] p-3 text-sm">
           <div className="flex items-center justify-between gap-3">
             <span className="text-gray-600 dark:text-gray-400">Total</span>
-            <span className="font-semibold">{money(form.montant_total)}</span>
+            <span className="font-semibold">{money(summary.total)}</span>
           </div>
           <div className="flex items-center justify-between gap-3 mt-2">
             <span className="text-gray-600 dark:text-gray-400">Acompte</span>
@@ -1093,7 +1231,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
           </div>
           <div className="flex items-center justify-between gap-3 mt-2">
             <span className="text-gray-600 dark:text-gray-400">Reste</span>
-            <span className="font-semibold">{money(Math.max(0, Number(form.montant_total || 0) - Number(form.acompte?.montant || 0)))}</span>
+            <span className="font-semibold">{money(Math.max(0, Number(summary.total || 0) - Number(form.acompte?.montant || 0)))}</span>
           </div>
         </div>
       </Card>
@@ -1119,12 +1257,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
 
   return (
     <div className="space-y-4">
-      <Stepper
-        steps={steps}
-        current={step}
-        onGo={(i) => setStep(i)}
-        title={isEdit ? 'Modifier réservation' : 'Nouvelle réservation'}
-      />
+      <Stepper steps={steps} current={step} onGo={(i) => setStep(i)} title={isEdit ? 'Modifier réservation' : 'Nouvelle réservation'} />
 
       {stepError ? (
         <div className="rounded-2xl border border-red-200 bg-red-50 text-red-800 px-4 py-3 text-sm dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
