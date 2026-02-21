@@ -793,8 +793,8 @@ export default function ReservationsPage() {
       <Pagination page={paged.page} lastPage={paged.lastPage} total={paged.total} onPage={setPage} />
 
       {/* Details Modal */}
-      <Modal open={detailsOpen} onClose={closeDetails} title="Détails de la réservation" widthClass="max-w-[1200px]">
-        <div className={['h-[85vh] lg:h-[88vh]', 'flex flex-col', 'min-w-0'].join(' ')}>
+      <Modal open={detailsOpen} onClose={closeDetails} title="Détails de la réservation" widthClass="max-w-[1350px]">
+        <div className={['h-[90vh] lg:h-[98vh]', 'flex flex-col', 'min-w-0'].join(' ')}>
           <div className="sticky top-0 z-10 -mx-4 -mt-4 mb-3 px-4 pt-4 pb-3 bg-white dark:bg-panel border-b border-black/5 dark:border-white/10">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
