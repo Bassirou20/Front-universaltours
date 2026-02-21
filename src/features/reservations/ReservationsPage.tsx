@@ -849,7 +849,7 @@ export default function ReservationsPage() {
           setPrefillCreate(null)
         }}
         title={editing ? 'Modifier réservation' : 'Nouvelle réservation'}
-        widthClass="max-w-[1200px]"
+        widthClass="max-w-[1300px]"
       >
         <ReservationsForm
           defaultValues={(editing ?? (prefillCreate ?? undefined)) as any}

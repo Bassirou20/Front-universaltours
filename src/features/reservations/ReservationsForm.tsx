@@ -1,6 +1,6 @@
 // src/features/reservations/ReservationsForm.tsx
 import React, { useEffect, useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/axios'
 import {
   User,
@@ -110,15 +110,6 @@ function money(n: any, devise = 'XOF') {
   return `${Number(n || 0).toLocaleString()} ${devise}`
 }
 
-function extractList(data: any): any[] {
-  if (Array.isArray(data)) return data
-  if (Array.isArray(data?.data)) return data.data
-  if (Array.isArray(data?.items)) return data.items
-  if (Array.isArray(data?.data?.data)) return data.data.data
-  if (Array.isArray(data?.result)) return data.result
-  return []
-}
-
 const TYPE_META: Record<ReservationType, { label: string; icon: React.ReactNode; hint: string }> = {
   billet_avion: { label: "Billet d'avion", icon: <Plane size={16} />, hint: 'Vol + passager + PNR optionnel.' },
   hotel: { label: 'Hôtel', icon: <Hotel size={16} />, hint: 'Produit hôtel + montant.' },
@@ -152,7 +143,7 @@ function Stepper({
         <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
         {steps.map((s, i) => {
           const active = i === current
           const done = i < current
@@ -228,7 +219,6 @@ function normalizeReservationToForm(dv?: Partial<ReservationInput>): Reservation
 
   const clientId = v.client_id ?? v.client?.id ?? null
 
-  // backend show(): flightDetails + reservation columns ville_depart...
   const flightFromBackend = v.flight_details ?? v.flightDetails ?? null
 
   const flight_details =
@@ -244,7 +234,6 @@ function normalizeReservationToForm(dv?: Partial<ReservationInput>): Reservation
         }
       : undefined
 
-  // passenger: show() renvoie passenger (Participant) ou passenger_id
   const passengerBackend = v.passenger ?? null
   const passenger_is_client =
     typeof v.passenger_is_client === 'boolean'
@@ -291,7 +280,6 @@ function normalizeReservationToForm(dv?: Partial<ReservationInput>): Reservation
     passenger,
     flight_details,
 
-    // garder aussi les champs à plat (utile update)
     ville_depart: v.ville_depart ?? flight_details?.ville_depart ?? null,
     ville_arrivee: v.ville_arrivee ?? flight_details?.ville_arrivee ?? null,
     date_depart: v.date_depart ?? flight_details?.date_depart ?? null,
@@ -313,12 +301,62 @@ function normalizeReservationToForm(dv?: Partial<ReservationInput>): Reservation
   }
 }
 
+/* -------------------- Clients pagination helper -------------------- */
+async function fetchAllPages<T = any>(
+  url: string,
+  params: Record<string, any>,
+  {
+    maxPages = 200,
+    pageParam = 'page',
+  }: {
+    maxPages?: number
+    pageParam?: string
+  } = {}
+): Promise<T[]> {
+  const items: T[] = []
+  let page = 1
+  let safety = 0
+
+  while (safety < maxPages) {
+    safety++
+    const { data } = await api.get(url, { params: { ...params, [pageParam]: page } })
+
+    const pageItems: T[] = Array.isArray(data?.data)
+      ? data.data
+      : Array.isArray(data?.items)
+      ? data.items
+      : Array.isArray(data)
+      ? data
+      : []
+
+    items.push(...pageItems)
+
+    const meta = data?.meta
+    const lastPage = Number(meta?.last_page || 0)
+    if (lastPage && page >= lastPage) break
+
+    const nextUrl = data?.links?.next
+    if (typeof nextUrl === 'string') {
+      page++
+      continue
+    }
+
+    if (!pageItems.length) break
+    if (pageItems.length < 10) break
+
+    page++
+  }
+
+  return items
+}
+
 export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit }: Props) {
   const isEdit = Boolean((defaultValues as any)?.id)
 
   const [form, setForm] = useState<ReservationInput>(() => normalizeReservationToForm(defaultValues))
   const [step, setStep] = useState(0)
-  const [clientSearch, setClientSearch] = useState('')
+
+  const qc = useQueryClient()
 
   useEffect(() => {
     setForm(normalizeReservationToForm(defaultValues))
@@ -326,59 +364,26 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(defaultValues || {})])
 
-  /* ---------- Data sources (selects) ---------- */
+  /* ---------- Clients: load ALL pages (fix limit 10) ---------- */
   const qClients = useQuery({
-  queryKey: ['clients', 'select-all'],
-  queryFn: async () => {
-    const all: any[] = []
-    const seen = new Set<number>()
-
-    let page = 1
-    const PER_PAGE = 200
-    const MAX_PAGES = 200 // sécurité
-    const MAX_ITEMS = 20000 // sécurité
-
-    for (let i = 0; i < MAX_PAGES; i++) {
-      // On tente plusieurs noms de params au cas où ton backend n'accepte pas per_page
-      const { data } = await api.get('/clients', {
-        params: { page, per_page: PER_PAGE, perPage: PER_PAGE, limit: PER_PAGE },
-      })
-
-      const list = extractList(data)
-      if (!list.length) break
-
-      // Ajout + dédup
-      let newCount = 0
-      for (const c of list) {
-        const id = Number(c?.id)
-        if (!id) continue
-        if (seen.has(id)) continue
-        seen.add(id)
-        all.push(c)
-        newCount++
-      }
-
-      // Si la page n'apporte rien de nouveau -> stop (évite boucle infinie)
-      if (newCount === 0) break
-
-      // Heuristique: si on reçoit moins que PER_PAGE, on est probablement à la fin
-      if (list.length < PER_PAGE) break
-
-      // Limite globale
-      if (all.length >= MAX_ITEMS) break
-
-      page += 1
-    }
-
-    return all
-  },
-})
+    queryKey: ['clients', 'select-all'],
+    queryFn: async () => {
+      const list = await fetchAllPages<any>('/clients', { per_page: 200 })
+      return list
+    },
+  })
 
   const qProduits = useQuery({
     queryKey: ['produits', 'select-all'],
     queryFn: async () => {
       const { data } = await api.get('/produits', { params: { per_page: 300 } })
-      const list = extractList(data)
+      const list = Array.isArray(data?.data)
+        ? data.data
+        : Array.isArray(data?.items)
+        ? data.items
+        : Array.isArray(data)
+        ? data
+        : []
       return list
     },
   })
@@ -387,23 +392,18 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
     queryKey: ['forfaits', 'select-all'],
     queryFn: async () => {
       const { data } = await api.get('/forfaits', { params: { per_page: 300 } })
-      const list = extractList(data)
+      const list = Array.isArray(data?.data)
+        ? data.data
+        : Array.isArray(data?.items)
+        ? data.items
+        : Array.isArray(data)
+        ? data
+        : []
       return list
     },
   })
 
   const clients: any[] = qClients.data || []
-  const filteredClients = useMemo(() => {
-    const q = clientSearch.trim().toLowerCase()
-    if (!q) return clients
-    return clients.filter((c) => {
-      const name = [c?.prenom, c?.nom].filter(Boolean).join(' ').toLowerCase()
-      const phone = String(c?.telephone || '').toLowerCase()
-      const email = String(c?.email || '').toLowerCase()
-      return name.includes(q) || phone.includes(q) || email.includes(q)
-    })
-  }, [clients, clientSearch])
-
   const produits: any[] = qProduits.data || []
   const forfaits: any[] = qForfaits.data || []
 
@@ -416,6 +416,23 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
     if (!form.client_id) return null
     return clients.find((c) => Number(c?.id) === Number(form.client_id)) || null
   }, [clients, form.client_id])
+
+  /* ---------- Create client mutation (save & list before adding another) ---------- */
+  const createClientMutation = useMutation({
+    mutationFn: async (payload: any) => {
+      const { data } = await api.post('/clients', payload)
+      return data?.data ?? data
+    },
+    onSuccess: async (created) => {
+      await qc.invalidateQueries({ queryKey: ['clients', 'select-all'] })
+      setForm((s) => ({
+        ...s,
+        client_mode: 'existing',
+        client_id: created?.id ? Number(created.id) : s.client_id,
+        client: { nom: '', prenom: '', email: '', telephone: '', adresse: '', pays: '' },
+      }))
+    },
+  })
 
   /* ---------- Step definitions ---------- */
   const steps = useMemo(
@@ -440,7 +457,6 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
         ...s,
         flight_details: { ...(s.flight_details || (EMPTY.flight_details as any)), ...patch },
       }
-      // garder sync à plat (utile update)
       if (next.type === 'billet_avion' && next.flight_details) {
         next.ville_depart = next.flight_details.ville_depart
         next.ville_arrivee = next.flight_details.ville_arrivee
@@ -464,7 +480,10 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
   const addParticipant = () => {
     setForm((s) => ({
       ...s,
-      participants: [...(s.participants || []), { nom: '', prenom: '', passport: '', age: null, remarques: '', role: 'passenger' }],
+      participants: [
+        ...(s.participants || []),
+        { nom: '', prenom: '', passport: '', age: null, remarques: '', role: 'passenger' },
+      ],
     }))
   }
 
@@ -507,6 +526,10 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
         if (!fd?.ville_depart) return 'Ville départ requise.'
         if (!fd?.ville_arrivee) return 'Ville arrivée requise.'
         if (!fd?.date_depart) return 'Date départ requise.'
+        if (isEdit) {
+          if (!fd?.date_arrivee) return 'Date arrivée requise (modification).'
+          if (!fd?.compagnie) return 'Compagnie requise (modification).'
+        }
       } else if (form.type === 'forfait') {
         if (!form.forfait_id) return 'Veuillez sélectionner un forfait.'
       } else {
@@ -525,7 +548,6 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
     if (s === 3) {
       if (form.type === 'billet_avion') {
         if (Number(form.montant_sous_total || 0) <= 0) return 'Achat (hors fees) requis.'
-        if (Number(form.montant_taxes || 0) < 0) return 'Fees invalides.'
       } else {
         if (Number(form.montant_total || 0) <= 0) return 'Montant total requis.'
       }
@@ -548,7 +570,6 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
   const buildPayload = (): ReservationInput => {
     const payload: any = { ...form }
 
-    // client mode
     if (payload.client_mode === 'existing') {
       delete payload.client
     } else {
@@ -556,9 +577,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
     }
     delete payload.client_mode
 
-    // --- billet avion ---
     if (payload.type === 'billet_avion') {
-      // clean flight details
       const fd = {
         ville_depart: String(payload.flight_details?.ville_depart || '').trim(),
         ville_arrivee: String(payload.flight_details?.ville_arrivee || '').trim(),
@@ -570,7 +589,6 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
       }
 
       if (isEdit) {
-        // ✅ UPDATE: ton UpdateReservationRequest attend des champs à plat
         payload.ville_depart = fd.ville_depart
         payload.ville_arrivee = fd.ville_arrivee
         payload.date_depart = fd.date_depart
@@ -579,12 +597,10 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
         payload.pnr = fd.pnr
         payload.classe = fd.classe
 
-        // on ne poste pas flight_details / passenger en update
         delete payload.flight_details
         delete payload.passenger_is_client
         delete payload.passenger
       } else {
-        // ✅ CREATE: backend attend flight_details + passenger_is_client/passenger
         payload.flight_details = {
           ville_depart: fd.ville_depart,
           ville_arrivee: fd.ville_arrivee,
@@ -605,12 +621,10 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
         }
       }
     } else {
-      // not billet_avion
       delete payload.passenger_is_client
       delete payload.passenger
       delete payload.flight_details
 
-      // remove flat flight keys
       delete payload.ville_depart
       delete payload.ville_arrivee
       delete payload.date_depart
@@ -620,39 +634,31 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
       delete payload.classe
     }
 
-    // produit/forfait rules
     if (payload.type === 'forfait') {
       delete payload.produit_id
     } else if (payload.type !== 'forfait' && payload.type !== 'billet_avion') {
       delete payload.forfait_id
     } else if (payload.type === 'billet_avion') {
-      // billet avion: pas de produit/forfait
       delete payload.produit_id
       delete payload.forfait_id
     }
 
-    // participants
     const shouldHaveParticipants = payload.type === 'forfait' || payload.type === 'evenement'
     if (!shouldHaveParticipants) delete payload.participants
     else payload.participants = (payload.participants || []).filter((p: any) => String(p?.nom || '').trim() !== '')
 
-    // Montants
     payload.nombre_personnes = Number(payload.nombre_personnes || 1)
 
     if (payload.type === 'billet_avion') {
-      const st = payload.montant_sous_total == null ? 0 : Number(payload.montant_sous_total)
-      const tx = payload.montant_taxes == null ? 0 : Number(payload.montant_taxes)
-      payload.montant_sous_total = st
-      payload.montant_taxes = tx
-      // compat: on envoie un total cohérent (le backend peut recalculer)
-      payload.montant_total = st + tx
+      payload.montant_sous_total = payload.montant_sous_total != null ? Number(payload.montant_sous_total) : 0
+      payload.montant_taxes = payload.montant_taxes != null ? Number(payload.montant_taxes) : 0
+      delete payload.montant_total
     } else {
       payload.montant_total = Number(payload.montant_total || 0)
       delete payload.montant_sous_total
       delete payload.montant_taxes
     }
 
-    // acompte: front-only (géré par ReservationsPage)
     return payload as ReservationInput
   }
 
@@ -673,7 +679,9 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
     const clientLabel =
       form.client_mode === 'existing'
         ? selectedClient
-          ? [selectedClient?.prenom, selectedClient?.nom].filter(Boolean).join(' ') || selectedClient?.nom || `Client #${selectedClient.id}`
+          ? [selectedClient?.prenom, selectedClient?.nom].filter(Boolean).join(' ') ||
+            selectedClient?.nom ||
+            `Client #${selectedClient.id}`
           : '—'
         : [form.client?.prenom, form.client?.nom].filter(Boolean).join(' ') || form.client?.nom || 'Nouveau client'
 
@@ -684,17 +692,18 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
         ? forfaits.find((f) => Number(f?.id) === Number(form.forfait_id))?.nom || '—'
         : produits.find((p) => Number(p?.id) === Number(form.produit_id))?.nom || '—'
 
-    const pay = Number(form.acompte?.montant || 0)
     const total =
       form.type === 'billet_avion'
         ? Number(form.montant_sous_total || 0) + Number(form.montant_taxes || 0)
         : Number(form.montant_total || 0)
+
+    const pay = Number(form.acompte?.montant || 0)
     const pct = total > 0 ? Math.min(100, Math.round((pay / total) * 100)) : 0
 
     return { typeMeta, clientLabel, details, total, pay, pct }
   }, [form, selectedClient, produits, forfaits])
 
-  /* ---------- Render per step ---------- */
+  /* -------------------- Steps UI -------------------- */
   const Step0 = (
     <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_0.85fr] gap-4">
       <Card title="Type de réservation" icon={<Ticket size={16} />}>
@@ -731,7 +740,9 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
               disabled={form.type === 'voiture'}
             />
             {form.type === 'voiture' ? (
-              <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">Voiture: 1 réservation = 1 personne (fixé).</div>
+              <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                Voiture: 1 réservation = 1 personne (fixé).
+              </div>
             ) : null}
           </div>
         </div>
@@ -741,14 +752,24 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
         <div className="flex items-center gap-2 mb-3">
           <button
             type="button"
-            className={cx('btn px-3', form.client_mode === 'existing' ? 'bg-gray-900 text-white dark:bg-white dark:text-black' : 'bg-gray-200 dark:bg-white/10')}
+            className={cx(
+              'btn px-3',
+              form.client_mode === 'existing'
+                ? 'bg-gray-900 text-white dark:bg-white dark:text-black'
+                : 'bg-gray-200 dark:bg-white/10'
+            )}
             onClick={() => set('client_mode', 'existing')}
           >
             Client existant
           </button>
           <button
             type="button"
-            className={cx('btn px-3', form.client_mode === 'new' ? 'bg-gray-900 text-white dark:bg-white dark:text-black' : 'bg-gray-200 dark:bg-white/10')}
+            className={cx(
+              'btn px-3',
+              form.client_mode === 'new'
+                ? 'bg-gray-900 text-white dark:bg-white dark:text-black'
+                : 'bg-gray-200 dark:bg-white/10'
+            )}
             onClick={() => set('client_mode', 'new')}
           >
             Nouveau client
@@ -758,34 +779,18 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
         {form.client_mode === 'existing' ? (
           <div>
             <label className="label">Client *</label>
-            <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">
-              {qClients.isLoading
-                ? 'Chargement des clients...'
-                : qClients.isError
-                ? 'Erreur de chargement des clients.'
-                : `${filteredClients.length} / ${clients.length} client(s)`}
-            </div>
-
-            <div className="mt-2">
-              <input
-                className="input"
-                placeholder="Rechercher un client (nom, téléphone, email)"
-                value={clientSearch}
-                onChange={(e) => setClientSearch(e.target.value)}
-              />
-            </div>
-
             <select
               className="input"
               value={form.client_id ?? ''}
               onChange={(e) => set('client_id', e.target.value ? Number(e.target.value) : null)}
             >
               <option value="">— Choisir —</option>
-              {filteredClients.map((c) => {
+              {clients.map((c) => {
                 const name = [c?.prenom, c?.nom].filter(Boolean).join(' ') || c?.nom || `Client #${c?.id}`
                 return (
                   <option key={c.id} value={c.id}>
                     {name}
+                    {c?.telephone ? ` • ${c.telephone}` : ''}
                   </option>
                 )
               })}
@@ -801,26 +806,129 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
             ) : null}
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label className="label">Nom *</label>
-              <input className="input" value={form.client?.nom ?? ''} onChange={(e) => set('client', { ...(form.client || {}), nom: e.target.value })} />
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="label">Nom *</label>
+                <input
+                  className="input"
+                  value={form.client?.nom ?? ''}
+                  onChange={(e) => set('client', { ...(form.client || {}), nom: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="label">Prénom</label>
+                <input
+                  className="input"
+                  value={form.client?.prenom ?? ''}
+                  onChange={(e) => set('client', { ...(form.client || {}), prenom: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="label">Téléphone</label>
+                <input
+                  className="input"
+                  value={form.client?.telephone ?? ''}
+                  onChange={(e) => set('client', { ...(form.client || {}), telephone: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="label">Email</label>
+                <input
+                  className="input"
+                  value={form.client?.email ?? ''}
+                  onChange={(e) => set('client', { ...(form.client || {}), email: e.target.value })}
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="label">Adresse</label>
+                <input
+                  className="input"
+                  value={form.client?.adresse ?? ''}
+                  onChange={(e) => set('client', { ...(form.client || {}), adresse: e.target.value })}
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="label">Pays</label>
+                <input
+                  className="input"
+                  value={form.client?.pays ?? ''}
+                  onChange={(e) => set('client', { ...(form.client || {}), pays: e.target.value })}
+                />
+              </div>
             </div>
-            <div>
-              <label className="label">Prénom</label>
-              <input className="input" value={form.client?.prenom ?? ''} onChange={(e) => set('client', { ...(form.client || {}), prenom: e.target.value })} />
+
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                className="btn bg-gray-200 dark:bg-white/10"
+                onClick={() =>
+                  setForm((s) => ({
+                    ...s,
+                    client: { nom: '', prenom: '', email: '', telephone: '', adresse: '', pays: '' },
+                  }))
+                }
+                disabled={createClientMutation.isPending}
+              >
+                Vider
+              </button>
+
+              <button
+                type="button"
+                className="btn bg-gray-900 text-white dark:bg-white dark:text-black"
+                disabled={createClientMutation.isPending}
+                onClick={() => {
+                  const c = form.client || {}
+                  if (!c.nom) return
+                  if (!c.telephone && !c.email) return
+
+                  createClientMutation.mutate({
+                    nom: c.nom,
+                    prenom: c.prenom || null,
+                    telephone: c.telephone || null,
+                    email: c.email || null,
+                    adresse: c.adresse || null,
+                    pays: c.pays || null,
+                  })
+                }}
+                title="Crée le client, rafraîchit la liste et le sélectionne automatiquement"
+              >
+                {createClientMutation.isPending ? 'Enregistrement…' : 'Enregistrer le client'}
+              </button>
+
+              <button
+                type="button"
+                className="btn bg-gray-200 dark:bg-white/10"
+                disabled={createClientMutation.isPending}
+                onClick={async () => {
+                  const c = form.client || {}
+                  if (!c.nom) return
+                  if (!c.telephone && !c.email) return
+
+                  const created = await createClientMutation.mutateAsync({
+                    nom: c.nom,
+                    prenom: c.prenom || null,
+                    telephone: c.telephone || null,
+                    email: c.email || null,
+                    adresse: c.adresse || null,
+                    pays: c.pays || null,
+                  })
+
+                  setForm((s) => ({
+                    ...s,
+                    client_mode: 'new',
+                    client_id: created?.id ? Number(created.id) : s.client_id,
+                    client: { nom: '', prenom: '', email: '', telephone: '', adresse: '', pays: '' },
+                  }))
+                }}
+                title="Crée le client puis reset les champs pour en ajouter un autre"
+              >
+                Enregistrer & ajouter un autre
+              </button>
             </div>
-            <div>
-              <label className="label">Téléphone</label>
-              <input className="input" value={form.client?.telephone ?? ''} onChange={(e) => set('client', { ...(form.client || {}), telephone: e.target.value })} />
-            </div>
-            <div>
-              <label className="label">Email</label>
-              <input className="input" value={form.client?.email ?? ''} onChange={(e) => set('client', { ...(form.client || {}), email: e.target.value })} />
-            </div>
-            <div className="md:col-span-2">
-              <label className="label">Adresse</label>
-              <input className="input" value={form.client?.adresse ?? ''} onChange={(e) => set('client', { ...(form.client || {}), adresse: e.target.value })} />
+
+            <div className="text-xs text-gray-600 dark:text-gray-400">
+              Astuce: après “Enregistrer le client”, il apparaît dans la liste et est sélectionné automatiquement.
             </div>
           </div>
         )}
@@ -838,14 +946,22 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                 <label className="label">Ville départ *</label>
                 <div className="relative">
                   <MapPin size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-                  <input className="input pl-9" value={form.flight_details?.ville_depart ?? ''} onChange={(e) => setFlight({ ville_depart: e.target.value })} />
+                  <input
+                    className="input pl-9"
+                    value={form.flight_details?.ville_depart ?? ''}
+                    onChange={(e) => setFlight({ ville_depart: e.target.value })}
+                  />
                 </div>
               </div>
               <div>
                 <label className="label">Ville arrivée *</label>
                 <div className="relative">
                   <MapPin size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-                  <input className="input pl-9" value={form.flight_details?.ville_arrivee ?? ''} onChange={(e) => setFlight({ ville_arrivee: e.target.value })} />
+                  <input
+                    className="input pl-9"
+                    value={form.flight_details?.ville_arrivee ?? ''}
+                    onChange={(e) => setFlight({ ville_arrivee: e.target.value })}
+                  />
                 </div>
               </div>
             </div>
@@ -855,7 +971,12 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                 <label className="label">Date départ *</label>
                 <div className="relative">
                   <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-                  <input type="date" className="input pl-9" value={form.flight_details?.date_depart ?? ''} onChange={(e) => setFlight({ date_depart: e.target.value })} />
+                  <input
+                    type="date"
+                    className="input pl-9"
+                    value={form.flight_details?.date_depart ?? ''}
+                    onChange={(e) => setFlight({ date_depart: e.target.value })}
+                  />
                 </div>
               </div>
               <div>
@@ -876,16 +997,29 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div>
                 <label className="label">{isEdit ? 'Compagnie *' : 'Compagnie'}</label>
-                <input className="input" value={String(form.flight_details?.compagnie ?? '')} onChange={(e) => setFlight({ compagnie: e.target.value })} />
+                <input
+                  className="input"
+                  value={String(form.flight_details?.compagnie ?? '')}
+                  onChange={(e) => setFlight({ compagnie: e.target.value })}
+                />
                 {isEdit ? <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">Requis en modification (backend).</div> : null}
               </div>
               <div>
                 <label className="label">Classe</label>
-                <input className="input" value={String(form.flight_details?.classe ?? '')} onChange={(e) => setFlight({ classe: e.target.value })} />
+                <input
+                  className="input"
+                  value={String(form.flight_details?.classe ?? '')}
+                  onChange={(e) => setFlight({ classe: e.target.value })}
+                />
               </div>
               <div>
                 <label className="label">PNR</label>
-                <input className="input" placeholder="Ex: CSSUNO" value={String(form.flight_details?.pnr ?? '')} onChange={(e) => setFlight({ pnr: e.target.value })} />
+                <input
+                  className="input"
+                  placeholder="Ex: CSSUNO"
+                  value={String(form.flight_details?.pnr ?? '')}
+                  onChange={(e) => setFlight({ pnr: e.target.value })}
+                />
                 <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">Optionnel (nullable DB).</div>
               </div>
             </div>
@@ -893,7 +1027,11 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
         ) : form.type === 'forfait' ? (
           <div>
             <label className="label">Forfait *</label>
-            <select className="input" value={form.forfait_id ?? ''} onChange={(e) => set('forfait_id', e.target.value ? Number(e.target.value) : null)}>
+            <select
+              className="input"
+              value={form.forfait_id ?? ''}
+              onChange={(e) => set('forfait_id', e.target.value ? Number(e.target.value) : null)}
+            >
               <option value="">— Choisir —</option>
               {forfaits.map((f) => (
                 <option key={f.id} value={f.id}>
@@ -905,7 +1043,11 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
         ) : (
           <div>
             <label className="label">Produit *</label>
-            <select className="input" value={form.produit_id ?? ''} onChange={(e) => set('produit_id', e.target.value ? Number(e.target.value) : null)}>
+            <select
+              className="input"
+              value={form.produit_id ?? ''}
+              onChange={(e) => set('produit_id', e.target.value ? Number(e.target.value) : null)}
+            >
               <option value="">— Choisir —</option>
               {produitsOfType.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -950,14 +1092,20 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
               <div className="mt-2 flex flex-wrap gap-2">
                 <button
                   type="button"
-                  className={cx('btn px-3', form.passenger_is_client ? 'bg-gray-900 text-white dark:bg-white dark:text-black' : 'bg-gray-200 dark:bg-white/10')}
+                  className={cx(
+                    'btn px-3',
+                    form.passenger_is_client ? 'bg-gray-900 text-white dark:bg-white dark:text-black' : 'bg-gray-200 dark:bg-white/10'
+                  )}
                   onClick={() => set('passenger_is_client', true)}
                 >
                   Le client
                 </button>
                 <button
                   type="button"
-                  className={cx('btn px-3', !form.passenger_is_client ? 'bg-gray-900 text-white dark:bg-white dark:text-black' : 'bg-gray-200 dark:bg-white/10')}
+                  className={cx(
+                    'btn px-3',
+                    !form.passenger_is_client ? 'bg-gray-900 text-white dark:bg-white dark:text-black' : 'bg-gray-200 dark:bg-white/10'
+                  )}
                   onClick={() => set('passenger_is_client', false)}
                 >
                   Une autre personne
@@ -983,7 +1131,11 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                 </div>
                 <div>
                   <label className="label">Prénom passager</label>
-                  <input className="input" value={form.passenger?.prenom ?? ''} onChange={(e) => setPassenger({ prenom: e.target.value })} />
+                  <input
+                    className="input"
+                    value={form.passenger?.prenom ?? ''}
+                    onChange={(e) => setPassenger({ prenom: e.target.value })}
+                  />
                 </div>
               </div>
             ) : null}
@@ -1183,14 +1335,12 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
               value={form.acompte?.montant === undefined || form.acompte?.montant === null ? '' : String(form.acompte.montant)}
               onChange={(e) => {
                 const raw = e.target.value
-
                 if (raw === '') {
                   const next = { ...(form.acompte || {}) }
                   delete (next as any).montant
                   set('acompte', next)
                   return
                 }
-
                 set('acompte', { ...(form.acompte || {}), montant: Number(raw) })
               }}
             />
