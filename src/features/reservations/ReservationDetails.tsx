@@ -29,6 +29,7 @@ import {
   Clock,
   Ticket,
   Tag,
+  Shield,
 } from 'lucide-react'
 
 type Props = {
@@ -86,6 +87,7 @@ function normalizeTypeKey(t: any) {
   if (v.includes('forfait') || v.includes('package')) return 'forfait'
   if (v.includes('hotel')) return 'hotel'
   if (v.includes('voiture') || v.includes('car')) return 'voiture'
+  if (v.includes('assurance') || v.includes('insurance')) return 'assurance'
 
   return v
 }
@@ -105,8 +107,7 @@ function ToneBadge({
   tone: 'gray' | 'green' | 'amber' | 'red' | 'blue'
   children: React.ReactNode
 }) {
-  const base =
-    'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap'
+  const base = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold whitespace-nowrap'
   const cls =
     tone === 'green'
       ? 'bg-green-100 text-green-700 dark:bg-green-500/15 dark:text-green-300'
@@ -133,9 +134,7 @@ function StatutBadge({ statut }: { statut: any }) {
       ? 'En attente'
       : statut || '—'
 
-  const tone =
-    v === 'confirmee' ? 'green' : v === 'annulee' ? 'red' : v === 'brouillon' ? 'gray' : 'amber'
-
+  const tone = v === 'confirmee' ? 'green' : v === 'annulee' ? 'red' : v === 'brouillon' ? 'gray' : 'amber'
   return <ToneBadge tone={tone as any}>{label}</ToneBadge>
 }
 
@@ -197,23 +196,21 @@ function KV({ label, value }: { label: string; value: React.ReactNode }) {
   )
 }
 
-const TYPE_META: Record<
-  string,
-  { label: string; icon: React.ReactNode; tone: 'blue' | 'gray' | 'amber' | 'green' }
-> = {
-  billet_avion: { label: "Billet d'avion", icon: <Plane size={16} />, tone: 'blue' },
-  hotel: { label: 'Hôtel', icon: <Hotel size={16} />, tone: 'green' },
-  voiture: { label: 'Voiture', icon: <Car size={16} />, tone: 'amber' },
-  evenement: { label: 'Événement', icon: <PartyPopper size={16} />, tone: 'blue' },
-  forfait: { label: 'Forfait', icon: <Package size={16} />, tone: 'green' },
-}
+const TYPE_META: Record<string, { label: string; icon: React.ReactNode; tone: 'blue' | 'gray' | 'amber' | 'green' }> =
+  {
+    billet_avion: { label: "Billet d'avion", icon: <Plane size={16} />, tone: 'blue' },
+    hotel: { label: 'Hôtel', icon: <Hotel size={16} />, tone: 'green' },
+    voiture: { label: 'Voiture', icon: <Car size={16} />, tone: 'amber' },
+    evenement: { label: 'Événement', icon: <PartyPopper size={16} />, tone: 'blue' },
+    forfait: { label: 'Forfait', icon: <Package size={16} />, tone: 'green' },
+    assurance: { label: 'Assurance', icon: <Shield size={16} />, tone: 'blue' },
+  }
 
 /* -------------------- Facture/paiements -------------------- */
 function pickLatestInvoice(r: any) {
   if (!r) return null
   if (r.facture && typeof r.facture === 'object') return r.facture
-  if (r.factures && typeof r.factures === 'object' && !Array.isArray(r.factures) && r.factures.id)
-    return r.factures
+  if (r.factures && typeof r.factures === 'object' && !Array.isArray(r.factures) && r.factures.id) return r.factures
 
   const fs = r.factures
   let arr: any[] = []
@@ -277,16 +274,28 @@ function firstOf(...vals: any[]) {
   return null
 }
 
+function extractAssuranceDetails(r: any) {
+  const a = r?.assurance_details ?? r?.assuranceDetails ?? r?.assurance_detail ?? r?.assuranceDetail ?? null
+  const libelle = firstOf(a?.libelle, a?.label, r?.libelle, r?.assurance_libelle)
+  const date_debut = firstOf(a?.date_debut, a?.start_date, r?.date_debut)
+  const date_fin = firstOf(a?.date_fin, a?.end_date, r?.date_fin)
+  return { libelle, date_debut, date_fin }
+}
+
 function extractPeriod(r: any) {
-  // supporte plusieurs conventions (hotel / voiture / event / forfait)
+  // supporte plusieurs conventions (hotel / voiture / event / forfait / assurance)
+  const assurance = extractAssuranceDetails(r)
+
   const start = firstOf(
+    assurance?.date_debut,
     r?.date_debut,
     r?.start_date,
     r?.check_in,
-    r?.date_depart, // au cas où
+    r?.date_depart,
     r?.debut
   )
   const end = firstOf(
+    assurance?.date_fin,
     r?.date_fin,
     r?.end_date,
     r?.check_out,
@@ -297,7 +306,6 @@ function extractPeriod(r: any) {
 }
 
 function extractLocation(r: any) {
-  // essaye produit ou champs directs
   const p = r?.produit
   const city = firstOf(r?.ville, r?.city, p?.ville, p?.city, p?.lieu, r?.lieu)
   const address = firstOf(p?.adresse, p?.address, r?.adresse, r?.address)
@@ -305,7 +313,6 @@ function extractLocation(r: any) {
 }
 
 function extractOptions(r: any) {
-  // options "communes" (affichées si présentes)
   return {
     nombre_personnes: firstOf(r?.nombre_personnes, r?.nb_personnes),
     nombre_nuits: firstOf(r?.nombre_nuits, r?.nb_nuits, r?.nights),
@@ -319,11 +326,63 @@ function extractOptions(r: any) {
   }
 }
 
+function buildName(obj: any) {
+  if (!obj) return ''
+  const n = [obj?.prenom, obj?.nom].filter(Boolean).join(' ').trim()
+  if (n) return n
+  if (obj?.name) return String(obj.name)
+  if (obj?.full_name) return String(obj.full_name)
+  return ''
+}
+
+function normalizeRole(role: any) {
+  const r = String(role || '').toLowerCase().trim()
+  if (!r) return ''
+  return r
+}
+
+function pickBeneficiaries(r: any, client: any) {
+  // 1) champs directs (au cas où)
+  const direct =
+    r?.beneficiaire ??
+    r?.beneficiary ??
+    r?.assurance_beneficiary ??
+    r?.assuranceBeneficiary ??
+    r?.beneficiary_details ??
+    null
+
+  if (direct && typeof direct === 'object') {
+    const name = buildName(direct)
+    if (name) return [{ ...direct, __source: 'direct', __name: name }]
+  }
+
+  // 2) participants (recommandé: role = 'beneficiary' / 'beneficiaire' / 'assure' etc.)
+  const parts = normalizeArray<any>(r?.participants)
+  const preferred = parts.filter((p) => {
+    const ro = normalizeRole(p?.role)
+    return ['beneficiary', 'beneficiaire', 'assure', 'assured', 'passenger'].includes(ro)
+  })
+
+  const finalParts = preferred.length ? preferred : parts
+  const withNames = finalParts
+    .map((p) => {
+      const name = buildName(p)
+      return name ? { ...p, __source: 'participants', __name: name } : null
+    })
+    .filter(Boolean)
+
+  if (withNames.length) return withNames as any[]
+
+  // 3) fallback client
+  const clientName = buildName(client)
+  if (clientName) return [{ __source: 'client', __name: clientName }]
+  return []
+}
+
 /* -------------------- Main -------------------- */
 export function ReservationDetails({ reservation, onViewClientHistory, onChanged }: Props) {
   const toast = useToast()
 
-  // ✅ copie locale
   const [data, setData] = useState<any>(reservation)
   useEffect(() => setData(reservation), [reservation])
 
@@ -332,11 +391,7 @@ export function ReservationDetails({ reservation, onViewClientHistory, onChanged
 
   const r = data
   const typeKey = normalizeTypeKey(r?.type)
-  const typeMeta = TYPE_META[typeKey] ?? {
-    label: typeKey,
-    icon: <ClipboardList size={16} />,
-    tone: 'gray' as const,
-  }
+  const typeMeta = TYPE_META[typeKey] ?? { label: typeKey, icon: <ClipboardList size={16} />, tone: 'gray' as const }
 
   const client = r?.client ?? null
   const devise = String(r?.devise || 'XOF')
@@ -355,7 +410,7 @@ export function ReservationDetails({ reservation, onViewClientHistory, onChanged
   const passenger = useMemo(() => {
     const p = r?.passenger ?? r?.beneficiaire ?? r?.beneficiary ?? r?.passager ?? null
     if (p && typeof p === 'object') {
-      const hasName = !!([p?.prenom, p?.nom, p?.name, p?.full_name].filter(Boolean).join(' ').trim())
+      const hasName = !!buildName(p)
       if (!hasName) return null
       return p
     }
@@ -367,23 +422,12 @@ export function ReservationDetails({ reservation, onViewClientHistory, onChanged
     const direct = (r?.passenger_name ?? r?.beneficiary_name ?? r?.beneficiaire_nom ?? null) as any
     if (direct && String(direct).trim()) return String(direct).trim()
     if (passenger) {
-      const n = [passenger?.prenom, passenger?.nom].filter(Boolean).join(' ').trim()
+      const n = buildName(passenger)
       if (n) return n
-      if (passenger?.name) return String(passenger.name)
-      if (passenger?.full_name) return String(passenger.full_name)
     }
-    const n = [client?.prenom, client?.nom].filter(Boolean).join(' ').trim()
+    const n = buildName(client)
     return n || client?.nom || null
-  }, [
-    typeKey,
-    r?.passenger_name,
-    r?.beneficiary_name,
-    r?.beneficiaire_nom,
-    passenger,
-    client?.prenom,
-    client?.nom,
-    client?.nom,
-  ])
+  }, [typeKey, r?.passenger_name, r?.beneficiary_name, r?.beneficiaire_nom, passenger, client])
 
   const headerRef = r?.reference ?? `#${r?.id ?? '—'}`
 
@@ -391,11 +435,24 @@ export function ReservationDetails({ reservation, onViewClientHistory, onChanged
   const showForfait = !!r?.forfait
 
   const participants = useMemo(() => normalizeArray<any>(r?.participants), [r?.participants])
-  const showParticipants = typeKey === 'evenement' || typeKey === 'forfait'
+
+  // ✅ participants visibles aussi pour assurance (bénéficiaires)
+  const showParticipants = typeKey === 'evenement' || typeKey === 'forfait' || typeKey === 'assurance'
 
   const period = useMemo(() => extractPeriod(r), [r])
   const loc = useMemo(() => extractLocation(r), [r])
   const opts = useMemo(() => extractOptions(r), [r])
+
+  const assurance = useMemo(() => extractAssuranceDetails(r), [r])
+
+  // ✅ Bénéficiaires assurance (priorité: champ direct -> participants -> client)
+  const assuranceBeneficiaries = useMemo(() => pickBeneficiaries(r, client), [r, client])
+  const assuranceBeneficiaryLabel = useMemo(() => {
+    if (typeKey !== 'assurance') return null
+    if (!assuranceBeneficiaries.length) return null
+    if (assuranceBeneficiaries.length === 1) return assuranceBeneficiaries[0]?.__name ?? '—'
+    return `${assuranceBeneficiaries.length} bénéficiaires`
+  }, [typeKey, assuranceBeneficiaries])
 
   const refreshReservation = async () => {
     const id = Number(r?.id)
@@ -495,7 +552,7 @@ export function ReservationDetails({ reservation, onViewClientHistory, onChanged
     }
   }
 
-  // ✅ Paiement (important)
+  // ✅ Paiement
   const [payFormOpen, setPayFormOpen] = useState(false)
   const [paymentForm, setPaymentForm] = useState({
     montant: 0,
@@ -545,7 +602,10 @@ export function ReservationDetails({ reservation, onViewClientHistory, onChanged
   const topBadges = (
     <div className="flex items-center gap-2 flex-wrap justify-end">
       <ToneBadge tone={typeMeta.tone}>
-        <span className="inline-flex items-center gap-1">{typeMeta.icon}{typeMeta.label}</span>
+        <span className="inline-flex items-center gap-1">
+          {typeMeta.icon}
+          {typeMeta.label}
+        </span>
       </ToneBadge>
       <StatutBadge statut={r?.statut} />
       <ToneBadge tone={pay.tone}>
@@ -557,18 +617,10 @@ export function ReservationDetails({ reservation, onViewClientHistory, onChanged
 
   const amountCards = (
     <div className={cx('grid grid-cols-1 sm:grid-cols-5 gap-3')}>
-      {typeKey === 'billet_avion' ? (
+      {typeKey === 'billet_avion' || typeKey === 'assurance' ? (
         <>
-          <Field
-            label="Achat (hors fees)"
-            value={money(r?.montant_sous_total, devise)}
-            icon={<Tag size={14} />}
-          />
-          <Field
-            label="Fees (commission)"
-            value={money(r?.montant_taxes, devise)}
-            icon={<Ticket size={14} />}
-          />
+          <Field label="Achat (hors fees)" value={money(r?.montant_sous_total, devise)} icon={<Tag size={14} />} />
+          <Field label="Fees (commission)" value={money(r?.montant_taxes, devise)} icon={<Ticket size={14} />} />
         </>
       ) : null}
 
@@ -609,16 +661,29 @@ export function ReservationDetails({ reservation, onViewClientHistory, onChanged
           <Field label="Nom" value={f?.nom || '—'} icon={<Package size={14} />} />
           <Field label="Type" value={f?.type ?? '—'} icon={<Tag size={14} />} />
           {f?.prix != null ? <Field label="Prix forfait" value={money(f.prix, devise)} icon={<Receipt size={14} />} /> : null}
-          {f?.nombre_max_personnes != null ? (
-            <Field label="Max personnes" value={String(f.nombre_max_personnes)} icon={<Users size={14} />} />
-          ) : null}
+          {f?.nombre_max_personnes != null ? <Field label="Max personnes" value={String(f.nombre_max_personnes)} icon={<Users size={14} />} /> : null}
+        </div>
+      </Card>
+    )
+  }
+
+  const AssuranceBlock = () => {
+    if (typeKey !== 'assurance') return null
+    const hasAny = Boolean(assurance?.libelle || assurance?.date_debut || assurance?.date_fin)
+    if (!hasAny) return null
+
+    return (
+      <Card title="Détails assurance" icon={<Shield size={18} />}>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <Field label="Libellé" value={assurance?.libelle || '—'} icon={<Tag size={14} />} />
+          <Field label="Début" value={safeDate(assurance?.date_debut)} icon={<Calendar size={14} />} />
+          <Field label="Fin" value={safeDate(assurance?.date_fin)} icon={<Calendar size={14} />} />
         </div>
       </Card>
     )
   }
 
   const PeriodBlock = () => {
-    // On affiche pour hotel/voiture/evenement/forfait (et même billet si besoin)
     const start = period?.start
     const end = period?.end
     const hasAny = Boolean(start || end)
@@ -633,6 +698,8 @@ export function ReservationDetails({ reservation, onViewClientHistory, onChanged
         ? 'Date / période'
         : typeKey === 'forfait'
         ? 'Période du forfait'
+        : typeKey === 'assurance'
+        ? 'Période assurance'
         : 'Période'
 
     return (
@@ -646,7 +713,6 @@ export function ReservationDetails({ reservation, onViewClientHistory, onChanged
   }
 
   const OptionsBlock = () => {
-    // on affiche seulement ce qui existe
     const rows: Array<{ label: string; value: any; icon?: React.ReactNode }> = [
       { label: 'Nombre de personnes', value: opts.nombre_personnes, icon: <Users size={14} /> },
       { label: 'Nombre de nuits', value: opts.nombre_nuits, icon: <Clock size={14} /> },
@@ -660,8 +726,7 @@ export function ReservationDetails({ reservation, onViewClientHistory, onChanged
 
     if (!rows.length) return null
 
-    const title =
-      typeKey === 'hotel' ? 'Options hôtel' : typeKey === 'voiture' ? 'Options voiture' : 'Options'
+    const title = typeKey === 'hotel' ? 'Options hôtel' : typeKey === 'voiture' ? 'Options voiture' : 'Options'
 
     return (
       <Card title={title} icon={<SettingsIcon />}>
@@ -675,7 +740,6 @@ export function ReservationDetails({ reservation, onViewClientHistory, onChanged
   }
 
   function SettingsIcon() {
-    // petit icon “settings” style sans importer lucide Settings (si tu ne l’as pas déjà)
     return <Zap size={18} />
   }
 
@@ -694,11 +758,7 @@ export function ReservationDetails({ reservation, onViewClientHistory, onChanged
         }
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <Field
-            label="Trajet"
-            value={`${flight?.ville_depart || '—'} → ${flight?.ville_arrivee || '—'}`}
-            icon={<MapPin size={14} />}
-          />
+          <Field label="Trajet" value={`${flight?.ville_depart || '—'} → ${flight?.ville_arrivee || '—'}`} icon={<MapPin size={14} />} />
           <Field label="Compagnie" value={flight?.compagnie || '—'} icon={<Plane size={14} />} />
           <Field label="Départ" value={safeDate(flight?.date_depart)} icon={<Calendar size={14} />} />
           <Field label="Arrivée" value={safeDate(flight?.date_arrivee)} icon={<Calendar size={14} />} />
@@ -710,46 +770,123 @@ export function ReservationDetails({ reservation, onViewClientHistory, onChanged
     )
   }
 
+  // ✅ Billet avion + Assurance
   const BeneficiaryBlock = () => {
-    if (typeKey !== 'billet_avion') return null
+    if (typeKey !== 'billet_avion' && typeKey !== 'assurance') return null
+
+    if (typeKey === 'billet_avion') {
+      return (
+        <Card title="Bénéficiaire du billet" icon={<User size={18} />} right={passengerIsClient ? <ToneBadge tone="gray">Client</ToneBadge> : undefined}>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <Field label="Nom" value={passengerName || '—'} icon={<User size={14} />} />
+            {passenger && !passengerIsClient ? (
+              <>
+                {passenger?.passport ? <Field label="Passeport" value={passenger.passport} icon={<Ticket size={14} />} /> : null}
+                {passenger?.sexe ? <Field label="Sexe" value={passenger.sexe} icon={<Info size={14} />} /> : null}
+                {passenger?.telephone ? <Field label="Téléphone" value={passenger.telephone} icon={<Phone size={14} />} /> : null}
+                {passenger?.email ? <Field label="Email" value={passenger.email} icon={<Mail size={14} />} /> : null}
+              </>
+            ) : null}
+            {!passenger && passengerIsClient ? (
+              <div className="md:col-span-2 text-xs text-gray-600 dark:text-gray-400">Bénéficiaire = client sélectionné pour cette réservation.</div>
+            ) : null}
+          </div>
+        </Card>
+      )
+    }
+
+    // assurance
+    const count = assuranceBeneficiaries.length
+    const right =
+      count === 0 ? <ToneBadge tone="gray">Client</ToneBadge> : <ToneBadge tone="gray">{count} bénéficiaire{count > 1 ? 's' : ''}</ToneBadge>
+
     return (
-      <Card
-        title="Bénéficiaire du billet"
-        icon={<User size={18} />}
-        right={passengerIsClient ? <ToneBadge tone="gray">Client</ToneBadge> : undefined}
-      >
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <Field label="Nom" value={passengerName || '—'} icon={<User size={14} />} />
-          {passenger && !passengerIsClient ? (
-            <>
-              {passenger?.passport ? (
-                <Field label="Passeport" value={passenger.passport} icon={<Ticket size={14} />} />
-              ) : null}
-              {passenger?.sexe ? <Field label="Sexe" value={passenger.sexe} icon={<Info size={14} />} /> : null}
-              {passenger?.telephone ? (
-                <Field label="Téléphone" value={passenger.telephone} icon={<Phone size={14} />} />
-              ) : null}
-              {passenger?.email ? <Field label="Email" value={passenger.email} icon={<Mail size={14} />} /> : null}
-            </>
-          ) : null}
-          {!passenger && passengerIsClient ? (
-            <div className="md:col-span-2 text-xs text-gray-600 dark:text-gray-400">
-              Bénéficiaire = client sélectionné pour cette réservation.
+      <Card title="Bénéficiaire(s) de l’assurance" icon={<Users size={18} />} right={right}>
+        {count === 0 ? (
+          <div className="text-sm text-gray-600 dark:text-gray-400">
+            Aucun bénéficiaire détecté côté API — on affiche par défaut le client.
+            <div className="mt-2">
+              <Field label="Client" value={buildName(client) || client?.nom || '—'} icon={<User size={14} />} />
             </div>
-          ) : null}
-        </div>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {assuranceBeneficiaries.map((b: any, idx: number) => {
+              const name = b?.__name || b?.nom || `Bénéficiaire ${idx + 1}`
+              const subtitleParts: string[] = []
+              if (b?.passport) subtitleParts.push(`Passeport: ${b.passport}`)
+              if (b?.sexe) subtitleParts.push(`Sexe: ${b.sexe}`)
+              if (b?.age != null) subtitleParts.push(`Âge: ${b.age}`)
+              if (b?.telephone) subtitleParts.push(`Tél: ${b.telephone}`)
+
+              return (
+                <div key={b?.id ?? idx} className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] p-3 border border-black/5 dark:border-white/10">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-semibold truncate">{name}</div>
+                      {subtitleParts.length ? (
+                        <div className="mt-1 text-xs text-gray-600 dark:text-gray-400 truncate">{subtitleParts.join(' • ')}</div>
+                      ) : (
+                        <div className="mt-1 text-xs text-gray-500">—</div>
+                      )}
+                    </div>
+                    {b?.role ? <ToneBadge tone="gray">{b.role}</ToneBadge> : null}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </Card>
     )
   }
 
   const ParticipantsBlock = () => {
     if (!showParticipants) return null
+
+    // ✅ pour assurance: on appelle ça "Bénéficiaires" (et on met participants ou fallback)
+    if (typeKey === 'assurance') {
+      const list = assuranceBeneficiaries.length ? assuranceBeneficiaries : []
+      return (
+        <Card title="Bénéficiaires" icon={<Users size={18} />} right={<ToneBadge tone="gray">{list.length}</ToneBadge>}>
+          {list.length === 0 ? (
+            <div className="text-sm text-gray-500">Aucun bénéficiaire enregistré.</div>
+          ) : (
+            <div className="space-y-2">
+              {list.map((p: any, idx: number) => {
+                const name = p?.__name || [p?.prenom, p?.nom].filter(Boolean).join(' ') || p?.nom || `Bénéficiaire ${idx + 1}`
+                const subtitleParts: string[] = []
+                if (p?.passport) subtitleParts.push(`Passeport: ${p.passport}`)
+                if (p?.sexe) subtitleParts.push(`Sexe: ${p.sexe}`)
+                if (p?.age != null) subtitleParts.push(`Âge: ${p.age}`)
+                if (p?.telephone) subtitleParts.push(`Tél: ${p.telephone}`)
+
+                return (
+                  <div key={p?.id ?? idx} className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] p-3 border border-black/5 dark:border-white/10">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="font-semibold truncate">{name}</div>
+                        {subtitleParts.length ? (
+                          <div className="mt-1 text-xs text-gray-600 dark:text-gray-400 truncate">{subtitleParts.join(' • ')}</div>
+                        ) : (
+                          <div className="mt-1 text-xs text-gray-500">—</div>
+                        )}
+                      </div>
+                      {p?.role ? <ToneBadge tone="gray">{p.role}</ToneBadge> : null}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </Card>
+      )
+    }
+
+    // forfait / event
+    if (typeKey !== 'evenement' && typeKey !== 'forfait') return null
     return (
-      <Card
-        title="Participants"
-        icon={<Users size={18} />}
-        right={<ToneBadge tone="gray">{participants.length}</ToneBadge>}
-      >
+      <Card title="Participants" icon={<Users size={18} />} right={<ToneBadge tone="gray">{participants.length}</ToneBadge>}>
         {participants.length === 0 ? (
           <div className="text-sm text-gray-500">Aucun participant enregistré pour cette réservation.</div>
         ) : (
@@ -763,17 +900,12 @@ export function ReservationDetails({ reservation, onViewClientHistory, onChanged
               if (p?.telephone) subtitleParts.push(`Tél: ${p.telephone}`)
 
               return (
-                <div
-                  key={p?.id ?? idx}
-                  className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] p-3 border border-black/5 dark:border-white/10"
-                >
+                <div key={p?.id ?? idx} className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] p-3 border border-black/5 dark:border-white/10">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="font-semibold truncate">{name}</div>
                       {subtitleParts.length ? (
-                        <div className="mt-1 text-xs text-gray-600 dark:text-gray-400 truncate">
-                          {subtitleParts.join(' • ')}
-                        </div>
+                        <div className="mt-1 text-xs text-gray-600 dark:text-gray-400 truncate">{subtitleParts.join(' • ')}</div>
                       ) : (
                         <div className="mt-1 text-xs text-gray-500">—</div>
                       )}
@@ -823,8 +955,18 @@ export function ReservationDetails({ reservation, onViewClientHistory, onChanged
                     <span>•</span>
                     <span className="inline-flex items-center gap-1">
                       <User size={12} />
+                      <span className="font-medium text-gray-800 dark:text-gray-200">Bénéficiaire:</span> {passengerName || '—'}
+                    </span>
+                  </>
+                ) : null}
+
+                {typeKey === 'assurance' ? (
+                  <>
+                    <span>•</span>
+                    <span className="inline-flex items-center gap-1">
+                      <Users size={12} />
                       <span className="font-medium text-gray-800 dark:text-gray-200">Bénéficiaire:</span>{' '}
-                      {passengerName || '—'}
+                      {assuranceBeneficiaryLabel || (buildName(client) || client?.nom || '—')}
                     </span>
                   </>
                 ) : null}
@@ -867,12 +1009,7 @@ export function ReservationDetails({ reservation, onViewClientHistory, onChanged
               <button
                 type="button"
                 className="btn bg-gray-200 dark:bg-white/10"
-                onClick={() =>
-                  onViewClientHistory(
-                    Number(client.id),
-                    [client?.prenom, client?.nom].filter(Boolean).join(' ') || client?.nom
-                  )
-                }
+                onClick={() => onViewClientHistory(Number(client.id), buildName(client) || client?.nom)}
                 disabled={busy}
               >
                 <Users size={16} className="mr-2" />
@@ -891,11 +1028,7 @@ export function ReservationDetails({ reservation, onViewClientHistory, onChanged
           <Card title="Client" icon={<User size={18} />} right={client?.id ? <ToneBadge tone="gray">#{client.id}</ToneBadge> : undefined}>
             {client ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <Field
-                  label="Nom"
-                  value={[client?.prenom, client?.nom].filter(Boolean).join(' ') || client?.nom || '—'}
-                  icon={<User size={14} />}
-                />
+                <Field label="Nom" value={buildName(client) || client?.nom || '—'} icon={<User size={14} />} />
                 <Field
                   label="Téléphone"
                   value={
@@ -945,7 +1078,10 @@ export function ReservationDetails({ reservation, onViewClientHistory, onChanged
           <FlightBlock />
           <BeneficiaryBlock />
 
-          {/* Tous les types: produit / forfait / dates / options / participants */}
+          {/* Assurance */}
+          <AssuranceBlock />
+
+          {/* Tous les types */}
           <ProductBlock />
           <ForfaitBlock />
           <PeriodBlock />
@@ -964,23 +1100,12 @@ export function ReservationDetails({ reservation, onViewClientHistory, onChanged
           {/* Actions rapides */}
           <Card title="Actions rapides" icon={<Zap size={18} />}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <button
-                type="button"
-                className="btn bg-gray-200 dark:bg-white/10"
-                onClick={emitInvoice}
-                disabled={busy}
-                title="Émettre la facture"
-              >
+              <button type="button" className="btn bg-gray-200 dark:bg-white/10" onClick={emitInvoice} disabled={busy} title="Émettre la facture">
                 <Receipt size={16} className="mr-2" />
                 Émettre facture
               </button>
 
-              <button
-                type="button"
-                className="btn bg-gray-200 dark:bg-white/10"
-                onClick={() => setPayFormOpen((v) => !v)}
-                disabled={busy}
-              >
+              <button type="button" className="btn bg-gray-200 dark:bg-white/10" onClick={() => setPayFormOpen((v) => !v)} disabled={busy}>
                 <CreditCard size={16} className="mr-2" />
                 Ajouter paiement
               </button>
@@ -1001,28 +1126,16 @@ export function ReservationDetails({ reservation, onViewClientHistory, onChanged
                       value={paymentForm.montant === 0 ? '' : String(paymentForm.montant)}
                       onChange={(e) => {
                         const raw = e.target.value ?? ''
-
-                        // garde uniquement les chiffres
                         let digits = raw.replace(/[^\d]/g, '')
-
-                        // supprime les zéros en tête (mais garde "0" si c'est la seule valeur)
                         digits = digits.replace(/^0+(?=\d)/, '')
-
-                        setPaymentForm((s) => ({
-                          ...s,
-                          montant: digits === '' ? 0 : Number(digits),
-                        }))
+                        setPaymentForm((s) => ({ ...s, montant: digits === '' ? 0 : Number(digits) }))
                       }}
                     />
                   </div>
 
                   <div>
                     <label className="label">Mode</label>
-                    <select
-                      className="input"
-                      value={paymentForm.mode_paiement}
-                      onChange={(e) => setPaymentForm((s) => ({ ...s, mode_paiement: e.target.value }))}
-                    >
+                    <select className="input" value={paymentForm.mode_paiement} onChange={(e) => setPaymentForm((s) => ({ ...s, mode_paiement: e.target.value }))}>
                       <option value="especes">Espèces</option>
                       <option value="wave">Wave</option>
                       <option value="orange_money">Orange Money</option>
@@ -1034,21 +1147,12 @@ export function ReservationDetails({ reservation, onViewClientHistory, onChanged
 
                   <div>
                     <label className="label">Référence</label>
-                    <input
-                      className="input"
-                      value={paymentForm.reference}
-                      onChange={(e) => setPaymentForm((s) => ({ ...s, reference: e.target.value }))}
-                    />
+                    <input className="input" value={paymentForm.reference} onChange={(e) => setPaymentForm((s) => ({ ...s, reference: e.target.value }))} />
                   </div>
                 </div>
 
                 <div className="mt-3 flex items-center justify-end gap-2">
-                  <button
-                    type="button"
-                    className="btn bg-gray-200 dark:bg-white/10"
-                    onClick={() => setPayFormOpen(false)}
-                    disabled={busy}
-                  >
+                  <button type="button" className="btn bg-gray-200 dark:bg-white/10" onClick={() => setPayFormOpen(false)} disabled={busy}>
                     Annuler
                   </button>
                   <button type="button" className="btn bg-gray-900 text-white dark:bg-white dark:text-black" onClick={addPayment} disabled={busy}>
@@ -1068,12 +1172,7 @@ export function ReservationDetails({ reservation, onViewClientHistory, onChanged
             {!pay.facture ? (
               <div className="text-sm text-gray-500 space-y-2">
                 <div>Aucune facture liée (ou non incluse dans la réponse API).</div>
-                <button
-                  type="button"
-                  className="btn bg-gray-200 dark:bg-white/10"
-                  onClick={ensureAndDownloadInvoice}
-                  disabled={!!busyInvoiceId || busy}
-                >
+                <button type="button" className="btn bg-gray-200 dark:bg-white/10" onClick={ensureAndDownloadInvoice} disabled={!!busyInvoiceId || busy}>
                   <Receipt size={16} className="mr-2" />
                   Créer / télécharger la facture
                 </button>
@@ -1083,17 +1182,10 @@ export function ReservationDetails({ reservation, onViewClientHistory, onChanged
                 <div className="flex items-center justify-between gap-2">
                   <div className="min-w-0">
                     <div className="font-semibold truncate">{pay.facture?.numero || `Facture #${pay.facture?.id}`}</div>
-                    <div className="text-xs text-gray-600 dark:text-gray-400">
-                      Date: {safeDate(pay.facture?.date_facture || pay.facture?.created_at)}
-                    </div>
+                    <div className="text-xs text-gray-600 dark:text-gray-400">Date: {safeDate(pay.facture?.date_facture || pay.facture?.created_at)}</div>
                   </div>
 
-                  <button
-                    type="button"
-                    className="btn bg-gray-200 dark:bg-white/10"
-                    onClick={() => downloadFacturePdf(Number(pay.facture.id), pay.facture?.numero)}
-                    disabled={busy}
-                  >
+                  <button type="button" className="btn bg-gray-200 dark:bg-white/10" onClick={() => downloadFacturePdf(Number(pay.facture.id), pay.facture?.numero)} disabled={busy}>
                     <Download size={16} className="mr-2" />
                     PDF
                   </button>
@@ -1112,39 +1204,25 @@ export function ReservationDetails({ reservation, onViewClientHistory, onChanged
 
                     <div className="max-h-[44vh] overflow-y-auto p-3 space-y-2">
                       {[...pay.paiements]
-                        .sort(
-                          (a: any, b: any) =>
-                            +new Date(b?.date_paiement || b?.created_at || 0) -
-                            +new Date(a?.date_paiement || a?.created_at || 0)
-                        )
+                        .sort((a: any, b: any) => +new Date(b?.date_paiement || b?.created_at || 0) - +new Date(a?.date_paiement || a?.created_at || 0))
                         .map((p: any) => {
                           const st = normalizeStatut(p?.statut)
                           const ok = !p?.statut || st === 'recu' || st === 'reçu'
                           const ref = p?.reference ? String(p.reference) : null
                           return (
-                            <div
-                              key={p?.id || `${p?.mode_paiement}-${p?.created_at}`}
-                              className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] px-3 py-2 border border-black/5 dark:border-white/10"
-                            >
+                            <div key={p?.id || `${p?.mode_paiement}-${p?.created_at}`} className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] px-3 py-2 border border-black/5 dark:border-white/10">
                               <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0">
                                   <div className="font-semibold truncate">
-                                    {p?.mode_paiement ?? '—'}{' '}
-                                    {ref ? (
-                                      <span className="text-xs text-gray-600 dark:text-gray-400">({ref})</span>
-                                    ) : null}
+                                    {p?.mode_paiement ?? '—'} {ref ? <span className="text-xs text-gray-600 dark:text-gray-400">({ref})</span> : null}
                                   </div>
-                                  <div className="text-xs text-gray-600 dark:text-gray-400">
-                                    {safeDate(p?.date_paiement || p?.created_at)}
-                                  </div>
+                                  <div className="text-xs text-gray-600 dark:text-gray-400">{safeDate(p?.date_paiement || p?.created_at)}</div>
                                   <div className="mt-1">
                                     <ToneBadge tone={ok ? 'green' : 'gray'}>{p?.statut ?? '—'}</ToneBadge>
                                   </div>
                                 </div>
 
-                                <div className="text-right font-semibold whitespace-nowrap">
-                                  {money(p?.montant, devise)}
-                                </div>
+                                <div className="text-right font-semibold whitespace-nowrap">{money(p?.montant, devise)}</div>
                               </div>
                             </div>
                           )

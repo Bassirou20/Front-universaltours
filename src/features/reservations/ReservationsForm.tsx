@@ -19,9 +19,10 @@ import {
   ChevronRight,
   CheckCircle2,
   Search,
+  Shield,
 } from 'lucide-react'
 
-export type ReservationType = 'billet_avion' | 'hotel' | 'voiture' | 'evenement' | 'forfait'
+export type ReservationType = 'billet_avion' | 'hotel' | 'voiture' | 'evenement' | 'forfait' | 'assurance'
 
 export type ReservationInput = {
   id?: number
@@ -73,6 +74,13 @@ export type ReservationInput = {
   pnr?: string | null
   classe?: string | null
 
+  // Assurance
+  assurance_details?: {
+    libelle: string
+    date_debut: string
+    date_fin?: string | null
+  }
+
   // Autres
   produit_id?: number | null
   forfait_id?: number | null
@@ -112,11 +120,12 @@ function money(n: any, devise = 'XOF') {
 }
 
 const TYPE_META: Record<ReservationType, { label: string; icon: React.ReactNode; hint: string }> = {
-  billet_avion: { label: "Billet d'avion", icon: <Plane size={16} />, hint: 'Vol + passager + PNR optionnel.' },
+  billet_avion: { label: "Billet d'avion", icon: <Plane size={16} />, hint: 'Vol + bénéficiaire + PNR optionnel.' },
   hotel: { label: 'Hôtel', icon: <Hotel size={16} />, hint: 'Produit hôtel + montant.' },
   voiture: { label: 'Location voiture', icon: <Car size={16} />, hint: '1 réservation = 1 personne (fixé).' },
   evenement: { label: 'Évènement', icon: <PartyPopper size={16} />, hint: 'Participants optionnels selon besoin.' },
   forfait: { label: 'Forfait', icon: <Package size={16} />, hint: 'Forfait + participants.' },
+  assurance: { label: 'Assurance', icon: <Shield size={16} />, hint: 'Libellé + période + bénéficiaire optionnel.' },
 }
 
 function Stepper({
@@ -155,19 +164,20 @@ function Stepper({
               type="button"
               onClick={() => onGo?.(i)}
               className={cx(
-                'rounded-2xl border px-3 py-2 text-left transition',
+                'rounded-2xl border px-3 py-2 text-left transition min-w-0',
                 active
                   ? 'border-primary bg-primary/5'
                   : 'border-black/10 dark:border-white/10 bg-white dark:bg-panel hover:bg-black/[0.02] dark:hover:bg-white/[0.04]'
               )}
+              title={s.subtitle ? `${s.title} — ${s.subtitle}` : s.title}
             >
-              <div className="flex items-center justify-between gap-2">
-                <div className={cx('text-sm font-medium', active ? 'text-primary' : 'text-gray-900 dark:text-gray-100')}>
+              <div className="flex items-center justify-between gap-2 min-w-0">
+                <div className={cx('text-sm font-medium truncate', active ? 'text-primary' : 'text-gray-900 dark:text-gray-100')}>
                   {s.title}
                 </div>
-                {done ? <CheckCircle2 size={16} className="text-green-600 dark:text-green-400" /> : null}
+                {done ? <CheckCircle2 size={16} className="shrink-0 text-green-600 dark:text-green-400" /> : null}
               </div>
-              {s.subtitle ? <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">{s.subtitle}</div> : null}
+              {s.subtitle ? <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5 truncate">{s.subtitle}</div> : null}
             </button>
           )
         })}
@@ -178,12 +188,12 @@ function Stepper({
 
 function Card({ title, icon, children }: { title: string; icon?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white dark:bg-panel shadow-soft">
-      <div className="px-4 py-3 border-b border-black/5 dark:border-white/10 flex items-center gap-2">
-        {icon ? <span className="text-gray-700 dark:text-gray-200">{icon}</span> : null}
-        <div className="font-semibold text-gray-900 dark:text-gray-100">{title}</div>
+    <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white dark:bg-panel shadow-soft min-w-0">
+      <div className="px-4 py-3 border-b border-black/5 dark:border-white/10 flex items-center gap-2 min-w-0">
+        {icon ? <span className="text-gray-700 dark:text-gray-200 shrink-0">{icon}</span> : null}
+        <div className="font-semibold text-gray-900 dark:text-gray-100 truncate">{title}</div>
       </div>
-      <div className="p-4">{children}</div>
+      <div className="p-4 min-w-0">{children}</div>
     </div>
   )
 }
@@ -208,6 +218,11 @@ const EMPTY: ReservationInput = {
     compagnie: '',
     pnr: '',
     classe: '',
+  },
+  assurance_details: {
+    libelle: '',
+    date_debut: '',
+    date_fin: '',
   },
   produit_id: null,
   forfait_id: null,
@@ -235,12 +250,22 @@ function normalizeReservationToForm(dv?: Partial<ReservationInput>): Reservation
         }
       : undefined
 
+  const assuranceFromBackend = v.assurance_details ?? v.assuranceDetails ?? null
+  const assurance_details =
+    type === 'assurance'
+      ? {
+          libelle: String(assuranceFromBackend?.libelle ?? ''),
+          date_debut: String(assuranceFromBackend?.date_debut ?? ''),
+          date_fin: String(assuranceFromBackend?.date_fin ?? ''),
+        }
+      : undefined
+
   const passengerBackend = v.passenger ?? null
   const passenger_is_client =
     typeof v.passenger_is_client === 'boolean' ? v.passenger_is_client : passengerBackend ? false : true
 
   const passenger =
-    type === 'billet_avion' && !passenger_is_client
+    (type === 'billet_avion' || type === 'assurance') && !passenger_is_client
       ? {
           nom: String(passengerBackend?.nom ?? v.passenger_nom ?? ''),
           prenom: String(passengerBackend?.prenom ?? v.passenger_prenom ?? ''),
@@ -276,6 +301,7 @@ function normalizeReservationToForm(dv?: Partial<ReservationInput>): Reservation
     passenger_is_client,
     passenger,
     flight_details,
+    assurance_details,
 
     ville_depart: v.ville_depart ?? flight_details?.ville_depart ?? null,
     ville_arrivee: v.ville_arrivee ?? flight_details?.ville_arrivee ?? null,
@@ -321,10 +347,10 @@ async function fetchAllPages<T = any>(
     const pageItems: T[] = Array.isArray(data?.data)
       ? data.data
       : Array.isArray(data?.items)
-        ? data.items
-        : Array.isArray(data)
-          ? data
-          : []
+      ? data.items
+      : Array.isArray(data)
+      ? data
+      : []
 
     items.push(...pageItems)
 
@@ -367,7 +393,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(defaultValues || {})])
 
-  /* ---------- Clients: load ALL pages (fix limit 10) ---------- */
+  /* ---------- Clients: load ALL pages ---------- */
   const qClients = useQuery({
     queryKey: ['clients', 'select-all'],
     queryFn: async () => {
@@ -414,7 +440,6 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
   const blurTimeoutRef = useRef<number | null>(null)
 
   useEffect(() => {
-    // si on arrive avec un client sélectionné (edit), on pré-remplit l'input
     if (selectedClient && form.client_mode === 'existing') {
       setClientQuery([selectedClient?.prenom, selectedClient?.nom].filter(Boolean).join(' ').trim())
     }
@@ -446,11 +471,10 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
   }
 
   const onClientBlur = () => {
-    // petit délai pour permettre le click sur un item
     blurTimeoutRef.current = window.setTimeout(() => setClientOpen(false), 150)
   }
 
-  /* ---------- Create client mutation (save & list before adding another) ---------- */
+  /* ---------- Create client mutation ---------- */
   const createClientMutation = useMutation({
     mutationFn: async (payload: any) => {
       const { data } = await api.post('/clients', payload)
@@ -464,7 +488,6 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
         client_id: created?.id ? Number(created.id) : s.client_id,
         client: { nom: '', prenom: '', email: '', telephone: '', adresse: '', pays: '' },
       }))
-      // input search reflect new selection
       const label = [created?.prenom, created?.nom].filter(Boolean).join(' ').trim()
       if (label) setClientQuery(label)
     },
@@ -474,8 +497,8 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
   const steps = useMemo(
     () => [
       { title: 'Type & client', subtitle: 'Choisir le type + le payeur' },
-      { title: 'Détails', subtitle: 'Vol / produit / forfait' },
-      { title: 'Bénéficiaire', subtitle: 'Passager / participants' },
+      { title: 'Détails', subtitle: 'Vol / produit / forfait / assurance' },
+      { title: 'Bénéficiaire', subtitle: 'Client ou autre personne' },
       { title: 'Montant', subtitle: 'Total + notes' },
       { title: 'Acompte', subtitle: 'Optionnel' },
     ],
@@ -504,6 +527,13 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
       }
       return next
     })
+  }
+
+  const setAssurance = (patch: Partial<NonNullable<ReservationInput['assurance_details']>>) => {
+    setForm((s) => ({
+      ...s,
+      assurance_details: { ...(s.assurance_details || (EMPTY.assurance_details as any)), ...patch } as any,
+    }))
   }
 
   const setPassenger = (patch: Partial<NonNullable<ReservationInput['passenger']>>) => {
@@ -563,6 +593,10 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
           if (!fd?.date_arrivee) return 'Date arrivée requise (modification).'
           if (!fd?.compagnie) return 'Compagnie requise (modification).'
         }
+      } else if (form.type === 'assurance') {
+        const ad = form.assurance_details
+        if (!ad?.libelle?.trim()) return 'Libellé assurance requis.'
+        if (!ad?.date_debut) return 'Date début requise.'
       } else if (form.type === 'forfait') {
         if (!form.forfait_id) return 'Veuillez sélectionner un forfait.'
       } else {
@@ -571,15 +605,16 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
     }
 
     if (s === 2) {
-      if (form.type === 'billet_avion') {
+      if (form.type === 'billet_avion' || form.type === 'assurance') {
         if (!form.passenger_is_client) {
-          if (!form.passenger?.nom) return 'Nom du passager requis.'
+          if (!form.passenger?.nom) return 'Nom du bénéficiaire requis.'
         }
       }
     }
 
     if (s === 3) {
-      if (form.type === 'billet_avion') {
+      // Billet + Assurance : on exige achat (hors fees) > 0
+      if (form.type === 'billet_avion' || form.type === 'assurance') {
         if (Number(form.montant_sous_total || 0) <= 0) return 'Achat (hors fees) requis.'
       } else {
         if (Number(form.montant_total || 0) <= 0) return 'Montant total requis.'
@@ -610,6 +645,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
     }
     delete payload.client_mode
 
+    // ✅ Beneficiaire géré pour billet_avion ET assurance
     if (payload.type === 'billet_avion') {
       const fd = {
         ville_depart: String(payload.flight_details?.ville_depart || '').trim(),
@@ -653,11 +689,16 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
           }
         }
       }
-    } else {
-      delete payload.passenger_is_client
-      delete payload.passenger
-      delete payload.flight_details
 
+      // montants billet: backend calcule total, on garde logique existante
+      payload.montant_sous_total = payload.montant_sous_total != null ? Number(payload.montant_sous_total) : 0
+      payload.montant_taxes = payload.montant_taxes != null ? Number(payload.montant_taxes) : 0
+      delete payload.montant_total
+
+      delete payload.assurance_details
+    } else if (payload.type === 'assurance') {
+      // pas de flight fields
+      delete payload.flight_details
       delete payload.ville_depart
       delete payload.ville_arrivee
       delete payload.date_depart
@@ -665,33 +706,70 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
       delete payload.compagnie
       delete payload.pnr
       delete payload.classe
-    }
 
-    if (payload.type === 'forfait') {
+      // bénéficiaire (même UX que billet)
+      if (payload.passenger_is_client) {
+        delete payload.passenger
+      } else {
+        payload.passenger = {
+          nom: String(payload.passenger?.nom || '').trim(),
+          prenom: String(payload.passenger?.prenom || '').trim() || undefined,
+        }
+      }
+
+      // participants non concernés
+      delete payload.participants
+
+      // produit/forfait non concernés
       delete payload.produit_id
-    } else if (payload.type !== 'forfait' && payload.type !== 'billet_avion') {
       delete payload.forfait_id
-    } else if (payload.type === 'billet_avion') {
-      delete payload.produit_id
-      delete payload.forfait_id
-    }
 
-    const shouldHaveParticipants = payload.type === 'forfait' || payload.type === 'evenement'
-    if (!shouldHaveParticipants) delete payload.participants
-    else payload.participants = (payload.participants || []).filter((p: any) => String(p?.nom || '').trim() !== '')
+      // ✅ montants assurance: on envoie sous_total + taxes + total (obligatoire backend)
+      const st = payload.montant_sous_total != null ? Number(payload.montant_sous_total) : 0
+      const tx = payload.montant_taxes != null ? Number(payload.montant_taxes) : 0
+      payload.montant_sous_total = st
+      payload.montant_taxes = tx
+      payload.montant_total = Number(payload.montant_total ?? st + tx) || st + tx
 
-    payload.nombre_personnes = Number(payload.nombre_personnes || 1)
-
-    if (payload.type === 'billet_avion') {
-      payload.montant_sous_total = payload.montant_sous_total != null ? Number(payload.montant_sous_total) : 0
-      payload.montant_taxes = payload.montant_taxes != null ? Number(payload.montant_taxes) : 0
-      delete payload.montant_total
+      // sécurité shape
+      payload.assurance_details = {
+        libelle: String(payload.assurance_details?.libelle || '').trim(),
+        date_debut: String(payload.assurance_details?.date_debut || '').trim(),
+        date_fin: payload.assurance_details?.date_fin ? String(payload.assurance_details.date_fin) : null,
+      }
     } else {
+      // autres types (hotel/voiture/evenement/forfait)
+      delete payload.passenger_is_client
+      delete payload.passenger
+      delete payload.assurance_details
+
+      delete payload.flight_details
+      delete payload.ville_depart
+      delete payload.ville_arrivee
+      delete payload.date_depart
+      delete payload.date_arrivee
+      delete payload.compagnie
+      delete payload.pnr
+      delete payload.classe
+
+      if (payload.type === 'forfait') {
+        delete payload.produit_id
+      } else if (payload.type !== 'forfait' && payload.type !== 'billet_avion') {
+        delete payload.forfait_id
+      }
+
+      const shouldHaveParticipants = payload.type === 'forfait' || payload.type === 'evenement'
+      if (!shouldHaveParticipants) delete payload.participants
+      else payload.participants = (payload.participants || []).filter((p: any) => String(p?.nom || '').trim() !== '')
+
+      payload.nombre_personnes = Number(payload.nombre_personnes || 1)
+
       payload.montant_total = Number(payload.montant_total || 0)
       delete payload.montant_sous_total
       delete payload.montant_taxes
     }
 
+    payload.nombre_personnes = Number(payload.nombre_personnes || 1)
     return payload as ReservationInput
   }
 
@@ -719,11 +797,17 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
     const details =
       form.type === 'billet_avion'
         ? `${form.flight_details?.ville_depart || '—'} → ${form.flight_details?.ville_arrivee || '—'}`
+        : form.type === 'assurance'
+        ? form.assurance_details?.libelle || '—'
         : form.type === 'forfait'
-          ? forfaits.find((f) => Number(f?.id) === Number(form.forfait_id))?.nom || '—'
-          : produits.find((p) => Number(p?.id) === Number(form.produit_id))?.nom || '—'
+        ? forfaits.find((f) => Number(f?.id) === Number(form.forfait_id))?.nom || '—'
+        : produits.find((p) => Number(p?.id) === Number(form.produit_id))?.nom || '—'
 
-    const total = form.type === 'billet_avion' ? Number(form.montant_sous_total || 0) + Number(form.montant_taxes || 0) : Number(form.montant_total || 0)
+    const total =
+      form.type === 'billet_avion' || form.type === 'assurance'
+        ? Number(form.montant_sous_total || 0) + Number(form.montant_taxes || 0)
+        : Number(form.montant_total || 0)
+
     const pay = Number(form.acompte?.montant || 0)
     const pct = total > 0 ? Math.min(100, Math.round((pay / total) * 100)) : 0
 
@@ -732,10 +816,10 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
 
   /* -------------------- Steps UI -------------------- */
   const Step0 = (
-    <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_0.85fr] gap-4">
+    <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_0.85fr] gap-4 min-w-0">
       <Card title="Type de réservation" icon={<Ticket size={16} />}>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div>
+          <div className="min-w-0">
             <label className="label">Type</label>
             <select
               className="input"
@@ -745,6 +829,9 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                 set('type', t)
                 set('produit_id', null)
                 set('forfait_id', null)
+                // petits resets pour éviter incohérences visuelles
+                if (t !== 'billet_avion') set('flight_details', undefined)
+                if (t !== 'assurance') set('assurance_details', undefined)
               }}
             >
               {Object.entries(TYPE_META).map(([k, m]) => (
@@ -756,7 +843,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
             <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">{TYPE_META[form.type].hint}</div>
           </div>
 
-          <div>
+          <div className="min-w-0">
             <label className="label">Nombre de personnes</label>
             <input
               type="number"
@@ -772,7 +859,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
       </Card>
 
       <Card title="Client (payeur)" icon={<User size={16} />}>
-        <div className="flex items-center gap-2 mb-3">
+        <div className="flex items-center gap-2 mb-3 flex-wrap">
           <button
             type="button"
             className={cx('btn px-3', form.client_mode === 'existing' ? 'bg-gray-900 text-white dark:bg-white dark:text-black' : 'bg-gray-200 dark:bg-white/10')}
@@ -790,11 +877,10 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
         </div>
 
         {form.client_mode === 'existing' ? (
-          <div className="space-y-2">
+          <div className="space-y-2 min-w-0">
             <label className="label">Rechercher un client *</label>
 
-            {/* ✅ Input recherche + dropdown (nom/prénom) */}
-            <div className="relative">
+            <div className="relative min-w-0">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
               <input
                 className="input pl-9"
@@ -811,9 +897,9 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
               {/* ✅ Dropdown AU-DESSUS du champ */}
               {clientOpen ? (
                 <div
-                  className="absolute z-20 bottom-full mb-2 w-full rounded-2xl border border-black/10 dark:border-white/10 bg-white dark:bg-panel shadow-soft overflow-hidden"
+                  className="absolute z-20 w-full rounded-2xl border border-black/10 dark:border-white/10 bg-white dark:bg-panel shadow-soft overflow-hidden
+                             bottom-full mb-2"
                   onMouseDown={(e) => {
-                    // empêche blur de fermer avant click
                     e.preventDefault()
                   }}
                 >
@@ -830,13 +916,15 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                             key={c?.id}
                             type="button"
                             className={cx(
-                              'w-full text-left rounded-xl px-3 py-2 transition',
+                              'w-full text-left rounded-xl px-3 py-2 transition min-w-0',
                               active ? 'bg-primary/10 text-gray-900 dark:text-gray-100' : 'hover:bg-black/[0.03] dark:hover:bg-white/[0.06]'
                             )}
                             onClick={() => selectClient(c)}
                           >
-                            <div className="text-sm font-semibold">{[c?.prenom, c?.nom].filter(Boolean).join(' ') || c?.nom || `Client #${c?.id}`}</div>
-                            <div className="text-xs text-gray-600 dark:text-gray-400">
+                            <div className="text-sm font-semibold truncate">
+                              {[c?.prenom, c?.nom].filter(Boolean).join(' ') || c?.nom || `Client #${c?.id}`}
+                            </div>
+                            <div className="text-xs text-gray-600 dark:text-gray-400 truncate">
                               {c?.telephone || '—'}
                               {c?.email ? ` • ${c.email}` : ''}
                             </div>
@@ -849,7 +937,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
               ) : null}
             </div>
 
-            {/* fallback hidden select (garde la valeur + compat) */}
+            {/* fallback hidden select */}
             <select className="hidden" value={form.client_id ?? ''} onChange={(e) => set('client_id', e.target.value ? Number(e.target.value) : null)}>
               <option value="">— Choisir —</option>
               {clients.map((c) => (
@@ -860,44 +948,48 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
             </select>
 
             {selectedClient ? (
-              <div className="mt-2 rounded-xl bg-black/[0.03] dark:bg-white/[0.06] p-3 text-xs text-gray-700 dark:text-gray-200">
-                <div className="font-semibold">{[selectedClient?.prenom, selectedClient?.nom].filter(Boolean).join(' ')}</div>
-                <div className="mt-1 text-gray-600 dark:text-gray-400">
+              <div className="mt-2 rounded-xl bg-black/[0.03] dark:bg-white/[0.06] p-3 text-xs text-gray-700 dark:text-gray-200 min-w-0">
+                <div className="font-semibold truncate">{[selectedClient?.prenom, selectedClient?.nom].filter(Boolean).join(' ')}</div>
+                <div className="mt-1 text-gray-600 dark:text-gray-400 truncate">
                   {selectedClient?.email || '—'} • {selectedClient?.telephone || '—'}
                 </div>
               </div>
             ) : null}
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-3 min-w-0">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
+              <div className="min-w-0">
                 <label className="label">Nom *</label>
                 <input className="input" value={form.client?.nom ?? ''} onChange={(e) => set('client', { ...(form.client || {}), nom: e.target.value })} />
               </div>
-              <div>
+              <div className="min-w-0">
                 <label className="label">Prénom</label>
                 <input className="input" value={form.client?.prenom ?? ''} onChange={(e) => set('client', { ...(form.client || {}), prenom: e.target.value })} />
               </div>
-              <div>
+              <div className="min-w-0">
                 <label className="label">Téléphone</label>
-                <input className="input" value={form.client?.telephone ?? ''} onChange={(e) => set('client', { ...(form.client || {}), telephone: e.target.value })} />
+                <input
+                  className="input"
+                  value={form.client?.telephone ?? ''}
+                  onChange={(e) => set('client', { ...(form.client || {}), telephone: e.target.value })}
+                />
               </div>
-              <div>
+              <div className="min-w-0">
                 <label className="label">Email</label>
                 <input className="input" value={form.client?.email ?? ''} onChange={(e) => set('client', { ...(form.client || {}), email: e.target.value })} />
               </div>
-              <div className="md:col-span-2">
+              <div className="md:col-span-2 min-w-0">
                 <label className="label">Adresse</label>
                 <input className="input" value={form.client?.adresse ?? ''} onChange={(e) => set('client', { ...(form.client || {}), adresse: e.target.value })} />
               </div>
-              <div className="md:col-span-2">
+              <div className="md:col-span-2 min-w-0">
                 <label className="label">Pays</label>
                 <input className="input" value={form.client?.pays ?? ''} onChange={(e) => set('client', { ...(form.client || {}), pays: e.target.value })} />
               </div>
             </div>
 
-            <div className="flex items-center justify-end gap-2">
+            <div className="flex items-center justify-end gap-2 flex-wrap">
               <button
                 type="button"
                 className="btn bg-gray-200 dark:bg-white/10"
@@ -970,19 +1062,19 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
   )
 
   const Step1 = (
-    <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_0.85fr] gap-4">
+    <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_0.85fr] gap-4 min-w-0">
       <Card title="Détails" icon={<FileText size={16} />}>
         {form.type === 'billet_avion' ? (
-          <div className="space-y-3">
+          <div className="space-y-3 min-w-0">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
+              <div className="min-w-0">
                 <label className="label">Ville départ *</label>
                 <div className="relative">
                   <MapPin size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
                   <input className="input pl-9" value={form.flight_details?.ville_depart ?? ''} onChange={(e) => setFlight({ ville_depart: e.target.value })} />
                 </div>
               </div>
-              <div>
+              <div className="min-w-0">
                 <label className="label">Ville arrivée *</label>
                 <div className="relative">
                   <MapPin size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
@@ -992,14 +1084,14 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
+              <div className="min-w-0">
                 <label className="label">Date départ *</label>
                 <div className="relative">
                   <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
                   <input type="date" className="input pl-9" value={form.flight_details?.date_depart ?? ''} onChange={(e) => setFlight({ date_depart: e.target.value })} />
                 </div>
               </div>
-              <div>
+              <div className="min-w-0">
                 <label className="label">{isEdit ? 'Date arrivée *' : 'Date arrivée'}</label>
                 <div className="relative">
                   <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
@@ -1015,24 +1107,68 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div>
+              <div className="min-w-0">
                 <label className="label">{isEdit ? 'Compagnie *' : 'Compagnie'}</label>
                 <input className="input" value={String(form.flight_details?.compagnie ?? '')} onChange={(e) => setFlight({ compagnie: e.target.value })} />
                 {isEdit ? <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">Requis en modification (backend).</div> : null}
               </div>
-              <div>
+              <div className="min-w-0">
                 <label className="label">Classe</label>
                 <input className="input" value={String(form.flight_details?.classe ?? '')} onChange={(e) => setFlight({ classe: e.target.value })} />
               </div>
-              <div>
+              <div className="min-w-0">
                 <label className="label">PNR</label>
                 <input className="input" placeholder="Ex: CSSUNO" value={String(form.flight_details?.pnr ?? '')} onChange={(e) => setFlight({ pnr: e.target.value })} />
                 <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">Optionnel (nullable DB).</div>
               </div>
             </div>
           </div>
+        ) : form.type === 'assurance' ? (
+          <div className="space-y-3 min-w-0">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="md:col-span-2 min-w-0">
+                <label className="label">Libellé *</label>
+                <input
+                  className="input"
+                  placeholder="Ex: Assurance Voyage - Schengen"
+                  value={form.assurance_details?.libelle ?? ''}
+                  onChange={(e) => setAssurance({ libelle: e.target.value })}
+                />
+              </div>
+
+              <div className="min-w-0">
+                <label className="label">Date début *</label>
+                <div className="relative">
+                  <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                  <input
+                    type="date"
+                    className="input pl-9"
+                    value={form.assurance_details?.date_debut ?? ''}
+                    onChange={(e) => setAssurance({ date_debut: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="min-w-0">
+                <label className="label">Date fin</label>
+                <div className="relative">
+                  <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                  <input
+                    type="date"
+                    className="input pl-9"
+                    value={String(form.assurance_details?.date_fin ?? '')}
+                    onChange={(e) => setAssurance({ date_fin: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="md:col-span-2 text-xs text-gray-600 dark:text-gray-400">
+                Astuce: “notes” se met à l’étape Montant (champ commun de la réservation).
+              </div>
+            </div>
+          </div>
         ) : form.type === 'forfait' ? (
-          <div>
+          <div className="min-w-0">
             <label className="label">Forfait *</label>
             <select className="input" value={form.forfait_id ?? ''} onChange={(e) => set('forfait_id', e.target.value ? Number(e.target.value) : null)}>
               <option value="">— Choisir —</option>
@@ -1044,7 +1180,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
             </select>
           </div>
         ) : (
-          <div>
+          <div className="min-w-0">
             <label className="label">Produit *</label>
             <select className="input" value={form.produit_id ?? ''} onChange={(e) => set('produit_id', e.target.value ? Number(e.target.value) : null)}>
               <option value="">— Choisir —</option>
@@ -1061,17 +1197,17 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
       </Card>
 
       <Card title="Résumé" icon={TYPE_META[form.type].icon}>
-        <div className="space-y-3 text-sm">
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-gray-600 dark:text-gray-400">Type</span>
-            <span className="font-medium">{TYPE_META[form.type].label}</span>
+        <div className="space-y-3 text-sm min-w-0">
+          <div className="flex items-center justify-between gap-3 min-w-0">
+            <span className="text-gray-600 dark:text-gray-400 shrink-0">Type</span>
+            <span className="font-medium truncate">{TYPE_META[form.type].label}</span>
           </div>
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-gray-600 dark:text-gray-400">Client</span>
+          <div className="flex items-center justify-between gap-3 min-w-0">
+            <span className="text-gray-600 dark:text-gray-400 shrink-0">Client</span>
             <span className="font-medium truncate">{summary.clientLabel}</span>
           </div>
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-gray-600 dark:text-gray-400">Détails</span>
+          <div className="flex items-center justify-between gap-3 min-w-0">
+            <span className="text-gray-600 dark:text-gray-400 shrink-0">Détails</span>
             <span className="font-medium truncate">{summary.details}</span>
           </div>
         </div>
@@ -1080,12 +1216,17 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
   )
 
   const Step2 = (
-    <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_0.85fr] gap-4">
-      <Card title={form.type === 'billet_avion' ? 'Passager (bénéficiaire)' : 'Participants'} icon={<Users size={16} />}>
-        {form.type === 'billet_avion' ? (
-          <div className="space-y-3">
-            <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] p-3">
-              <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">Qui bénéficie du billet ?</div>
+    <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_0.85fr] gap-4 min-w-0">
+      <Card
+        title={form.type === 'billet_avion' || form.type === 'assurance' ? 'Bénéficiaire' : 'Participants'}
+        icon={<Users size={16} />}
+      >
+        {form.type === 'billet_avion' || form.type === 'assurance' ? (
+          <div className="space-y-3 min-w-0">
+            <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] p-3 min-w-0">
+              <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                {form.type === 'assurance' ? "Qui bénéficie de l’assurance ?" : 'Qui bénéficie du billet ?'}
+              </div>
               <div className="mt-2 flex flex-wrap gap-2">
                 <button
                   type="button"
@@ -1103,33 +1244,33 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                 </button>
               </div>
 
-              {isEdit ? (
+              {form.type === 'billet_avion' && isEdit ? (
                 <div className="mt-3 text-xs text-gray-600 dark:text-gray-400">
                   Note: ton backend ne gère pas (encore) la modification du passager côté update. On conserve l’UI, mais on n’envoie pas ces champs au PATCH/PUT.
                 </div>
               ) : (
                 <div className="mt-3 text-xs text-gray-600 dark:text-gray-400">
-                  Le passager sera géré côté backend (via <code>passenger_is_client</code> / <code>passenger</code>).
+                  Le bénéficiaire est géré côté backend (via <code>passenger_is_client</code> / <code>passenger</code>).
                 </div>
               )}
             </div>
 
             {!form.passenger_is_client ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <label className="label">Nom passager *</label>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 min-w-0">
+                <div className="min-w-0">
+                  <label className="label">Nom bénéficiaire *</label>
                   <input className="input" value={form.passenger?.nom ?? ''} onChange={(e) => setPassenger({ nom: e.target.value })} />
                 </div>
-                <div>
-                  <label className="label">Prénom passager</label>
+                <div className="min-w-0">
+                  <label className="label">Prénom bénéficiaire</label>
                   <input className="input" value={form.passenger?.prenom ?? ''} onChange={(e) => setPassenger({ prenom: e.target.value })} />
                 </div>
               </div>
             ) : null}
           </div>
         ) : form.type === 'forfait' || form.type === 'evenement' ? (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between gap-2">
+          <div className="space-y-3 min-w-0">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="text-sm text-gray-600 dark:text-gray-400">Ajoute des participants si nécessaire. (Nom requis)</div>
               <button type="button" className="btn bg-gray-200 dark:bg-white/10" onClick={addParticipant}>
                 + Ajouter
@@ -1139,30 +1280,30 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
             {(form.participants || []).length === 0 ? (
               <div className="text-sm text-gray-500">Aucun participant.</div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-2 min-w-0">
                 {(form.participants || []).map((p, idx) => (
-                  <div key={idx} className="rounded-2xl border border-black/5 dark:border-white/10 bg-white dark:bg-panel p-3">
-                    <div className="flex items-center justify-between gap-2 mb-2">
-                      <div className="text-sm font-semibold">Participant {idx + 1}</div>
+                  <div key={idx} className="rounded-2xl border border-black/5 dark:border-white/10 bg-white dark:bg-panel p-3 min-w-0">
+                    <div className="flex items-center justify-between gap-2 mb-2 min-w-0">
+                      <div className="text-sm font-semibold truncate">Participant {idx + 1}</div>
                       <button type="button" className="btn px-2 bg-gray-200 dark:bg-white/10" onClick={() => removeParticipant(idx)}>
                         Supprimer
                       </button>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div>
+                      <div className="min-w-0">
                         <label className="label">Nom *</label>
                         <input className="input" value={p.nom ?? ''} onChange={(e) => updateParticipant(idx, { nom: e.target.value })} />
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <label className="label">Prénom</label>
                         <input className="input" value={p.prenom ?? ''} onChange={(e) => updateParticipant(idx, { prenom: e.target.value })} />
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <label className="label">Passeport</label>
                         <input className="input" value={p.passport ?? ''} onChange={(e) => updateParticipant(idx, { passport: e.target.value })} />
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <label className="label">Âge</label>
                         <input
                           type="number"
@@ -1171,7 +1312,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                           onChange={(e) => updateParticipant(idx, { age: e.target.value ? Number(e.target.value) : null })}
                         />
                       </div>
-                      <div className="md:col-span-2">
+                      <div className="md:col-span-2 min-w-0">
                         <label className="label">Remarques</label>
                         <input className="input" value={p.remarques ?? ''} onChange={(e) => updateParticipant(idx, { remarques: e.target.value })} />
                       </div>
@@ -1187,8 +1328,8 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
       </Card>
 
       <Card title="Conseil" icon={<Receipt size={16} />}>
-        <div className="text-sm text-gray-700 dark:text-gray-200 space-y-2">
-          <div className="rounded-xl bg-black/[0.03] dark:bg-white/[0.06] p-3">
+        <div className="text-sm text-gray-700 dark:text-gray-200 space-y-2 min-w-0">
+          <div className="rounded-xl bg-black/[0.03] dark:bg-white/[0.06] p-3 min-w-0">
             <div className="font-semibold">Bon workflow</div>
             <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">Créer / modifier → facture → paiements → suivi.</div>
           </div>
@@ -1198,24 +1339,27 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
   )
 
   const Step3 = (
-    <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_0.85fr] gap-4">
+    <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_0.85fr] gap-4 min-w-0">
       <Card title="Montants & Notes" icon={<Receipt size={16} />}>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {form.type === 'billet_avion' ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 min-w-0">
+          {form.type === 'billet_avion' || form.type === 'assurance' ? (
             <>
-              <div className="md:col-span-2 rounded-2xl border border-black/5 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.04] p-3">
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">Billet d&apos;avion — Tarification</div>
+              <div className="md:col-span-2 rounded-2xl border border-black/5 dark:border-white/10 bg-black/[0.02] dark:bg-white/[0.04] p-3 min-w-0">
+                <div className="flex items-center justify-between gap-2 min-w-0">
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
+                      {form.type === 'assurance' ? 'Assurance — Tarification' : "Billet d'avion — Tarification"}
+                    </div>
                     <div className="text-xs text-gray-600 dark:text-gray-400">
-                      Saisis l&apos;achat (hors fees) et les fees (commission). Le total est calculé au backend.
+                      Saisis l&apos;achat (hors fees) et les fees (commission).
+                      {form.type === 'assurance' ? ' Le total est requis au backend (on l’envoie automatiquement).' : ' Le total est calculé au backend.'}
                     </div>
                   </div>
-                  <span className="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary">Achat + Fees</span>
+                  <span className="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary shrink-0">Achat + Fees</span>
                 </div>
               </div>
 
-              <div>
+              <div className="min-w-0">
                 <label className="label">Achat (hors fees) *</label>
                 <input
                   type="number"
@@ -1223,12 +1367,11 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                   className="input"
                   value={form.montant_sous_total ?? ''}
                   onChange={(e) => set('montant_sous_total', e.target.value === '' ? null : Number(e.target.value))}
-                  placeholder="Ex: 700000"
+                  placeholder="Ex: 50000"
                 />
-                <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">Prix d&apos;achat (hors commission).</div>
               </div>
 
-              <div>
+              <div className="min-w-0">
                 <label className="label">Fees (commission)</label>
                 <input
                   type="number"
@@ -1236,25 +1379,28 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                   className="input"
                   value={form.montant_taxes ?? ''}
                   onChange={(e) => set('montant_taxes', e.target.value === '' ? null : Number(e.target.value))}
-                  placeholder="Ex: 150000"
+                  placeholder="Ex: 5000"
                 />
-                <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">Marge/commission de l&apos;agence.</div>
               </div>
 
-              <div className="md:col-span-2">
-                <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white dark:bg-panel p-3">
-                  <div className="flex items-center justify-between gap-3 text-sm">
-                    <span className="text-gray-600 dark:text-gray-400">Total estimé</span>
-                    <span className="font-semibold text-gray-900 dark:text-gray-100">
+              <div className="md:col-span-2 min-w-0">
+                <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white dark:bg-panel p-3 min-w-0">
+                  <div className="flex items-center justify-between gap-3 text-sm min-w-0">
+                    <span className="text-gray-600 dark:text-gray-400 shrink-0">Total estimé</span>
+                    <span className="font-semibold text-gray-900 dark:text-gray-100 truncate">
                       {money(Number(form.montant_sous_total || 0) + Number(form.montant_taxes || 0))}
                     </span>
                   </div>
-                  <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">Affichage uniquement (backend calcule le total réel).</div>
+                  <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                    {form.type === 'assurance'
+                      ? 'Ce total est envoyé au backend (montant_total requis).'
+                      : 'Affichage uniquement (backend calcule le total réel).'}
+                  </div>
                 </div>
               </div>
             </>
           ) : (
-            <div>
+            <div className="min-w-0">
               <label className="label">Montant total *</label>
               <input
                 type="number"
@@ -1266,12 +1412,12 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
             </div>
           )}
 
-          <div>
+          <div className="min-w-0">
             <label className="label">Référence (optionnel)</label>
             <input className="input" placeholder="Laisse vide pour auto-génération" value={String(form.reference ?? '')} onChange={(e) => set('reference', e.target.value || null)} />
           </div>
 
-          <div className="md:col-span-2">
+          <div className="md:col-span-2 min-w-0">
             <label className="label">Notes</label>
             <textarea className="input min-h-[110px]" value={String(form.notes ?? '')} onChange={(e) => set('notes', e.target.value)} />
           </div>
@@ -1279,15 +1425,15 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
       </Card>
 
       <Card title="Résumé paiement" icon={<FileText size={16} />}>
-        <div className="space-y-3">
-          <div className="rounded-xl bg-black/[0.03] dark:bg-white/[0.06] p-3 text-sm">
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-gray-600 dark:text-gray-400">Total</span>
-              <span className="font-semibold">{money(summary.total)}</span>
+        <div className="space-y-3 min-w-0">
+          <div className="rounded-xl bg-black/[0.03] dark:bg-white/[0.06] p-3 text-sm min-w-0">
+            <div className="flex items-center justify-between gap-3 min-w-0">
+              <span className="text-gray-600 dark:text-gray-400 shrink-0">Total</span>
+              <span className="font-semibold truncate">{money(summary.total)}</span>
             </div>
-            <div className="flex items-center justify-between gap-3 mt-2">
-              <span className="text-gray-600 dark:text-gray-400">Acompte (optionnel)</span>
-              <span className="font-semibold">{money(summary.pay)}</span>
+            <div className="flex items-center justify-between gap-3 mt-2 min-w-0">
+              <span className="text-gray-600 dark:text-gray-400 shrink-0">Acompte (optionnel)</span>
+              <span className="font-semibold truncate">{money(summary.pay)}</span>
             </div>
             <div className="mt-3">
               <div className="text-xs text-gray-600 dark:text-gray-400">% couvert</div>
@@ -1305,10 +1451,10 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
   )
 
   const Step4 = (
-    <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_0.85fr] gap-4">
+    <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_0.85fr] gap-4 min-w-0">
       <Card title="Acompte (optionnel)" icon={<Receipt size={16} />}>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 min-w-0">
+          <div className="min-w-0">
             <label className="label">Montant</label>
             <input
               type="number"
@@ -1327,7 +1473,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
               }}
             />
           </div>
-          <div>
+          <div className="min-w-0">
             <label className="label">Mode</label>
             <select className="input" value={form.acompte?.mode_paiement ?? 'especes'} onChange={(e) => set('acompte', { ...(form.acompte || {}), mode_paiement: e.target.value })}>
               <option value="especes">Espèces</option>
@@ -1338,35 +1484,35 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
               <option value="cheque">Chèque</option>
             </select>
           </div>
-          <div>
+          <div className="min-w-0">
             <label className="label">Référence</label>
             <input className="input" value={form.acompte?.reference ?? ''} onChange={(e) => set('acompte', { ...(form.acompte || {}), reference: e.target.value })} />
           </div>
         </div>
 
-        <div className="mt-3 rounded-xl bg-black/[0.03] dark:bg-white/[0.06] p-3 text-sm">
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-gray-600 dark:text-gray-400">Total</span>
-            <span className="font-semibold">{money(summary.total)}</span>
+        <div className="mt-3 rounded-xl bg-black/[0.03] dark:bg-white/[0.06] p-3 text-sm min-w-0">
+          <div className="flex items-center justify-between gap-3 min-w-0">
+            <span className="text-gray-600 dark:text-gray-400 shrink-0">Total</span>
+            <span className="font-semibold truncate">{money(summary.total)}</span>
           </div>
-          <div className="flex items-center justify-between gap-3 mt-2">
-            <span className="text-gray-600 dark:text-gray-400">Acompte</span>
-            <span className="font-semibold">{money(form.acompte?.montant)}</span>
+          <div className="flex items-center justify-between gap-3 mt-2 min-w-0">
+            <span className="text-gray-600 dark:text-gray-400 shrink-0">Acompte</span>
+            <span className="font-semibold truncate">{money(form.acompte?.montant)}</span>
           </div>
-          <div className="flex items-center justify-between gap-3 mt-2">
-            <span className="text-gray-600 dark:text-gray-400">Reste</span>
-            <span className="font-semibold">{money(Math.max(0, Number(summary.total || 0) - Number(form.acompte?.montant || 0)))}</span>
+          <div className="flex items-center justify-between gap-3 mt-2 min-w-0">
+            <span className="text-gray-600 dark:text-gray-400 shrink-0">Reste</span>
+            <span className="font-semibold truncate">{money(Math.max(0, Number(summary.total || 0) - Number(form.acompte?.montant || 0)))}</span>
           </div>
         </div>
       </Card>
 
       <Card title="Avant d’enregistrer" icon={<FileText size={16} />}>
-        <div className="text-sm text-gray-700 dark:text-gray-200 space-y-2">
-          <div className="rounded-xl bg-black/[0.03] dark:bg-white/[0.06] p-3">
+        <div className="text-sm text-gray-700 dark:text-gray-200 space-y-2 min-w-0">
+          <div className="rounded-xl bg-black/[0.03] dark:bg-white/[0.06] p-3 min-w-0">
             <div className="font-semibold">Vérification rapide</div>
             <ul className="mt-2 text-xs text-gray-600 dark:text-gray-400 list-disc pl-4 space-y-1">
               <li>Client sélectionné (ou nouveau client valide)</li>
-              <li>Détails du type (vol / produit / forfait)</li>
+              <li>Détails du type (vol / produit / forfait / assurance)</li>
               <li>Montant total</li>
               <li>Acompte optionnel</li>
             </ul>
@@ -1380,7 +1526,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
   const stepError = validateStep(step)
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 min-w-0">
       <Stepper steps={steps} current={step} onGo={(i) => setStep(i)} title={isEdit ? 'Modifier réservation' : 'Nouvelle réservation'} />
 
       {stepError ? (
@@ -1391,12 +1537,12 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
 
       {currentStepUI}
 
-      <div className="flex items-center justify-between gap-2 pt-2">
+      <div className="flex items-center justify-between gap-2 pt-2 flex-wrap">
         <button type="button" className="btn bg-gray-200 dark:bg-white/10" onClick={onCancel} disabled={!!submitting}>
           Annuler
         </button>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button type="button" className="btn bg-gray-200 dark:bg-white/10" onClick={prev} disabled={step === 0 || !!submitting}>
             <ChevronLeft size={16} className="mr-1" />
             Précédent
