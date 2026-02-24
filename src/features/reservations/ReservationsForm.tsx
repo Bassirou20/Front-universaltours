@@ -153,7 +153,6 @@ function Stepper({
         <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
       </div>
 
-      {/* ✅ 5 étapes sur la même ligne */}
       <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
         {steps.map((s, i) => {
           const active = i === current
@@ -645,7 +644,8 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
     }
     delete payload.client_mode
 
-    // ✅ Beneficiaire géré pour billet_avion ET assurance
+    const stNum = (v: any) => (v == null || v === '' ? 0 : Number(v) || 0)
+
     if (payload.type === 'billet_avion') {
       const fd = {
         ville_depart: String(payload.flight_details?.ville_depart || '').trim(),
@@ -690,14 +690,15 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
         }
       }
 
-      // montants billet: backend calcule total, on garde logique existante
-      payload.montant_sous_total = payload.montant_sous_total != null ? Number(payload.montant_sous_total) : 0
-      payload.montant_taxes = payload.montant_taxes != null ? Number(payload.montant_taxes) : 0
-      delete payload.montant_total
+      // ✅ IMPORTANT: montant_total est obligatoire côté backend (comme en Postman)
+      const st = stNum(payload.montant_sous_total)
+      const tx = stNum(payload.montant_taxes)
+      payload.montant_sous_total = st
+      payload.montant_taxes = tx
+      payload.montant_total = st + tx
 
       delete payload.assurance_details
     } else if (payload.type === 'assurance') {
-      // pas de flight fields
       delete payload.flight_details
       delete payload.ville_depart
       delete payload.ville_arrivee
@@ -707,7 +708,6 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
       delete payload.pnr
       delete payload.classe
 
-      // bénéficiaire (même UX que billet)
       if (payload.passenger_is_client) {
         delete payload.passenger
       } else {
@@ -717,28 +717,22 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
         }
       }
 
-      // participants non concernés
       delete payload.participants
-
-      // produit/forfait non concernés
       delete payload.produit_id
       delete payload.forfait_id
 
-      // ✅ montants assurance: on envoie sous_total + taxes + total (obligatoire backend)
-      const st = payload.montant_sous_total != null ? Number(payload.montant_sous_total) : 0
-      const tx = payload.montant_taxes != null ? Number(payload.montant_taxes) : 0
+      const st = stNum(payload.montant_sous_total)
+      const tx = stNum(payload.montant_taxes)
       payload.montant_sous_total = st
       payload.montant_taxes = tx
       payload.montant_total = Number(payload.montant_total ?? st + tx) || st + tx
 
-      // sécurité shape
       payload.assurance_details = {
         libelle: String(payload.assurance_details?.libelle || '').trim(),
         date_debut: String(payload.assurance_details?.date_debut || '').trim(),
         date_fin: payload.assurance_details?.date_fin ? String(payload.assurance_details.date_fin) : null,
       }
     } else {
-      // autres types (hotel/voiture/evenement/forfait)
       delete payload.passenger_is_client
       delete payload.passenger
       delete payload.assurance_details
@@ -829,7 +823,6 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                 set('type', t)
                 set('produit_id', null)
                 set('forfait_id', null)
-                // petits resets pour éviter incohérences visuelles
                 if (t !== 'billet_avion') set('flight_details', undefined)
                 if (t !== 'assurance') set('assurance_details', undefined)
               }}
@@ -894,11 +887,9 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                 onBlur={onClientBlur}
               />
 
-              {/* ✅ Dropdown AU-DESSUS du champ */}
               {clientOpen ? (
                 <div
-                  className="absolute z-20 w-full rounded-2xl border border-black/10 dark:border-white/10 bg-white dark:bg-panel shadow-soft overflow-hidden
-                             bottom-full mb-2"
+                  className="absolute z-20 w-full rounded-2xl border border-black/10 dark:border-white/10 bg-white dark:bg-panel shadow-soft overflow-hidden bottom-full mb-2"
                   onMouseDown={(e) => {
                     e.preventDefault()
                   }}
@@ -937,7 +928,6 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
               ) : null}
             </div>
 
-            {/* fallback hidden select */}
             <select className="hidden" value={form.client_id ?? ''} onChange={(e) => set('client_id', e.target.value ? Number(e.target.value) : null)}>
               <option value="">— Choisir —</option>
               {clients.map((c) => (
@@ -969,11 +959,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
               </div>
               <div className="min-w-0">
                 <label className="label">Téléphone</label>
-                <input
-                  className="input"
-                  value={form.client?.telephone ?? ''}
-                  onChange={(e) => set('client', { ...(form.client || {}), telephone: e.target.value })}
-                />
+                <input className="input" value={form.client?.telephone ?? ''} onChange={(e) => set('client', { ...(form.client || {}), telephone: e.target.value })} />
               </div>
               <div className="min-w-0">
                 <label className="label">Email</label>
@@ -1351,8 +1337,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                       {form.type === 'assurance' ? 'Assurance — Tarification' : "Billet d'avion — Tarification"}
                     </div>
                     <div className="text-xs text-gray-600 dark:text-gray-400">
-                      Saisis l&apos;achat (hors fees) et les fees (commission).
-                      {form.type === 'assurance' ? ' Le total est requis au backend (on l’envoie automatiquement).' : ' Le total est calculé au backend.'}
+                      Saisis l&apos;achat (hors fees) et les fees (commission). Le total est envoyé au backend.
                     </div>
                   </div>
                   <span className="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary shrink-0">Achat + Fees</span>
@@ -1392,9 +1377,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                     </span>
                   </div>
                   <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">
-                    {form.type === 'assurance'
-                      ? 'Ce total est envoyé au backend (montant_total requis).'
-                      : 'Affichage uniquement (backend calcule le total réel).'}
+                    Ce total est envoyé au backend via <code>montant_total</code>.
                   </div>
                 </div>
               </div>
