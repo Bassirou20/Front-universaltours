@@ -58,7 +58,7 @@ export type ReservationInput = {
   flight_details?: {
     ville_depart: string
     ville_arrivee: string
-    date_depart: string
+    date_depart?: string | null
     date_arrivee?: string | null
     compagnie?: string | null
     pnr?: string | null
@@ -76,8 +76,8 @@ export type ReservationInput = {
 
   // Assurance
   assurance_details?: {
-    libelle: string
-    date_debut: string
+    libelle?: string
+    date_debut?: string | null
     date_fin?: string | null
   }
 
@@ -123,9 +123,9 @@ const TYPE_META: Record<ReservationType, { label: string; icon: React.ReactNode;
   billet_avion: { label: "Billet d'avion", icon: <Plane size={16} />, hint: 'Vol + bénéficiaire + PNR optionnel.' },
   hotel: { label: 'Hôtel', icon: <Hotel size={16} />, hint: 'Produit hôtel + montant.' },
   voiture: { label: 'Location voiture', icon: <Car size={16} />, hint: '1 réservation = 1 personne (fixé).' },
-  evenement: { label: 'Évènement', icon: <PartyPopper size={16} />, hint: 'Participants optionnels selon besoin.' },
-  forfait: { label: 'Forfait', icon: <Package size={16} />, hint: 'Forfait + participants.' },
-  assurance: { label: 'Assurance', icon: <Shield size={16} />, hint: 'Libellé + période + bénéficiaire optionnel.' },
+  evenement: { label: 'Évènement', icon: <PartyPopper size={16} />, hint: 'Participants modifiables.' },
+  forfait: { label: 'Forfait', icon: <Package size={16} />, hint: 'Forfait + participants modifiables.' },
+  assurance: { label: 'Assurance', icon: <Shield size={16} />, hint: 'Libellé + période (dates nullable en update).' },
 }
 
 function Stepper({
@@ -197,6 +197,20 @@ function Card({ title, icon, children }: { title: string; icon?: React.ReactNode
   )
 }
 
+/**
+ * ✅ Espace garanti entre icône et saisie:
+ * - icône absolute left-3
+ * - input reçoit pl-12 (donc le texte ne passe jamais sous l’icône)
+ */
+function InputWithIcon({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="relative min-w-0">
+      <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none">{icon}</div>
+      <div className="[&_.input]:pl-12">{children}</div>
+    </div>
+  )
+}
+
 /* -------------------- Main -------------------- */
 const EMPTY: ReservationInput = {
   type: 'billet_avion',
@@ -254,8 +268,8 @@ function normalizeReservationToForm(dv?: Partial<ReservationInput>): Reservation
     type === 'assurance'
       ? {
           libelle: String(assuranceFromBackend?.libelle ?? ''),
-          date_debut: String(assuranceFromBackend?.date_debut ?? ''),
-          date_fin: String(assuranceFromBackend?.date_fin ?? ''),
+          date_debut: assuranceFromBackend?.date_debut ? String(assuranceFromBackend?.date_debut) : '',
+          date_fin: assuranceFromBackend?.date_fin ? String(assuranceFromBackend?.date_fin) : '',
         }
       : undefined
 
@@ -280,7 +294,7 @@ function normalizeReservationToForm(dv?: Partial<ReservationInput>): Reservation
           passport: p?.passport ?? '',
           age: p?.age ?? null,
           remarques: p?.remarques ?? '',
-          role: p?.role ?? 'passenger',
+          role: p?.role ?? 'participant',
         }))
       : []
 
@@ -304,7 +318,7 @@ function normalizeReservationToForm(dv?: Partial<ReservationInput>): Reservation
 
     ville_depart: v.ville_depart ?? flight_details?.ville_depart ?? null,
     ville_arrivee: v.ville_arrivee ?? flight_details?.ville_arrivee ?? null,
-    date_depart: v.date_depart ?? flight_details?.date_depart ?? null,
+    date_depart: v.date_depart ?? (flight_details?.date_depart as any) ?? null,
     date_arrivee: v.date_arrivee ?? (flight_details?.date_arrivee as any) ?? null,
     compagnie: v.compagnie ?? (flight_details?.compagnie as any) ?? null,
     pnr: v.pnr ?? (flight_details?.pnr as any) ?? null,
@@ -372,7 +386,6 @@ async function fetchAllPages<T = any>(
   return items
 }
 
-/* -------------------- Client label helper -------------------- */
 function clientLabel(c: any) {
   const name = [c?.prenom, c?.nom].filter(Boolean).join(' ').trim() || c?.nom || `Client #${c?.id}`
   return `${name}${c?.telephone ? ` • ${c.telephone}` : ''}`
@@ -497,7 +510,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
     () => [
       { title: 'Type & client', subtitle: 'Choisir le type + le payeur' },
       { title: 'Détails', subtitle: 'Vol / produit / forfait / assurance' },
-      { title: 'Bénéficiaire', subtitle: 'Client ou autre personne' },
+      { title: 'Bénéficiaire', subtitle: 'Client ou autre personne / participants' },
       { title: 'Montant', subtitle: 'Total + notes' },
       { title: 'Acompte', subtitle: 'Optionnel' },
     ],
@@ -511,18 +524,18 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
 
   const setFlight = (patch: Partial<NonNullable<ReservationInput['flight_details']>>) => {
     setForm((s) => {
-      const next = {
+      const next: any = {
         ...s,
         flight_details: { ...(s.flight_details || (EMPTY.flight_details as any)), ...patch },
       }
       if (next.type === 'billet_avion' && next.flight_details) {
         next.ville_depart = next.flight_details.ville_depart
         next.ville_arrivee = next.flight_details.ville_arrivee
-        next.date_depart = next.flight_details.date_depart
-        next.date_arrivee = (next.flight_details.date_arrivee as any) ?? ''
-        next.compagnie = next.flight_details.compagnie ?? ''
-        next.pnr = next.flight_details.pnr ?? ''
-        next.classe = next.flight_details.classe ?? ''
+        next.date_depart = next.flight_details.date_depart ?? null
+        next.date_arrivee = next.flight_details.date_arrivee ?? null
+        next.compagnie = next.flight_details.compagnie ?? null
+        next.pnr = next.flight_details.pnr ?? null
+        next.classe = next.flight_details.classe ?? null
       }
       return next
     })
@@ -545,7 +558,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
   const addParticipant = () => {
     setForm((s) => ({
       ...s,
-      participants: [...(s.participants || []), { nom: '', prenom: '', passport: '', age: null, remarques: '', role: 'passenger' }],
+      participants: [...(s.participants || []), { nom: '', prenom: '', passport: '', age: null, remarques: '', role: 'participant' }],
     }))
   }
 
@@ -584,19 +597,22 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
 
     if (s === 1) {
       if (form.type === 'billet_avion') {
-        const fd = form.flight_details
-        if (!fd?.ville_depart) return 'Ville départ requise.'
-        if (!fd?.ville_arrivee) return 'Ville arrivée requise.'
-        if (!fd?.date_depart) return 'Date départ requise.'
-        if (isEdit) {
-          if (!fd?.date_arrivee) return 'Date arrivée requise (modification).'
-          if (!fd?.compagnie) return 'Compagnie requise (modification).'
+        // ✅ billet avion: dates nullable, et en edit rien d'obligatoire côté front
+        return null
+      }
+
+      if (form.type === 'assurance') {
+        // ✅ Création: (selon ton StoreReservationRequest) libellé + date_debut requis
+        // ✅ Modification: champs non requis (tu as dit date_debut/date_fin non requis en update)
+        if (!isEdit) {
+          const ad = form.assurance_details
+          if (!ad?.libelle?.trim()) return 'Libellé assurance requis.'
+          if (!ad?.date_debut) return 'Date début requise.'
         }
-      } else if (form.type === 'assurance') {
-        const ad = form.assurance_details
-        if (!ad?.libelle?.trim()) return 'Libellé assurance requis.'
-        if (!ad?.date_debut) return 'Date début requise.'
-      } else if (form.type === 'forfait') {
+        return null
+      }
+
+      if (form.type === 'forfait') {
         if (!form.forfait_id) return 'Veuillez sélectionner un forfait.'
       } else {
         if (!form.produit_id) return 'Veuillez sélectionner un produit.'
@@ -609,10 +625,10 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
           if (!form.passenger?.nom) return 'Nom du bénéficiaire requis.'
         }
       }
+      // participants: pas de blocage ici, tu peux modifier librement
     }
 
     if (s === 3) {
-      // Billet + Assurance : on exige achat (hors fees) > 0
       if (form.type === 'billet_avion' || form.type === 'assurance') {
         if (Number(form.montant_sous_total || 0) <= 0) return 'Achat (hors fees) requis.'
       } else {
@@ -645,26 +661,46 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
     delete payload.client_mode
 
     const stNum = (v: any) => (v == null || v === '' ? 0 : Number(v) || 0)
+    const toStr = (v: any) => String(v ?? '').trim()
+    const toNullableStr = (v: any) => {
+      const s = String(v ?? '').trim()
+      return s === '' ? null : s
+    }
+
+    const pickIfNonEmpty = (obj: any) => {
+      const out: any = {}
+      Object.entries(obj).forEach(([k, v]) => {
+        if (v === undefined) return
+        if (v === null) return
+        if (typeof v === 'string' && v.trim() === '') return
+        out[k] = v
+      })
+      return out
+    }
 
     if (payload.type === 'billet_avion') {
       const fd = {
-        ville_depart: String(payload.flight_details?.ville_depart || '').trim(),
-        ville_arrivee: String(payload.flight_details?.ville_arrivee || '').trim(),
-        date_depart: String(payload.flight_details?.date_depart || '').trim(),
-        date_arrivee: payload.flight_details?.date_arrivee ? String(payload.flight_details.date_arrivee) : '',
-        compagnie: payload.flight_details?.compagnie ? String(payload.flight_details.compagnie) : '',
-        pnr: payload.flight_details?.pnr ? String(payload.flight_details.pnr) : null,
-        classe: payload.flight_details?.classe ? String(payload.flight_details.classe) : null,
+        ville_depart: toStr(payload.flight_details?.ville_depart),
+        ville_arrivee: toStr(payload.flight_details?.ville_arrivee),
+        date_depart: toNullableStr(payload.flight_details?.date_depart),
+        date_arrivee: toNullableStr(payload.flight_details?.date_arrivee),
+        compagnie: toNullableStr(payload.flight_details?.compagnie),
+        pnr: toNullableStr(payload.flight_details?.pnr),
+        classe: toNullableStr(payload.flight_details?.classe),
       }
 
       if (isEdit) {
-        payload.ville_depart = fd.ville_depart
-        payload.ville_arrivee = fd.ville_arrivee
-        payload.date_depart = fd.date_depart
-        payload.date_arrivee = fd.date_arrivee
-        payload.compagnie = fd.compagnie
-        payload.pnr = fd.pnr
-        payload.classe = fd.classe
+        // ✅ update: envoyer uniquement ce qui est rempli (et dates nullable OK)
+        const patch = pickIfNonEmpty({
+          ville_depart: fd.ville_depart,
+          ville_arrivee: fd.ville_arrivee,
+          date_depart: fd.date_depart,
+          date_arrivee: fd.date_arrivee,
+          compagnie: fd.compagnie,
+          pnr: fd.pnr,
+          classe: fd.classe,
+        })
+        Object.assign(payload, patch)
 
         delete payload.flight_details
         delete payload.passenger_is_client
@@ -674,8 +710,8 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
           ville_depart: fd.ville_depart,
           ville_arrivee: fd.ville_arrivee,
           date_depart: fd.date_depart,
-          date_arrivee: fd.date_arrivee || null,
-          compagnie: fd.compagnie || null,
+          date_arrivee: fd.date_arrivee,
+          compagnie: fd.compagnie,
           pnr: fd.pnr,
           classe: fd.classe,
         }
@@ -684,13 +720,12 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
           delete payload.passenger
         } else {
           payload.passenger = {
-            nom: String(payload.passenger?.nom || '').trim(),
-            prenom: String(payload.passenger?.prenom || '').trim() || undefined,
+            nom: toStr(payload.passenger?.nom),
+            prenom: toStr(payload.passenger?.prenom) || undefined,
           }
         }
       }
 
-      // ✅ IMPORTANT: montant_total est obligatoire côté backend (comme en Postman)
       const st = stNum(payload.montant_sous_total)
       const tx = stNum(payload.montant_taxes)
       payload.montant_sous_total = st
@@ -712,8 +747,8 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
         delete payload.passenger
       } else {
         payload.passenger = {
-          nom: String(payload.passenger?.nom || '').trim(),
-          prenom: String(payload.passenger?.prenom || '').trim() || undefined,
+          nom: toStr(payload.passenger?.nom),
+          prenom: toStr(payload.passenger?.prenom) || undefined,
         }
       }
 
@@ -727,10 +762,25 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
       payload.montant_taxes = tx
       payload.montant_total = Number(payload.montant_total ?? st + tx) || st + tx
 
-      payload.assurance_details = {
-        libelle: String(payload.assurance_details?.libelle || '').trim(),
-        date_debut: String(payload.assurance_details?.date_debut || '').trim(),
-        date_fin: payload.assurance_details?.date_fin ? String(payload.assurance_details.date_fin) : null,
+      // ✅ Assurance:
+      // - Create: on envoie libelle + date_debut (selon ton store)
+      // - Update: rien n'est obligatoire -> on envoie uniquement les champs remplis (sinon on n'envoie rien)
+      const incoming = {
+        libelle: toStr(payload.assurance_details?.libelle),
+        date_debut: toNullableStr(payload.assurance_details?.date_debut),
+        date_fin: toNullableStr(payload.assurance_details?.date_fin),
+      }
+
+      if (isEdit) {
+        const patch = pickIfNonEmpty(incoming)
+        if (Object.keys(patch).length > 0) payload.assurance_details = patch
+        else delete payload.assurance_details
+      } else {
+        payload.assurance_details = {
+          libelle: incoming.libelle,
+          date_debut: incoming.date_debut, // (store requis)
+          date_fin: incoming.date_fin, // nullable
+        }
       }
     } else {
       delete payload.passenger_is_client
@@ -753,8 +803,12 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
       }
 
       const shouldHaveParticipants = payload.type === 'forfait' || payload.type === 'evenement'
-      if (!shouldHaveParticipants) delete payload.participants
-      else payload.participants = (payload.participants || []).filter((p: any) => String(p?.nom || '').trim() !== '')
+      if (!shouldHaveParticipants) {
+        delete payload.participants
+      } else {
+        // ✅ IMPORTANT: en update tu peux envoyer [] pour supprimer tous les participants
+        payload.participants = (payload.participants || []).filter((p: any) => String(p?.nom || '').trim() !== '')
+      }
 
       payload.nombre_personnes = Number(payload.nombre_personnes || 1)
 
@@ -780,7 +834,6 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
 
   /* ---------- Summary panel ---------- */
   const summary = useMemo(() => {
-    const typeMeta = TYPE_META[form.type]
     const clientLabelText =
       form.client_mode === 'existing'
         ? selectedClient
@@ -805,7 +858,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
     const pay = Number(form.acompte?.montant || 0)
     const pct = total > 0 ? Math.min(100, Math.round((pay / total) * 100)) : 0
 
-    return { typeMeta, clientLabel: clientLabelText, details, total, pay, pct }
+    return { clientLabel: clientLabelText, details, total, pay, pct }
   }, [form, selectedClient, produits, forfaits])
 
   /* -------------------- Steps UI -------------------- */
@@ -825,6 +878,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                 set('forfait_id', null)
                 if (t !== 'billet_avion') set('flight_details', undefined)
                 if (t !== 'assurance') set('assurance_details', undefined)
+                if (t !== 'forfait' && t !== 'evenement') set('participants', [])
               }}
             >
               {Object.entries(TYPE_META).map(([k, m]) => (
@@ -874,9 +928,9 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
             <label className="label">Rechercher un client *</label>
 
             <div className="relative min-w-0">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
               <input
-                className="input pl-9"
+                className="input pl-12"
                 placeholder="Tapez un nom ou prénom…"
                 value={clientQuery}
                 onChange={(e) => {
@@ -890,9 +944,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
               {clientOpen ? (
                 <div
                   className="absolute z-20 w-full rounded-2xl border border-black/10 dark:border-white/10 bg-white dark:bg-panel shadow-soft overflow-hidden bottom-full mb-2"
-                  onMouseDown={(e) => {
-                    e.preventDefault()
-                  }}
+                  onMouseDown={(e) => e.preventDefault()}
                 >
                   <div className="max-h-[320px] overflow-auto p-1">
                     {qClients.isLoading ? (
@@ -927,15 +979,6 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                 </div>
               ) : null}
             </div>
-
-            <select className="hidden" value={form.client_id ?? ''} onChange={(e) => set('client_id', e.target.value ? Number(e.target.value) : null)}>
-              <option value="">— Choisir —</option>
-              {clients.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {clientLabel(c)}
-                </option>
-              ))}
-            </select>
 
             {selectedClient ? (
               <div className="mt-2 rounded-xl bg-black/[0.03] dark:bg-white/[0.06] p-3 text-xs text-gray-700 dark:text-gray-200 min-w-0">
@@ -1002,39 +1045,8 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                     pays: c.pays || null,
                   })
                 }}
-                title="Crée le client, rafraîchit la liste et le sélectionne automatiquement"
               >
                 {createClientMutation.isPending ? 'Enregistrement…' : 'Enregistrer le client'}
-              </button>
-
-              <button
-                type="button"
-                className="btn bg-gray-200 dark:bg-white/10"
-                disabled={createClientMutation.isPending}
-                onClick={async () => {
-                  const c = form.client || {}
-                  if (!c.nom) return
-                  if (!c.telephone && !c.email) return
-
-                  const created = await createClientMutation.mutateAsync({
-                    nom: c.nom,
-                    prenom: c.prenom || null,
-                    telephone: c.telephone || null,
-                    email: c.email || null,
-                    adresse: c.adresse || null,
-                    pays: c.pays || null,
-                  })
-
-                  setForm((s) => ({
-                    ...s,
-                    client_mode: 'new',
-                    client_id: created?.id ? Number(created.id) : s.client_id,
-                    client: { nom: '', prenom: '', email: '', telephone: '', adresse: '', pays: '' },
-                  }))
-                }}
-                title="Crée le client puis reset les champs pour en ajouter un autre"
-              >
-                Enregistrer & ajouter un autre
               </button>
             </div>
 
@@ -1054,49 +1066,38 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
           <div className="space-y-3 min-w-0">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="min-w-0">
-                <label className="label">Ville départ *</label>
-                <div className="relative">
-                  <MapPin size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-                  <input className="input pl-9" value={form.flight_details?.ville_depart ?? ''} onChange={(e) => setFlight({ ville_depart: e.target.value })} />
-                </div>
+                <label className="label">Ville départ</label>
+                <InputWithIcon icon={<MapPin size={16} />}>
+                  <input className="input" value={form.flight_details?.ville_depart ?? ''} onChange={(e) => setFlight({ ville_depart: e.target.value })} />
+                </InputWithIcon>
               </div>
               <div className="min-w-0">
-                <label className="label">Ville arrivée *</label>
-                <div className="relative">
-                  <MapPin size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-                  <input className="input pl-9" value={form.flight_details?.ville_arrivee ?? ''} onChange={(e) => setFlight({ ville_arrivee: e.target.value })} />
-                </div>
+                <label className="label">Ville arrivée</label>
+                <InputWithIcon icon={<MapPin size={16} />}>
+                  <input className="input" value={form.flight_details?.ville_arrivee ?? ''} onChange={(e) => setFlight({ ville_arrivee: e.target.value })} />
+                </InputWithIcon>
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="min-w-0">
-                <label className="label">Date départ *</label>
-                <div className="relative">
-                  <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-                  <input type="date" className="input pl-9" value={form.flight_details?.date_depart ?? ''} onChange={(e) => setFlight({ date_depart: e.target.value })} />
-                </div>
+                <label className="label">Date départ (optionnel)</label>
+                <InputWithIcon icon={<Calendar size={16} />}>
+                  <input type="date" className="input" value={String(form.flight_details?.date_depart ?? '')} onChange={(e) => setFlight({ date_depart: e.target.value })} />
+                </InputWithIcon>
               </div>
               <div className="min-w-0">
-                <label className="label">{isEdit ? 'Date arrivée *' : 'Date arrivée'}</label>
-                <div className="relative">
-                  <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-                  <input
-                    type="date"
-                    className="input pl-9"
-                    value={String(form.flight_details?.date_arrivee ?? '')}
-                    onChange={(e) => setFlight({ date_arrivee: e.target.value })}
-                  />
-                </div>
-                {isEdit ? <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">Requis en modification (backend).</div> : null}
+                <label className="label">Date arrivée (optionnel)</label>
+                <InputWithIcon icon={<Calendar size={16} />}>
+                  <input type="date" className="input" value={String(form.flight_details?.date_arrivee ?? '')} onChange={(e) => setFlight({ date_arrivee: e.target.value })} />
+                </InputWithIcon>
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="min-w-0">
-                <label className="label">{isEdit ? 'Compagnie *' : 'Compagnie'}</label>
+                <label className="label">Compagnie</label>
                 <input className="input" value={String(form.flight_details?.compagnie ?? '')} onChange={(e) => setFlight({ compagnie: e.target.value })} />
-                {isEdit ? <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">Requis en modification (backend).</div> : null}
               </div>
               <div className="min-w-0">
                 <label className="label">Classe</label>
@@ -1105,7 +1106,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
               <div className="min-w-0">
                 <label className="label">PNR</label>
                 <input className="input" placeholder="Ex: CSSUNO" value={String(form.flight_details?.pnr ?? '')} onChange={(e) => setFlight({ pnr: e.target.value })} />
-                <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">Optionnel (nullable DB).</div>
+                <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">Optionnel (nullable).</div>
               </div>
             </div>
           </div>
@@ -1113,7 +1114,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
           <div className="space-y-3 min-w-0">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="md:col-span-2 min-w-0">
-                <label className="label">Libellé *</label>
+                <label className="label">{isEdit ? 'Libellé (optionnel en modification)' : 'Libellé *'}</label>
                 <input
                   className="input"
                   placeholder="Ex: Assurance Voyage - Schengen"
@@ -1123,34 +1124,34 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
               </div>
 
               <div className="min-w-0">
-                <label className="label">Date début *</label>
-                <div className="relative">
-                  <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                <label className="label">{isEdit ? 'Date début (optionnel)' : 'Date début *'}</label>
+                <InputWithIcon icon={<Calendar size={16} />}>
                   <input
                     type="date"
-                    className="input pl-9"
-                    value={form.assurance_details?.date_debut ?? ''}
+                    className="input"
+                    value={String(form.assurance_details?.date_debut ?? '')}
                     onChange={(e) => setAssurance({ date_debut: e.target.value })}
                   />
-                </div>
+                </InputWithIcon>
               </div>
 
               <div className="min-w-0">
-                <label className="label">Date fin</label>
-                <div className="relative">
-                  <Calendar size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                <label className="label">Date fin (optionnel)</label>
+                <InputWithIcon icon={<Calendar size={16} />}>
                   <input
                     type="date"
-                    className="input pl-9"
+                    className="input"
                     value={String(form.assurance_details?.date_fin ?? '')}
                     onChange={(e) => setAssurance({ date_fin: e.target.value })}
                   />
-                </div>
+                </InputWithIcon>
               </div>
 
-              <div className="md:col-span-2 text-xs text-gray-600 dark:text-gray-400">
-                Astuce: “notes” se met à l’étape Montant (champ commun de la réservation).
-              </div>
+              {isEdit ? (
+                <div className="md:col-span-2 text-xs text-gray-600 dark:text-gray-400">
+                  En modification, on envoie seulement les champs remplis (sinon le backend ignore <code>assurance_details</code>).
+                </div>
+              ) : null}
             </div>
           </div>
         ) : form.type === 'forfait' ? (
@@ -1232,7 +1233,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
 
               {form.type === 'billet_avion' && isEdit ? (
                 <div className="mt-3 text-xs text-gray-600 dark:text-gray-400">
-                  Note: ton backend ne gère pas (encore) la modification du passager côté update. On conserve l’UI, mais on n’envoie pas ces champs au PATCH/PUT.
+                  Note: ton backend ne gère pas (encore) la modification du passager côté update. L’UI reste, mais on n’envoie pas ces champs au PATCH/PUT.
                 </div>
               ) : (
                 <div className="mt-3 text-xs text-gray-600 dark:text-gray-400">
@@ -1257,7 +1258,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
         ) : form.type === 'forfait' || form.type === 'evenement' ? (
           <div className="space-y-3 min-w-0">
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <div className="text-sm text-gray-600 dark:text-gray-400">Ajoute des participants si nécessaire. (Nom requis)</div>
+              <div className="text-sm text-gray-600 dark:text-gray-400">✅ Participants modifiables (add / edit / delete). Nom requis.</div>
               <button type="button" className="btn bg-gray-200 dark:bg-white/10" onClick={addParticipant}>
                 + Ajouter
               </button>
@@ -1307,6 +1308,10 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                 ))}
               </div>
             )}
+
+            <div className="text-xs text-gray-600 dark:text-gray-400">
+              En modification, ton backend peut synchroniser les participants si le front envoie <code>participants</code> (y compris un tableau vide pour tout supprimer).
+            </div>
           </div>
         ) : (
           <div className="text-sm text-gray-500">Aucun participant requis pour ce type.</div>
