@@ -20,6 +20,9 @@ import {
   CheckCircle2,
   Search,
   Shield,
+  StickyNote,
+  Eye,
+  EyeOff,
 } from 'lucide-react'
 
 export type ReservationType = 'billet_avion' | 'hotel' | 'voiture' | 'evenement' | 'forfait' | 'assurance'
@@ -76,7 +79,7 @@ export type ReservationInput = {
 
   // Assurance
   assurance_details?: {
-    libelle?: string
+    libelle: string
     date_debut?: string | null
     date_fin?: string | null
   }
@@ -91,6 +94,7 @@ export type ReservationInput = {
     prenom?: string
     passport?: string
     age?: number | null
+    note?: string // ✅ nouvelle colonne note
     remarques?: string
     role?: string
   }>
@@ -123,9 +127,9 @@ const TYPE_META: Record<ReservationType, { label: string; icon: React.ReactNode;
   billet_avion: { label: "Billet d'avion", icon: <Plane size={16} />, hint: 'Vol + bénéficiaire + PNR optionnel.' },
   hotel: { label: 'Hôtel', icon: <Hotel size={16} />, hint: 'Produit hôtel + montant.' },
   voiture: { label: 'Location voiture', icon: <Car size={16} />, hint: '1 réservation = 1 personne (fixé).' },
-  evenement: { label: 'Évènement', icon: <PartyPopper size={16} />, hint: 'Participants modifiables.' },
-  forfait: { label: 'Forfait', icon: <Package size={16} />, hint: 'Forfait + participants modifiables.' },
-  assurance: { label: 'Assurance', icon: <Shield size={16} />, hint: 'Libellé + période (dates nullable en update).' },
+  evenement: { label: 'Évènement', icon: <PartyPopper size={16} />, hint: 'Participants optionnels selon besoin.' },
+  forfait: { label: 'Forfait', icon: <Package size={16} />, hint: 'Forfait + participants.' },
+  assurance: { label: 'Assurance', icon: <Shield size={16} />, hint: 'Libellé + période + bénéficiaire optionnel.' },
 }
 
 function Stepper({
@@ -171,12 +175,19 @@ function Stepper({
               title={s.subtitle ? `${s.title} — ${s.subtitle}` : s.title}
             >
               <div className="flex items-center justify-between gap-2 min-w-0">
-                <div className={cx('text-sm font-medium truncate', active ? 'text-primary' : 'text-gray-900 dark:text-gray-100')}>
+                <div
+                  className={cx(
+                    'text-sm font-medium truncate',
+                    active ? 'text-primary' : 'text-gray-900 dark:text-gray-100'
+                  )}
+                >
                   {s.title}
                 </div>
                 {done ? <CheckCircle2 size={16} className="shrink-0 text-green-600 dark:text-green-400" /> : null}
               </div>
-              {s.subtitle ? <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5 truncate">{s.subtitle}</div> : null}
+              {s.subtitle ? (
+                <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5 truncate">{s.subtitle}</div>
+              ) : null}
             </button>
           )
         })}
@@ -197,15 +208,12 @@ function Card({ title, icon, children }: { title: string; icon?: React.ReactNode
   )
 }
 
-/**
- * ✅ Espace garanti entre icône et saisie:
- * - icône absolute left-3
- * - input reçoit pl-12 (donc le texte ne passe jamais sous l’icône)
- */
+/** ✅ Fix: espace entre icône et texte (y compris input type="date") */
 function InputWithIcon({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
   return (
     <div className="relative min-w-0">
       <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none">{icon}</div>
+      {/* ✅ padding-left forcé */}
       <div className="[&_.input]:pl-12">{children}</div>
     </div>
   )
@@ -268,8 +276,8 @@ function normalizeReservationToForm(dv?: Partial<ReservationInput>): Reservation
     type === 'assurance'
       ? {
           libelle: String(assuranceFromBackend?.libelle ?? ''),
-          date_debut: assuranceFromBackend?.date_debut ? String(assuranceFromBackend?.date_debut) : '',
-          date_fin: assuranceFromBackend?.date_fin ? String(assuranceFromBackend?.date_fin) : '',
+          date_debut: assuranceFromBackend?.date_debut ? String(assuranceFromBackend.date_debut) : '',
+          date_fin: assuranceFromBackend?.date_fin ? String(assuranceFromBackend.date_fin) : '',
         }
       : undefined
 
@@ -293,6 +301,7 @@ function normalizeReservationToForm(dv?: Partial<ReservationInput>): Reservation
           prenom: p?.prenom ?? '',
           passport: p?.passport ?? '',
           age: p?.age ?? null,
+          note: p?.note ?? '', // ✅
           remarques: p?.remarques ?? '',
           role: p?.role ?? 'participant',
         }))
@@ -341,13 +350,7 @@ function normalizeReservationToForm(dv?: Partial<ReservationInput>): Reservation
 async function fetchAllPages<T = any>(
   url: string,
   params: Record<string, any>,
-  {
-    maxPages = 200,
-    pageParam = 'page',
-  }: {
-    maxPages?: number
-    pageParam?: string
-  } = {}
+  { maxPages = 200, pageParam = 'page' }: { maxPages?: number; pageParam?: string } = {}
 ): Promise<T[]> {
   const items: T[] = []
   let page = 1
@@ -397,11 +400,15 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
   const [form, setForm] = useState<ReservationInput>(() => normalizeReservationToForm(defaultValues))
   const [step, setStep] = useState(0)
 
+  // ✅ billet: cacher dates par défaut
+  const [showFlightDates, setShowFlightDates] = useState(false)
+
   const qc = useQueryClient()
 
   useEffect(() => {
     setForm(normalizeReservationToForm(defaultValues))
     setStep(0)
+    setShowFlightDates(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(defaultValues || {})])
 
@@ -446,7 +453,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
     return clients.find((c) => Number(c?.id) === Number(form.client_id)) || null
   }, [clients, form.client_id])
 
-  /* ---------- ✅ Client search input (nom/prénom) ---------- */
+  /* ---------- ✅ Client search input ---------- */
   const [clientQuery, setClientQuery] = useState('')
   const [clientOpen, setClientOpen] = useState(false)
   const blurTimeoutRef = useRef<number | null>(null)
@@ -510,7 +517,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
     () => [
       { title: 'Type & client', subtitle: 'Choisir le type + le payeur' },
       { title: 'Détails', subtitle: 'Vol / produit / forfait / assurance' },
-      { title: 'Bénéficiaire', subtitle: 'Client ou autre personne / participants' },
+      { title: 'Bénéficiaire', subtitle: 'Client ou autre personne' },
       { title: 'Montant', subtitle: 'Total + notes' },
       { title: 'Acompte', subtitle: 'Optionnel' },
     ],
@@ -524,18 +531,18 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
 
   const setFlight = (patch: Partial<NonNullable<ReservationInput['flight_details']>>) => {
     setForm((s) => {
-      const next: any = {
+      const next = {
         ...s,
         flight_details: { ...(s.flight_details || (EMPTY.flight_details as any)), ...patch },
       }
       if (next.type === 'billet_avion' && next.flight_details) {
         next.ville_depart = next.flight_details.ville_depart
         next.ville_arrivee = next.flight_details.ville_arrivee
-        next.date_depart = next.flight_details.date_depart ?? null
-        next.date_arrivee = next.flight_details.date_arrivee ?? null
-        next.compagnie = next.flight_details.compagnie ?? null
-        next.pnr = next.flight_details.pnr ?? null
-        next.classe = next.flight_details.classe ?? null
+        next.date_depart = (next.flight_details.date_depart as any) ?? null
+        next.date_arrivee = (next.flight_details.date_arrivee as any) ?? null
+        next.compagnie = (next.flight_details.compagnie as any) ?? null
+        next.pnr = (next.flight_details.pnr as any) ?? null
+        next.classe = (next.flight_details.classe as any) ?? null
       }
       return next
     })
@@ -558,7 +565,10 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
   const addParticipant = () => {
     setForm((s) => ({
       ...s,
-      participants: [...(s.participants || []), { nom: '', prenom: '', passport: '', age: null, remarques: '', role: 'participant' }],
+      participants: [
+        ...(s.participants || []),
+        { nom: '', prenom: '', passport: '', age: null, note: '', remarques: '', role: 'participant' },
+      ],
     }))
   }
 
@@ -597,22 +607,16 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
 
     if (s === 1) {
       if (form.type === 'billet_avion') {
-        // ✅ billet avion: dates nullable, et en edit rien d'obligatoire côté front
+        // ✅ billet: détails vol NON obligatoires
         return null
-      }
-
-      if (form.type === 'assurance') {
-        // ✅ Création: (selon ton StoreReservationRequest) libellé + date_debut requis
-        // ✅ Modification: champs non requis (tu as dit date_debut/date_fin non requis en update)
-        if (!isEdit) {
-          const ad = form.assurance_details
-          if (!ad?.libelle?.trim()) return 'Libellé assurance requis.'
-          if (!ad?.date_debut) return 'Date début requise.'
-        }
+      } else if (form.type === 'assurance') {
+        // ✅ assurance: en création, libellé requis (dates: ton backend peut les exiger en store; en update non)
+        const ad = form.assurance_details
+        if (!ad?.libelle?.trim()) return 'Libellé assurance requis.'
+        // ⚠️ si tu veux aussi rendre date_debut/date_fin non requises en création, enlève ces 2 lignes :
+        // if (!ad?.date_debut) return 'Date début requise.'
         return null
-      }
-
-      if (form.type === 'forfait') {
+      } else if (form.type === 'forfait') {
         if (!form.forfait_id) return 'Veuillez sélectionner un forfait.'
       } else {
         if (!form.produit_id) return 'Veuillez sélectionner un produit.'
@@ -625,7 +629,6 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
           if (!form.passenger?.nom) return 'Nom du bénéficiaire requis.'
         }
       }
-      // participants: pas de blocage ici, tu peux modifier librement
     }
 
     if (s === 3) {
@@ -690,7 +693,6 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
       }
 
       if (isEdit) {
-        // ✅ update: envoyer uniquement ce qui est rempli (et dates nullable OK)
         const patch = pickIfNonEmpty({
           ville_depart: fd.ville_depart,
           ville_arrivee: fd.ville_arrivee,
@@ -701,7 +703,6 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
           classe: fd.classe,
         })
         Object.assign(payload, patch)
-
         delete payload.flight_details
         delete payload.passenger_is_client
         delete payload.passenger
@@ -762,25 +763,11 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
       payload.montant_taxes = tx
       payload.montant_total = Number(payload.montant_total ?? st + tx) || st + tx
 
-      // ✅ Assurance:
-      // - Create: on envoie libelle + date_debut (selon ton store)
-      // - Update: rien n'est obligatoire -> on envoie uniquement les champs remplis (sinon on n'envoie rien)
-      const incoming = {
+      // ✅ assurance: dates peuvent être null (surtout en update)
+      payload.assurance_details = {
         libelle: toStr(payload.assurance_details?.libelle),
         date_debut: toNullableStr(payload.assurance_details?.date_debut),
         date_fin: toNullableStr(payload.assurance_details?.date_fin),
-      }
-
-      if (isEdit) {
-        const patch = pickIfNonEmpty(incoming)
-        if (Object.keys(patch).length > 0) payload.assurance_details = patch
-        else delete payload.assurance_details
-      } else {
-        payload.assurance_details = {
-          libelle: incoming.libelle,
-          date_debut: incoming.date_debut, // (store requis)
-          date_fin: incoming.date_fin, // nullable
-        }
       }
     } else {
       delete payload.passenger_is_client
@@ -803,15 +790,11 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
       }
 
       const shouldHaveParticipants = payload.type === 'forfait' || payload.type === 'evenement'
-      if (!shouldHaveParticipants) {
-        delete payload.participants
-      } else {
-        // ✅ IMPORTANT: en update tu peux envoyer [] pour supprimer tous les participants
+      if (!shouldHaveParticipants) delete payload.participants
+      else
         payload.participants = (payload.participants || []).filter((p: any) => String(p?.nom || '').trim() !== '')
-      }
 
       payload.nombre_personnes = Number(payload.nombre_personnes || 1)
-
       payload.montant_total = Number(payload.montant_total || 0)
       delete payload.montant_sous_total
       delete payload.montant_taxes
@@ -837,7 +820,9 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
     const clientLabelText =
       form.client_mode === 'existing'
         ? selectedClient
-          ? [selectedClient?.prenom, selectedClient?.nom].filter(Boolean).join(' ') || selectedClient?.nom || `Client #${selectedClient.id}`
+          ? [selectedClient?.prenom, selectedClient?.nom].filter(Boolean).join(' ') ||
+            selectedClient?.nom ||
+            `Client #${selectedClient.id}`
           : '—'
         : [form.client?.prenom, form.client?.nom].filter(Boolean).join(' ') || form.client?.nom || 'Nouveau client'
 
@@ -878,7 +863,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                 set('forfait_id', null)
                 if (t !== 'billet_avion') set('flight_details', undefined)
                 if (t !== 'assurance') set('assurance_details', undefined)
-                if (t !== 'forfait' && t !== 'evenement') set('participants', [])
+                setShowFlightDates(false)
               }}
             >
               {Object.entries(TYPE_META).map(([k, m]) => (
@@ -900,7 +885,9 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
               onChange={(e) => set('nombre_personnes', Number(e.target.value || 1))}
               disabled={form.type === 'voiture'}
             />
-            {form.type === 'voiture' ? <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">Voiture: 1 réservation = 1 personne (fixé).</div> : null}
+            {form.type === 'voiture' ? (
+              <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">Voiture: 1 réservation = 1 personne (fixé).</div>
+            ) : null}
           </div>
         </div>
       </Card>
@@ -909,14 +896,24 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
         <div className="flex items-center gap-2 mb-3 flex-wrap">
           <button
             type="button"
-            className={cx('btn px-3', form.client_mode === 'existing' ? 'bg-gray-900 text-white dark:bg-white dark:text-black' : 'bg-gray-200 dark:bg-white/10')}
+            className={cx(
+              'btn px-3',
+              form.client_mode === 'existing'
+                ? 'bg-gray-900 text-white dark:bg-white dark:text-black'
+                : 'bg-gray-200 dark:bg-white/10'
+            )}
             onClick={() => set('client_mode', 'existing')}
           >
             Client existant
           </button>
           <button
             type="button"
-            className={cx('btn px-3', form.client_mode === 'new' ? 'bg-gray-900 text-white dark:bg-white dark:text-black' : 'bg-gray-200 dark:bg-white/10')}
+            className={cx(
+              'btn px-3',
+              form.client_mode === 'new'
+                ? 'bg-gray-900 text-white dark:bg-white dark:text-black'
+                : 'bg-gray-200 dark:bg-white/10'
+            )}
             onClick={() => set('client_mode', 'new')}
           >
             Nouveau client
@@ -960,7 +957,9 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                             type="button"
                             className={cx(
                               'w-full text-left rounded-xl px-3 py-2 transition min-w-0',
-                              active ? 'bg-primary/10 text-gray-900 dark:text-gray-100' : 'hover:bg-black/[0.03] dark:hover:bg-white/[0.06]'
+                              active
+                                ? 'bg-primary/10 text-gray-900 dark:text-gray-100'
+                                : 'hover:bg-black/[0.03] dark:hover:bg-white/[0.06]'
                             )}
                             onClick={() => selectClient(c)}
                           >
@@ -979,6 +978,19 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                 </div>
               ) : null}
             </div>
+
+            <select
+              className="hidden"
+              value={form.client_id ?? ''}
+              onChange={(e) => set('client_id', e.target.value ? Number(e.target.value) : null)}
+            >
+              <option value="">— Choisir —</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {clientLabel(c)}
+                </option>
+              ))}
+            </select>
 
             {selectedClient ? (
               <div className="mt-2 rounded-xl bg-black/[0.03] dark:bg-white/[0.06] p-3 text-xs text-gray-700 dark:text-gray-200 min-w-0">
@@ -1022,7 +1034,9 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
               <button
                 type="button"
                 className="btn bg-gray-200 dark:bg-white/10"
-                onClick={() => setForm((s) => ({ ...s, client: { nom: '', prenom: '', email: '', telephone: '', adresse: '', pays: '' } }))}
+                onClick={() =>
+                  setForm((s) => ({ ...s, client: { nom: '', prenom: '', email: '', telephone: '', adresse: '', pays: '' } }))
+                }
                 disabled={createClientMutation.isPending}
               >
                 Vider
@@ -1064,6 +1078,27 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
       <Card title="Détails" icon={<FileText size={16} />}>
         {form.type === 'billet_avion' ? (
           <div className="space-y-3 min-w-0">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="text-xs text-gray-600 dark:text-gray-400">
+                Les dates sont optionnelles. Tu peux les afficher uniquement si nécessaire.
+              </div>
+              <button
+                type="button"
+                className="btn bg-gray-200 dark:bg-white/10"
+                onClick={() => setShowFlightDates((v) => !v)}
+              >
+                {showFlightDates ? (
+                  <span className="inline-flex items-center gap-2">
+                    <EyeOff size={16} /> Masquer les dates
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-2">
+                    <Eye size={16} /> Afficher les dates
+                  </span>
+                )}
+              </button>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="min-w-0">
                 <label className="label">Ville départ</label>
@@ -1079,20 +1114,32 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="min-w-0">
-                <label className="label">Date départ (optionnel)</label>
-                <InputWithIcon icon={<Calendar size={16} />}>
-                  <input type="date" className="input" value={String(form.flight_details?.date_depart ?? '')} onChange={(e) => setFlight({ date_depart: e.target.value })} />
-                </InputWithIcon>
+            {showFlightDates ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="min-w-0">
+                  <label className="label">Date départ</label>
+                  <InputWithIcon icon={<Calendar size={16} />}>
+                    <input
+                      type="date"
+                      className="input"
+                      value={String(form.flight_details?.date_depart ?? '')}
+                      onChange={(e) => setFlight({ date_depart: e.target.value })}
+                    />
+                  </InputWithIcon>
+                </div>
+                <div className="min-w-0">
+                  <label className="label">Date arrivée</label>
+                  <InputWithIcon icon={<Calendar size={16} />}>
+                    <input
+                      type="date"
+                      className="input"
+                      value={String(form.flight_details?.date_arrivee ?? '')}
+                      onChange={(e) => setFlight({ date_arrivee: e.target.value })}
+                    />
+                  </InputWithIcon>
+                </div>
               </div>
-              <div className="min-w-0">
-                <label className="label">Date arrivée (optionnel)</label>
-                <InputWithIcon icon={<Calendar size={16} />}>
-                  <input type="date" className="input" value={String(form.flight_details?.date_arrivee ?? '')} onChange={(e) => setFlight({ date_arrivee: e.target.value })} />
-                </InputWithIcon>
-              </div>
-            </div>
+            ) : null}
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="min-w-0">
@@ -1106,7 +1153,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
               <div className="min-w-0">
                 <label className="label">PNR</label>
                 <input className="input" placeholder="Ex: CSSUNO" value={String(form.flight_details?.pnr ?? '')} onChange={(e) => setFlight({ pnr: e.target.value })} />
-                <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">Optionnel (nullable).</div>
+                <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">Optionnel (nullable DB).</div>
               </div>
             </div>
           </div>
@@ -1114,7 +1161,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
           <div className="space-y-3 min-w-0">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="md:col-span-2 min-w-0">
-                <label className="label">{isEdit ? 'Libellé (optionnel en modification)' : 'Libellé *'}</label>
+                <label className="label">Libellé *</label>
                 <input
                   className="input"
                   placeholder="Ex: Assurance Voyage - Schengen"
@@ -1123,8 +1170,9 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                 />
               </div>
 
+              {/* ✅ dates assurance visibles uniquement en assurance (et peuvent être null) */}
               <div className="min-w-0">
-                <label className="label">{isEdit ? 'Date début (optionnel)' : 'Date début *'}</label>
+                <label className="label">Date début</label>
                 <InputWithIcon icon={<Calendar size={16} />}>
                   <input
                     type="date"
@@ -1136,7 +1184,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
               </div>
 
               <div className="min-w-0">
-                <label className="label">Date fin (optionnel)</label>
+                <label className="label">Date fin</label>
                 <InputWithIcon icon={<Calendar size={16} />}>
                   <input
                     type="date"
@@ -1147,11 +1195,9 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                 </InputWithIcon>
               </div>
 
-              {isEdit ? (
-                <div className="md:col-span-2 text-xs text-gray-600 dark:text-gray-400">
-                  En modification, on envoie seulement les champs remplis (sinon le backend ignore <code>assurance_details</code>).
-                </div>
-              ) : null}
+              <div className="md:col-span-2 text-xs text-gray-600 dark:text-gray-400">
+                Astuce: “notes” se met à l’étape Montant (champ commun de la réservation).
+              </div>
             </div>
           </div>
         ) : form.type === 'forfait' ? (
@@ -1178,7 +1224,9 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
               ))}
             </select>
 
-            <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">Produits filtrés automatiquement selon le type ({TYPE_META[form.type].label}).</div>
+            <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">
+              Produits filtrés automatiquement selon le type ({TYPE_META[form.type].label}).
+            </div>
           </div>
         )}
       </Card>
@@ -1197,6 +1245,14 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
             <span className="text-gray-600 dark:text-gray-400 shrink-0">Détails</span>
             <span className="font-medium truncate">{summary.details}</span>
           </div>
+          {form.notes ? (
+            <div className="rounded-xl bg-black/[0.03] dark:bg-white/[0.06] p-3 text-xs text-gray-700 dark:text-gray-200 min-w-0">
+              <div className="inline-flex items-center gap-2 font-semibold">
+                <StickyNote size={14} /> Notes
+              </div>
+              <div className="mt-1 break-words">{String(form.notes)}</div>
+            </div>
+          ) : null}
         </div>
       </Card>
     </div>
@@ -1204,10 +1260,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
 
   const Step2 = (
     <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_0.85fr] gap-4 min-w-0">
-      <Card
-        title={form.type === 'billet_avion' || form.type === 'assurance' ? 'Bénéficiaire' : 'Participants'}
-        icon={<Users size={16} />}
-      >
+      <Card title={form.type === 'billet_avion' || form.type === 'assurance' ? 'Bénéficiaire' : 'Participants'} icon={<Users size={16} />}>
         {form.type === 'billet_avion' || form.type === 'assurance' ? (
           <div className="space-y-3 min-w-0">
             <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] p-3 min-w-0">
@@ -1233,7 +1286,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
 
               {form.type === 'billet_avion' && isEdit ? (
                 <div className="mt-3 text-xs text-gray-600 dark:text-gray-400">
-                  Note: ton backend ne gère pas (encore) la modification du passager côté update. L’UI reste, mais on n’envoie pas ces champs au PATCH/PUT.
+                  Note: ton backend ne gère pas (encore) la modification du passager côté update. On conserve l’UI, mais on n’envoie pas ces champs au PATCH/PUT.
                 </div>
               ) : (
                 <div className="mt-3 text-xs text-gray-600 dark:text-gray-400">
@@ -1258,7 +1311,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
         ) : form.type === 'forfait' || form.type === 'evenement' ? (
           <div className="space-y-3 min-w-0">
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <div className="text-sm text-gray-600 dark:text-gray-400">✅ Participants modifiables (add / edit / delete). Nom requis.</div>
+              <div className="text-sm text-gray-600 dark:text-gray-400">Ajoute des participants si nécessaire. (Nom requis)</div>
               <button type="button" className="btn bg-gray-200 dark:bg-white/10" onClick={addParticipant}>
                 + Ajouter
               </button>
@@ -1286,6 +1339,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                         <label className="label">Prénom</label>
                         <input className="input" value={p.prenom ?? ''} onChange={(e) => updateParticipant(idx, { prenom: e.target.value })} />
                       </div>
+
                       <div className="min-w-0">
                         <label className="label">Passeport</label>
                         <input className="input" value={p.passport ?? ''} onChange={(e) => updateParticipant(idx, { passport: e.target.value })} />
@@ -1299,19 +1353,43 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                           onChange={(e) => updateParticipant(idx, { age: e.target.value ? Number(e.target.value) : null })}
                         />
                       </div>
+
+                      {/* ✅ colonne note */}
+                      <div className="md:col-span-2 min-w-0">
+                        <label className="label">Note (affichée dans les détails)</label>
+                        <InputWithIcon icon={<StickyNote size={16} />}>
+                          <input className="input" value={p.note ?? ''} onChange={(e) => updateParticipant(idx, { note: e.target.value })} />
+                        </InputWithIcon>
+                      </div>
+
                       <div className="md:col-span-2 min-w-0">
                         <label className="label">Remarques</label>
                         <input className="input" value={p.remarques ?? ''} onChange={(e) => updateParticipant(idx, { remarques: e.target.value })} />
                       </div>
                     </div>
+
+                    {/* ✅ affichage “détails” */}
+                    {(p.note || p.remarques) ? (
+                      <div className="mt-3 rounded-xl bg-black/[0.03] dark:bg-white/[0.06] p-3 text-xs text-gray-700 dark:text-gray-200 min-w-0">
+                        <div className="font-semibold mb-1">Détails</div>
+                        {p.note ? (
+                          <div className="flex gap-2">
+                            <span className="shrink-0 text-gray-500">Note:</span>
+                            <span className="break-words">{p.note}</span>
+                          </div>
+                        ) : null}
+                        {p.remarques ? (
+                          <div className="flex gap-2 mt-1">
+                            <span className="shrink-0 text-gray-500">Remarques:</span>
+                            <span className="break-words">{p.remarques}</span>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
                 ))}
               </div>
             )}
-
-            <div className="text-xs text-gray-600 dark:text-gray-400">
-              En modification, ton backend peut synchroniser les participants si le front envoie <code>participants</code> (y compris un tableau vide pour tout supprimer).
-            </div>
           </div>
         ) : (
           <div className="text-sm text-gray-500">Aucun participant requis pour ce type.</div>
@@ -1452,9 +1530,9 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
               onChange={(e) => {
                 const raw = e.target.value
                 if (raw === '') {
-                  const next = { ...(form.acompte || {}) }
-                  delete (next as any).montant
-                  set('acompte', next)
+                  const nextAcc = { ...(form.acompte || {}) }
+                  delete (nextAcc as any).montant
+                  set('acompte', nextAcc)
                   return
                 }
                 set('acompte', { ...(form.acompte || {}), montant: Number(raw) })
