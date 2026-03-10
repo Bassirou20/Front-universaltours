@@ -21,14 +21,28 @@ import {
   Search,
   Shield,
   Loader2,
+  Save,
+  Plus,
+  Trash2,
 } from 'lucide-react'
 
-export type ReservationType = 'billet_avion' | 'hotel' | 'voiture' | 'evenement' | 'forfait' | 'assurance'
+export type ReservationType =
+  | 'billet_avion'
+  | 'hotel'
+  | 'voiture'
+  | 'evenement'
+  | 'forfait'
+  | 'assurance'
+
+type BeneficiaryInput = {
+  nom: string
+  prenom?: string
+  saved?: boolean
+}
 
 export type ReservationInput = {
   id?: number
 
-  // Client
   client_id?: number | null
   client_mode?: 'existing' | 'new'
   client?: {
@@ -40,7 +54,6 @@ export type ReservationInput = {
     pays?: string
   }
 
-  // Commun
   type: ReservationType
   statut?: string
   reference?: string | null
@@ -50,14 +63,23 @@ export type ReservationInput = {
   montant_total?: number
   notes?: string | null
 
-  // Billet avion
   passenger_is_client?: boolean
+
+  // UI locale pour billet avion
+  beneficiaries?: BeneficiaryInput[]
+
+  // backend billet avion
+  passengers?: Array<{
+    nom: string
+    prenom?: string | null
+  }>
+
+  // backend assurance simple
   passenger?: {
     nom: string
     prenom?: string
-    passport?: string
-    sexe?: string
   }
+
   flight_details?: {
     ville_depart: string
     ville_arrivee: string
@@ -68,7 +90,6 @@ export type ReservationInput = {
     classe?: string | null
   }
 
-  // Billet avion (update backend legacy: champs à plat)
   ville_depart?: string | null
   ville_arrivee?: string | null
   date_depart?: string | null
@@ -77,18 +98,15 @@ export type ReservationInput = {
   pnr?: string | null
   classe?: string | null
 
-  // Assurance
   assurance_details?: {
     libelle: string
     date_debut?: string | null
     date_fin?: string | null
   }
 
-  // Autres
   produit_id?: number | null
   forfait_id?: number | null
 
-  // Participants (events / forfaits)
   participants?: Array<{
     nom: string
     prenom?: string
@@ -98,7 +116,6 @@ export type ReservationInput = {
     role?: string
   }>
 
-  // acompte front-only
   acompte?: {
     montant?: number
     mode_paiement?: string
@@ -113,7 +130,6 @@ type Props = {
   onSubmit: (vals: ReservationInput) => void
 }
 
-/* -------------------- UI helpers -------------------- */
 function cx(...cls: Array<string | false | undefined | null>) {
   return cls.filter(Boolean).join(' ')
 }
@@ -122,13 +138,40 @@ function money(n: any, devise = 'XOF') {
   return `${Number(n || 0).toLocaleString()} ${devise}`
 }
 
-const TYPE_META: Record<ReservationType, { label: string; icon: React.ReactNode; hint: string }> = {
-  billet_avion: { label: "Billet d'avion", icon: <Plane size={16} />, hint: 'Vol + bénéficiaire + PNR optionnel.' },
-  hotel: { label: 'Hôtel', icon: <Hotel size={16} />, hint: 'Produit hôtel + montant.' },
-  voiture: { label: 'Location voiture', icon: <Car size={16} />, hint: '1 réservation = 1 personne (fixé).' },
-  evenement: { label: 'Évènement', icon: <PartyPopper size={16} />, hint: 'Participants optionnels selon besoin.' },
-  forfait: { label: 'Forfait', icon: <Package size={16} />, hint: 'Forfait + participants.' },
-  assurance: { label: 'Assurance', icon: <Shield size={16} />, hint: 'Libellé + période + bénéficiaire optionnel.' },
+const TYPE_META: Record<
+  ReservationType,
+  { label: string; icon: React.ReactNode; hint: string }
+> = {
+  billet_avion: {
+    label: "Billet d'avion",
+    icon: <Plane size={16} />,
+    hint: 'Vol + bénéficiaires.',
+  },
+  hotel: {
+    label: 'Hôtel',
+    icon: <Hotel size={16} />,
+    hint: 'Produit hôtel + montant.',
+  },
+  voiture: {
+    label: 'Location voiture',
+    icon: <Car size={16} />,
+    hint: '1 réservation = 1 personne.',
+  },
+  evenement: {
+    label: 'Évènement',
+    icon: <PartyPopper size={16} />,
+    hint: 'Participants optionnels.',
+  },
+  forfait: {
+    label: 'Forfait',
+    icon: <Package size={16} />,
+    hint: 'Forfait + participants.',
+  },
+  assurance: {
+    label: 'Assurance',
+    icon: <Shield size={16} />,
+    hint: 'Libellé + période + bénéficiaire.',
+  },
 }
 
 function Stepper({
@@ -143,6 +186,7 @@ function Stepper({
   title: string
 }) {
   const pct = steps.length <= 1 ? 100 : Math.round((current / (steps.length - 1)) * 100)
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-2">
@@ -171,15 +215,25 @@ function Stepper({
                   ? 'border-primary bg-primary/5'
                   : 'border-black/10 dark:border-white/10 bg-white dark:bg-panel hover:bg-black/[0.02] dark:hover:bg-white/[0.04]'
               )}
-              title={s.subtitle ? `${s.title} — ${s.subtitle}` : s.title}
             >
               <div className="flex items-center justify-between gap-2 min-w-0">
-                <div className={cx('text-sm font-medium truncate', active ? 'text-primary' : 'text-gray-900 dark:text-gray-100')}>
+                <div
+                  className={cx(
+                    'text-sm font-medium truncate',
+                    active ? 'text-primary' : 'text-gray-900 dark:text-gray-100'
+                  )}
+                >
                   {s.title}
                 </div>
-                {done ? <CheckCircle2 size={16} className="shrink-0 text-green-600 dark:text-green-400" /> : null}
+                {done ? (
+                  <CheckCircle2 size={16} className="shrink-0 text-green-600 dark:text-green-400" />
+                ) : null}
               </div>
-              {s.subtitle ? <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5 truncate">{s.subtitle}</div> : null}
+              {s.subtitle ? (
+                <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5 truncate">
+                  {s.subtitle}
+                </div>
+              ) : null}
             </button>
           )
         })}
@@ -188,7 +242,15 @@ function Stepper({
   )
 }
 
-function Card({ title, icon, children }: { title: string; icon?: React.ReactNode; children: React.ReactNode }) {
+function Card({
+  title,
+  icon,
+  children,
+}: {
+  title: string
+  icon?: React.ReactNode
+  children: React.ReactNode
+}) {
   return (
     <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white dark:bg-panel shadow-soft min-w-0">
       <div className="px-4 py-3 border-b border-black/5 dark:border-white/10 flex items-center gap-2 min-w-0">
@@ -200,16 +262,23 @@ function Card({ title, icon, children }: { title: string; icon?: React.ReactNode
   )
 }
 
-function InputWithIcon({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
+function InputWithIcon({
+  icon,
+  children,
+}: {
+  icon: React.ReactNode
+  children: React.ReactNode
+}) {
   return (
     <div className="relative min-w-0">
-      <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none">{icon}</div>
+      <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none">
+        {icon}
+      </div>
       <div className="[&_.input]:pl-12">{children}</div>
     </div>
   )
 }
 
-/* -------------------- Main -------------------- */
 const EMPTY: ReservationInput = {
   type: 'billet_avion',
   client_mode: 'existing',
@@ -220,6 +289,8 @@ const EMPTY: ReservationInput = {
   montant_taxes: null,
   notes: '',
   passenger_is_client: true,
+  beneficiaries: [],
+  passengers: [],
   passenger: { nom: '', prenom: '' },
   flight_details: {
     ville_depart: '',
@@ -271,32 +342,26 @@ function normalizeReservationToForm(dv?: Partial<ReservationInput>): Reservation
         }
       : undefined
 
+  const participantsArr = Array.isArray(v.participants) ? v.participants : []
+
+  const beneficiaries =
+    type === 'billet_avion'
+      ? participantsArr
+          .filter((p: any) => p?.role === 'passenger')
+          .map((p: any) => ({
+            nom: String(p?.nom ?? ''),
+            prenom: String(p?.prenom ?? ''),
+            saved: true,
+          }))
+      : []
+
   const passengerBackend = v.passenger ?? null
   const passenger_is_client =
-    typeof v.passenger_is_client === 'boolean' ? v.passenger_is_client : passengerBackend ? false : true
-
-  const passenger =
-    (type === 'billet_avion' || type === 'assurance') && !passenger_is_client
-      ? {
-          nom: String(passengerBackend?.nom ?? v.passenger_nom ?? ''),
-          prenom: String(passengerBackend?.prenom ?? v.passenger_prenom ?? ''),
-          passport: String(passengerBackend?.passport ?? ''),
-          sexe: String(passengerBackend?.sexe ?? ''),
-        }
-      : { nom: '', prenom: '', passport: '', sexe: '' }
-
-  const participantsArr = Array.isArray(v.participants) ? v.participants : []
-  const participants =
-    type === 'forfait' || type === 'evenement'
-      ? participantsArr.map((p: any) => ({
-          nom: String(p?.nom ?? ''),
-          prenom: p?.prenom ?? '',
-          passport: p?.passport ?? '',
-          age: p?.age ?? null,
-          remarques: p?.remarques ?? '',
-          role: p?.role ?? 'participant',
-        }))
-      : []
+    typeof v.passenger_is_client === 'boolean'
+      ? v.passenger_is_client
+      : passengerBackend
+      ? false
+      : true
 
   return {
     ...EMPTY,
@@ -304,18 +369,22 @@ function normalizeReservationToForm(dv?: Partial<ReservationInput>): Reservation
     type,
     client_mode: v.client_mode || 'existing',
     client_id: clientId ? Number(clientId) : null,
-
     nombre_personnes: Number(v.nombre_personnes ?? 1),
     montant_sous_total: v.montant_sous_total != null ? Number(v.montant_sous_total) : null,
     montant_taxes: v.montant_taxes != null ? Number(v.montant_taxes) : null,
     montant_total: Number(v.montant_total ?? 0),
     notes: v.notes ?? '',
-
     passenger_is_client,
-    passenger,
+    beneficiaries,
+    passenger:
+      type === 'assurance' && !passenger_is_client
+        ? {
+            nom: String(passengerBackend?.nom ?? ''),
+            prenom: String(passengerBackend?.prenom ?? ''),
+          }
+        : { nom: '', prenom: '' },
     flight_details,
     assurance_details,
-
     ville_depart: v.ville_depart ?? flight_details?.ville_depart ?? null,
     ville_arrivee: v.ville_arrivee ?? flight_details?.ville_arrivee ?? null,
     date_depart: v.date_depart ?? (flight_details?.date_depart as any) ?? null,
@@ -323,12 +392,19 @@ function normalizeReservationToForm(dv?: Partial<ReservationInput>): Reservation
     compagnie: v.compagnie ?? (flight_details?.compagnie as any) ?? null,
     pnr: v.pnr ?? (flight_details?.pnr as any) ?? null,
     classe: v.classe ?? (flight_details?.classe as any) ?? null,
-
     produit_id: v.produit_id != null ? Number(v.produit_id) : null,
     forfait_id: v.forfait_id != null ? Number(v.forfait_id) : null,
-
-    participants,
-
+    participants:
+      type === 'forfait' || type === 'evenement'
+        ? participantsArr.map((p: any) => ({
+            nom: String(p?.nom ?? ''),
+            prenom: p?.prenom ?? '',
+            passport: p?.passport ?? '',
+            age: p?.age ?? null,
+            remarques: p?.remarques ?? '',
+            role: p?.role ?? 'participant',
+          }))
+        : [],
     acompte: {
       montant: Number(v.acompte?.montant ?? 0),
       mode_paiement: String(v.acompte?.mode_paiement ?? 'especes'),
@@ -337,7 +413,6 @@ function normalizeReservationToForm(dv?: Partial<ReservationInput>): Reservation
   }
 }
 
-/* -------------------- Clients pagination helper -------------------- */
 async function fetchAllPages<T = any>(
   url: string,
   params: Record<string, any>,
@@ -379,28 +454,35 @@ async function fetchAllPages<T = any>(
 
     if (!pageItems.length) break
     if (pageItems.length < 10) break
-
     page++
   }
 
   return items
 }
 
-export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit }: Props) {
+export function ReservationsForm({
+  defaultValues,
+  submitting,
+  onCancel,
+  onSubmit,
+}: Props) {
   const isEdit = Boolean((defaultValues as any)?.id)
 
   const [form, setForm] = useState<ReservationInput>(() => normalizeReservationToForm(defaultValues))
   const [step, setStep] = useState(0)
+
+  const [beneficiaryDraft, setBeneficiaryDraft] = useState<BeneficiaryInput>({
+    nom: '',
+    prenom: '',
+  })
 
   const qc = useQueryClient()
 
   useEffect(() => {
     setForm(normalizeReservationToForm(defaultValues))
     setStep(0)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(defaultValues || {})])
 
-  /* ---------- Clients: load ALL pages ---------- */
   const qClients = useQuery({
     queryKey: ['clients', 'select-all'],
     queryFn: async () => {
@@ -413,8 +495,13 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
     queryKey: ['produits', 'select-all'],
     queryFn: async () => {
       const { data } = await api.get('/produits', { params: { per_page: 300 } })
-      const list = Array.isArray(data?.data) ? data.data : Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : []
-      return list
+      return Array.isArray(data?.data)
+        ? data.data
+        : Array.isArray(data?.items)
+        ? data.items
+        : Array.isArray(data)
+        ? data
+        : []
     },
   })
 
@@ -422,8 +509,13 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
     queryKey: ['forfaits', 'select-all'],
     queryFn: async () => {
       const { data } = await api.get('/forfaits', { params: { per_page: 300 } })
-      const list = Array.isArray(data?.data) ? data.data : Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : []
-      return list
+      return Array.isArray(data?.data)
+        ? data.data
+        : Array.isArray(data?.items)
+        ? data.items
+        : Array.isArray(data)
+        ? data
+        : []
     },
   })
 
@@ -441,7 +533,6 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
     return clients.find((c) => Number(c?.id) === Number(form.client_id)) || null
   }, [clients, form.client_id])
 
-  /* ---------- ✅ Client search input ---------- */
   const [clientQuery, setClientQuery] = useState('')
   const [clientOpen, setClientOpen] = useState(false)
   const blurTimeoutRef = useRef<number | null>(null)
@@ -450,12 +541,12 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
     if (selectedClient && form.client_mode === 'existing') {
       setClientQuery([selectedClient?.prenom, selectedClient?.nom].filter(Boolean).join(' ').trim())
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedClient?.id])
+  }, [selectedClient?.id, form.client_mode])
 
   const filteredClients = useMemo(() => {
     const q = clientQuery.trim().toLowerCase()
     if (!q) return clients.slice(0, 20)
+
     return clients
       .filter((c) => {
         const nom = String(c?.nom || '').toLowerCase()
@@ -481,7 +572,6 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
     blurTimeoutRef.current = window.setTimeout(() => setClientOpen(false), 150)
   }
 
-  /* ---------- Create client mutation ---------- */
   const createClientMutation = useMutation({
     mutationFn: async (payload: any) => {
       const { data } = await api.post('/clients', payload)
@@ -500,19 +590,17 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
     },
   })
 
-  /* ---------- Step definitions ---------- */
   const steps = useMemo(
     () => [
       { title: 'Type & client', subtitle: 'Choisir le type + le payeur' },
       { title: 'Détails', subtitle: 'Vol / produit / forfait / assurance' },
-      { title: 'Bénéficiaire', subtitle: 'Client ou autre personne' },
+      { title: 'Bénéficiaire', subtitle: 'Payeur ou autres personnes' },
       { title: 'Montant', subtitle: 'Total + notes' },
       { title: 'Acompte', subtitle: 'Optionnel' },
     ],
     []
   )
 
-  /* ---------- Generic setters ---------- */
   const set = <K extends keyof ReservationInput>(key: K, value: ReservationInput[K]) => {
     setForm((s) => ({ ...s, [key]: value }))
   }
@@ -546,14 +634,17 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
   const setPassenger = (patch: Partial<NonNullable<ReservationInput['passenger']>>) => {
     setForm((s) => ({
       ...s,
-      passenger: { ...(s.passenger || { nom: '', prenom: '', passport: '', sexe: '' }), ...patch } as any,
+      passenger: { ...(s.passenger || { nom: '', prenom: '' }), ...patch } as any,
     }))
   }
 
   const addParticipant = () => {
     setForm((s) => ({
       ...s,
-      participants: [...(s.participants || []), { nom: '', prenom: '', passport: '', age: null, remarques: '', role: 'participant' }],
+      participants: [
+        ...(s.participants || []),
+        { nom: '', prenom: '', passport: '', age: null, remarques: '', role: 'participant' },
+      ],
     }))
   }
 
@@ -565,35 +656,75 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
   }
 
   const removeParticipant = (idx: number) => {
-    setForm((s) => ({ ...s, participants: (s.participants || []).filter((_, i) => i !== idx) }))
+    setForm((s) => ({
+      ...s,
+      participants: (s.participants || []).filter((_, i) => i !== idx),
+    }))
   }
 
-  /* ---------- Business rules ---------- */
+  const addBeneficiary = () => {
+    const nom = String(beneficiaryDraft.nom || '').trim()
+    const prenom = String(beneficiaryDraft.prenom || '').trim()
+
+    if (!nom) return
+
+    const current = form.beneficiaries || []
+    if (current.length >= expectedBeneficiariesCount) return
+
+    setForm((s) => ({
+      ...s,
+      beneficiaries: [...(s.beneficiaries || []), { nom, prenom, saved: true }],
+    }))
+
+    setBeneficiaryDraft({ nom: '', prenom: '' })
+  }
+
+  const removeBeneficiary = (idx: number) => {
+    setForm((s) => ({
+      ...s,
+      beneficiaries: (s.beneficiaries || []).filter((_, i) => i !== idx),
+    }))
+  }
+
   useEffect(() => {
     if (form.type === 'voiture' && form.nombre_personnes !== 1) {
       set('nombre_personnes', 1)
     }
-    if (form.type === 'billet_avion' && (form.nombre_personnes ?? 1) < 1) {
-      set('nombre_personnes', 1)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.type])
 
-  /* ---------- Validation minimal (wizard) ---------- */
+  const expectedBeneficiariesCount = useMemo(() => {
+    if (form.type !== 'billet_avion') return 0
+    const nb = Math.max(1, Number(form.nombre_personnes || 1))
+    return form.passenger_is_client ? Math.max(0, nb - 1) : nb
+  }, [form.type, form.nombre_personnes, form.passenger_is_client])
+
+  useEffect(() => {
+    if (form.type !== 'billet_avion') return
+    setForm((s) => {
+      const list = s.beneficiaries || []
+      if (list.length <= expectedBeneficiariesCount) return s
+      return {
+        ...s,
+        beneficiaries: list.slice(0, expectedBeneficiariesCount),
+      }
+    })
+  }, [expectedBeneficiariesCount, form.type])
+
   const validateStep = (s: number): string | null => {
     if (s === 0) {
       if (form.client_mode === 'existing' && !form.client_id) return 'Veuillez sélectionner un client.'
       if (form.client_mode === 'new') {
-        // ✅ seul nom requis
         if (!String(form.client?.nom || '').trim()) return 'Nom du client requis.'
       }
       if (!form.type) return 'Type requis.'
+      if (form.type === 'billet_avion' && Number(form.nombre_personnes || 0) < 1) {
+        return 'Le nombre de personnes doit être au minimum 1.'
+      }
     }
 
     if (s === 1) {
-      if (form.type === 'billet_avion') {
-        return null
-      }
+      if (form.type === 'billet_avion') return null
+
       if (form.type === 'assurance') {
         if (!isEdit) {
           const ad = form.assurance_details
@@ -602,6 +733,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
         }
         return null
       }
+
       if (form.type === 'forfait') {
         if (!form.forfait_id) return 'Veuillez sélectionner un forfait.'
       } else {
@@ -610,10 +742,21 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
     }
 
     if (s === 2) {
-      if (form.type === 'billet_avion' || form.type === 'assurance') {
+      if (form.type === 'billet_avion') {
+        if ((beneficiaryDraft.nom || '').trim() || (beneficiaryDraft.prenom || '').trim()) {
+          return 'Clique sur "Save" pour enregistrer le bénéficiaire en cours.'
+        }
+
+        const current = (form.beneficiaries || []).filter((b) => String(b.nom || '').trim() !== '').length
+
+        if (current !== expectedBeneficiariesCount) {
+          return `Le nombre de bénéficiaires doit être de ${expectedBeneficiariesCount}.`
+        }
+      }
+
+      if (form.type === 'assurance') {
         if (!form.passenger_is_client) {
           if (!form.passenger?.nom?.trim()) return 'Nom du bénéficiaire requis.'
-          if (!form.passenger?.prenom?.trim()) return 'Prénom du bénéficiaire requis.'
         }
       }
     }
@@ -639,7 +782,6 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
 
   const prev = () => setStep((v) => Math.max(v - 1, 0))
 
-  /* ---------- Submit mapping to backend ---------- */
   const buildPayload = (): ReservationInput => {
     const payload: any = { ...form }
 
@@ -690,19 +832,6 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
           classe: fd.classe,
         })
         Object.assign(payload, patch)
-
-        payload.passenger_is_client = Boolean(payload.passenger_is_client)
-        if (payload.passenger_is_client) {
-          delete payload.passenger
-        } else {
-          payload.passenger = {
-            nom: toStr(payload.passenger?.nom),
-            prenom: toStr(payload.passenger?.prenom),
-            passport: toNullableStr(payload.passenger?.passport),
-            sexe: toNullableStr(payload.passenger?.sexe),
-          }
-        }
-
         delete payload.flight_details
       } else {
         payload.flight_details = {
@@ -714,27 +843,32 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
           pnr: fd.pnr,
           classe: fd.classe,
         }
-
-        payload.passenger_is_client = Boolean(payload.passenger_is_client)
-        if (payload.passenger_is_client) {
-          delete payload.passenger
-        } else {
-          payload.passenger = {
-            nom: toStr(payload.passenger?.nom),
-            prenom: toStr(payload.passenger?.prenom),
-            passport: toNullableStr(payload.passenger?.passport),
-            sexe: toNullableStr(payload.passenger?.sexe),
-          }
-        }
       }
+
+      payload.passenger_is_client = Boolean(payload.passenger_is_client)
+
+      const cleanBeneficiaries = (payload.beneficiaries || [])
+        .filter((b: any) => String(b?.nom || '').trim() !== '')
+        .map((b: any) => ({
+          nom: toStr(b.nom),
+          prenom: toNullableStr(b.prenom),
+        }))
+
+      payload.passengers = cleanBeneficiaries
+
+      delete payload.beneficiaries
+      delete payload.passenger
+      delete payload.participants
+      delete payload.assurance_details
+      delete payload.produit_id
+      delete payload.forfait_id
 
       const st = stNum(payload.montant_sous_total)
       const tx = stNum(payload.montant_taxes)
       payload.montant_sous_total = st
       payload.montant_taxes = tx
       payload.montant_total = st + tx
-
-      delete payload.assurance_details
+      payload.nombre_personnes = Number(payload.nombre_personnes || 1)
     } else if (payload.type === 'assurance') {
       delete payload.flight_details
       delete payload.ville_depart
@@ -744,6 +878,8 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
       delete payload.compagnie
       delete payload.pnr
       delete payload.classe
+      delete payload.beneficiaries
+      delete payload.passengers
 
       payload.passenger_is_client = Boolean(payload.passenger_is_client)
       if (payload.passenger_is_client) {
@@ -751,9 +887,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
       } else {
         payload.passenger = {
           nom: toStr(payload.passenger?.nom),
-          prenom: toStr(payload.passenger?.prenom),
-          passport: toNullableStr(payload.passenger?.passport),
-          sexe: toNullableStr(payload.passenger?.sexe),
+          prenom: toNullableStr(payload.passenger?.prenom),
         }
       }
 
@@ -768,7 +902,10 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
       payload.montant_total = Number(payload.montant_total ?? st + tx) || st + tx
 
       const ad = payload.assurance_details || {}
-      const hasAny = ['libelle', 'date_debut', 'date_fin'].some((k) => ad[k] != null && String(ad[k]).trim() !== '')
+      const hasAny = ['libelle', 'date_debut', 'date_fin'].some(
+        (k) => ad[k] != null && String(ad[k]).trim() !== ''
+      )
+
       if (hasAny) {
         payload.assurance_details = {
           libelle: toStr(ad.libelle),
@@ -781,8 +918,9 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
     } else {
       delete payload.passenger_is_client
       delete payload.passenger
+      delete payload.passengers
+      delete payload.beneficiaries
       delete payload.assurance_details
-
       delete payload.flight_details
       delete payload.ville_depart
       delete payload.ville_arrivee
@@ -800,16 +938,18 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
 
       const shouldHaveParticipants = payload.type === 'forfait' || payload.type === 'evenement'
       if (!shouldHaveParticipants) delete payload.participants
-      else payload.participants = (payload.participants || []).filter((p: any) => String(p?.nom || '').trim() !== '')
+      else {
+        payload.participants = (payload.participants || []).filter(
+          (p: any) => String(p?.nom || '').trim() !== ''
+        )
+      }
 
       payload.nombre_personnes = Number(payload.nombre_personnes || 1)
-
       payload.montant_total = Number(payload.montant_total || 0)
       delete payload.montant_sous_total
       delete payload.montant_taxes
     }
 
-    payload.nombre_personnes = Number(payload.nombre_personnes || 1)
     return payload as ReservationInput
   }
 
@@ -821,17 +961,23 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
         return
       }
     }
-    onSubmit(buildPayload())
+
+    const finalPayload = buildPayload()
+    console.log('PAYLOAD RESERVATION =', finalPayload)
+    onSubmit(finalPayload)
   }
 
-  /* ---------- Summary panel ---------- */
   const summary = useMemo(() => {
     const clientLabelText =
       form.client_mode === 'existing'
         ? selectedClient
-          ? [selectedClient?.prenom, selectedClient?.nom].filter(Boolean).join(' ') || selectedClient?.nom || `Client #${selectedClient.id}`
+          ? [selectedClient?.prenom, selectedClient?.nom].filter(Boolean).join(' ') ||
+            selectedClient?.nom ||
+            `Client #${selectedClient.id}`
           : '—'
-        : [form.client?.prenom, form.client?.nom].filter(Boolean).join(' ') || form.client?.nom || 'Nouveau client'
+        : [form.client?.prenom, form.client?.nom].filter(Boolean).join(' ') ||
+          form.client?.nom ||
+          'Nouveau client'
 
     const details =
       form.type === 'billet_avion'
@@ -853,7 +999,6 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
     return { clientLabel: clientLabelText, details, total, pay, pct }
   }, [form, selectedClient, produits, forfaits])
 
-  /* -------------------- Steps UI -------------------- */
   const Step0 = (
     <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_0.85fr] gap-4 min-w-0">
       <Card title="Type de réservation" icon={<Ticket size={16} />}>
@@ -878,20 +1023,55 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                 </option>
               ))}
             </select>
-            <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">{TYPE_META[form.type].hint}</div>
+            <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">
+              {TYPE_META[form.type].hint}
+            </div>
           </div>
 
           <div className="min-w-0">
             <label className="label">Nombre de personnes</label>
-            <input
-              type="number"
-              min={1}
-              className="input"
-              value={form.nombre_personnes ?? 1}
-              onChange={(e) => set('nombre_personnes', Number(e.target.value || 1))}
-              disabled={form.type === 'voiture'}
-            />
-            {form.type === 'voiture' ? <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">Voiture: 1 réservation = 1 personne (fixé).</div> : null}
+            <div className="rounded-2xl border border-black/10 dark:border-white/10 p-2">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  className="btn px-3 bg-gray-200 dark:bg-white/10"
+                  disabled={form.type === 'voiture' || Number(form.nombre_personnes || 1) <= 1}
+                  onClick={() =>
+                    set('nombre_personnes', Math.max(1, Number(form.nombre_personnes || 1) - 1))
+                  }
+                >
+                  -
+                </button>
+
+                <input
+                  type="number"
+                  min={1}
+                  className="input text-center"
+                  value={form.nombre_personnes ?? 1}
+                  onChange={(e) =>
+                    set('nombre_personnes', Math.max(1, Number(e.target.value || 1)))
+                  }
+                  disabled={form.type === 'voiture'}
+                />
+
+                <button
+                  type="button"
+                  className="btn px-3 bg-gray-200 dark:bg-white/10"
+                  disabled={form.type === 'voiture'}
+                  onClick={() => set('nombre_personnes', Number(form.nombre_personnes || 1) + 1)}
+                >
+                  +
+                </button>
+              </div>
+
+              <div className="mt-2 text-xs text-gray-600 dark:text-gray-400">
+                {form.type === 'billet_avion'
+                  ? 'Choisis le nombre total de billets.'
+                  : form.type === 'voiture'
+                  ? 'Voiture: 1 réservation = 1 personne.'
+                  : 'Nombre total de personnes concernées.'}
+              </div>
+            </div>
           </div>
         </div>
       </Card>
@@ -900,14 +1080,24 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
         <div className="flex items-center gap-2 mb-3 flex-wrap">
           <button
             type="button"
-            className={cx('btn px-3', form.client_mode === 'existing' ? 'bg-gray-900 text-white dark:bg-white dark:text-black' : 'bg-gray-200 dark:bg-white/10')}
+            className={cx(
+              'btn px-3',
+              form.client_mode === 'existing'
+                ? 'bg-gray-900 text-white dark:bg-white dark:text-black'
+                : 'bg-gray-200 dark:bg-white/10'
+            )}
             onClick={() => set('client_mode', 'existing')}
           >
             Client existant
           </button>
           <button
             type="button"
-            className={cx('btn px-3', form.client_mode === 'new' ? 'bg-gray-900 text-white dark:bg-white dark:text-black' : 'bg-gray-200 dark:bg-white/10')}
+            className={cx(
+              'btn px-3',
+              form.client_mode === 'new'
+                ? 'bg-gray-900 text-white dark:bg-white dark:text-black'
+                : 'bg-gray-200 dark:bg-white/10'
+            )}
             onClick={() => set('client_mode', 'new')}
           >
             Nouveau client
@@ -919,7 +1109,10 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
             <label className="label">Rechercher un client *</label>
 
             <div className="relative min-w-0">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+              <Search
+                size={16}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none"
+              />
               <input
                 className="input pl-12"
                 placeholder="Tapez un nom ou prénom…"
@@ -951,12 +1144,16 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                             type="button"
                             className={cx(
                               'w-full text-left rounded-xl px-3 py-2 transition min-w-0',
-                              active ? 'bg-primary/10 text-gray-900 dark:text-gray-100' : 'hover:bg-black/[0.03] dark:hover:bg-white/[0.06]'
+                              active
+                                ? 'bg-primary/10 text-gray-900 dark:text-gray-100'
+                                : 'hover:bg-black/[0.03] dark:hover:bg-white/[0.06]'
                             )}
                             onClick={() => selectClient(c)}
                           >
                             <div className="text-sm font-semibold truncate">
-                              {[c?.prenom, c?.nom].filter(Boolean).join(' ') || c?.nom || `Client #${c?.id}`}
+                              {[c?.prenom, c?.nom].filter(Boolean).join(' ') ||
+                                c?.nom ||
+                                `Client #${c?.id}`}
                             </div>
                             <div className="text-xs text-gray-600 dark:text-gray-400 truncate">
                               {c?.telephone || '—'}
@@ -973,7 +1170,9 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
 
             {selectedClient ? (
               <div className="mt-2 rounded-xl bg-black/[0.03] dark:bg-white/[0.06] p-3 text-xs text-gray-700 dark:text-gray-200 min-w-0">
-                <div className="font-semibold truncate">{[selectedClient?.prenom, selectedClient?.nom].filter(Boolean).join(' ')}</div>
+                <div className="font-semibold truncate">
+                  {[selectedClient?.prenom, selectedClient?.nom].filter(Boolean).join(' ')}
+                </div>
                 <div className="mt-1 text-gray-600 dark:text-gray-400 truncate">
                   {selectedClient?.email || '—'} • {selectedClient?.telephone || '—'}
                 </div>
@@ -982,23 +1181,46 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
           </div>
         ) : (
           <div className="space-y-3 min-w-0">
-            {/* ✅ uniquement 4 champs */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="min-w-0">
                 <label className="label">Nom *</label>
-                <input className="input" value={form.client?.nom ?? ''} onChange={(e) => set('client', { ...(form.client || {}), nom: e.target.value })} />
+                <input
+                  className="input"
+                  value={form.client?.nom ?? ''}
+                  onChange={(e) =>
+                    set('client', { ...(form.client || {}), nom: e.target.value })
+                  }
+                />
               </div>
               <div className="min-w-0">
                 <label className="label">Prénom</label>
-                <input className="input" value={form.client?.prenom ?? ''} onChange={(e) => set('client', { ...(form.client || {}), prenom: e.target.value })} />
+                <input
+                  className="input"
+                  value={form.client?.prenom ?? ''}
+                  onChange={(e) =>
+                    set('client', { ...(form.client || {}), prenom: e.target.value })
+                  }
+                />
               </div>
               <div className="min-w-0">
                 <label className="label">Téléphone</label>
-                <input className="input" value={form.client?.telephone ?? ''} onChange={(e) => set('client', { ...(form.client || {}), telephone: e.target.value })} />
+                <input
+                  className="input"
+                  value={form.client?.telephone ?? ''}
+                  onChange={(e) =>
+                    set('client', { ...(form.client || {}), telephone: e.target.value })
+                  }
+                />
               </div>
               <div className="min-w-0">
                 <label className="label">Email</label>
-                <input className="input" value={form.client?.email ?? ''} onChange={(e) => set('client', { ...(form.client || {}), email: e.target.value })} />
+                <input
+                  className="input"
+                  value={form.client?.email ?? ''}
+                  onChange={(e) =>
+                    set('client', { ...(form.client || {}), email: e.target.value })
+                  }
+                />
               </div>
             </div>
 
@@ -1006,7 +1228,12 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
               <button
                 type="button"
                 className="btn bg-gray-200 dark:bg-white/10"
-                onClick={() => setForm((s) => ({ ...s, client: { nom: '', prenom: '', email: '', telephone: '' } }))}
+                onClick={() =>
+                  setForm((s) => ({
+                    ...s,
+                    client: { nom: '', prenom: '', email: '', telephone: '' },
+                  }))
+                }
                 disabled={createClientMutation.isPending}
               >
                 Vider
@@ -1027,18 +1254,11 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                     email: c.email ? String(c.email).trim() : null,
                   })
                 }}
-                title="Crée le client, rafraîchit la liste et le sélectionne automatiquement"
               >
                 {createClientMutation.isPending ? <Loader2 size={16} className="animate-spin" /> : null}
                 <span>Enregistrer le client</span>
               </button>
             </div>
-
-            {createClientMutation.isPending ? (
-              <div className="text-xs text-gray-600 dark:text-gray-400">Enregistrement en cours…</div>
-            ) : (
-              <div className="text-xs text-gray-600 dark:text-gray-400">Astuce: après “Enregistrer le client”, il apparaît dans la liste et est sélectionné automatiquement.</div>
-            )}
           </div>
         )}
       </Card>
@@ -1054,13 +1274,21 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
               <div className="min-w-0">
                 <label className="label">Ville départ</label>
                 <InputWithIcon icon={<MapPin size={16} />}>
-                  <input className="input" value={form.flight_details?.ville_depart ?? ''} onChange={(e) => setFlight({ ville_depart: e.target.value })} />
+                  <input
+                    className="input"
+                    value={form.flight_details?.ville_depart ?? ''}
+                    onChange={(e) => setFlight({ ville_depart: e.target.value })}
+                  />
                 </InputWithIcon>
               </div>
               <div className="min-w-0">
                 <label className="label">Ville arrivée</label>
                 <InputWithIcon icon={<MapPin size={16} />}>
-                  <input className="input" value={form.flight_details?.ville_arrivee ?? ''} onChange={(e) => setFlight({ ville_arrivee: e.target.value })} />
+                  <input
+                    className="input"
+                    value={form.flight_details?.ville_arrivee ?? ''}
+                    onChange={(e) => setFlight({ ville_arrivee: e.target.value })}
+                  />
                 </InputWithIcon>
               </div>
             </div>
@@ -1069,32 +1297,52 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
               <div className="min-w-0">
                 <label className="label">Date départ</label>
                 <InputWithIcon icon={<Calendar size={16} />}>
-                  <input type="date" className="input" value={String(form.flight_details?.date_depart ?? '')} onChange={(e) => setFlight({ date_depart: e.target.value })} />
+                  <input
+                    type="date"
+                    className="input"
+                    value={String(form.flight_details?.date_depart ?? '')}
+                    onChange={(e) => setFlight({ date_depart: e.target.value })}
+                  />
                 </InputWithIcon>
-                <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">Optionnel (nullable).</div>
               </div>
               <div className="min-w-0">
                 <label className="label">Date arrivée</label>
                 <InputWithIcon icon={<Calendar size={16} />}>
-                  <input type="date" className="input" value={String(form.flight_details?.date_arrivee ?? '')} onChange={(e) => setFlight({ date_arrivee: e.target.value })} />
+                  <input
+                    type="date"
+                    className="input"
+                    value={String(form.flight_details?.date_arrivee ?? '')}
+                    onChange={(e) => setFlight({ date_arrivee: e.target.value })}
+                  />
                 </InputWithIcon>
-                <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">Optionnel (nullable).</div>
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <div className="min-w-0">
                 <label className="label">Compagnie</label>
-                <input className="input" value={String(form.flight_details?.compagnie ?? '')} onChange={(e) => setFlight({ compagnie: e.target.value })} />
+                <input
+                  className="input"
+                  value={String(form.flight_details?.compagnie ?? '')}
+                  onChange={(e) => setFlight({ compagnie: e.target.value })}
+                />
               </div>
               <div className="min-w-0">
                 <label className="label">Classe</label>
-                <input className="input" value={String(form.flight_details?.classe ?? '')} onChange={(e) => setFlight({ classe: e.target.value })} />
+                <input
+                  className="input"
+                  value={String(form.flight_details?.classe ?? '')}
+                  onChange={(e) => setFlight({ classe: e.target.value })}
+                />
               </div>
               <div className="min-w-0">
                 <label className="label">PNR</label>
-                <input className="input" placeholder="Ex: CSSUNO" value={String(form.flight_details?.pnr ?? '')} onChange={(e) => setFlight({ pnr: e.target.value })} />
-                <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">Optionnel (nullable DB).</div>
+                <input
+                  className="input"
+                  placeholder="Ex: CSSUNO"
+                  value={String(form.flight_details?.pnr ?? '')}
+                  onChange={(e) => setFlight({ pnr: e.target.value })}
+                />
               </div>
             </div>
           </div>
@@ -1102,7 +1350,9 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
           <div className="space-y-3 min-w-0">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="md:col-span-2 min-w-0">
-                <label className="label">{isEdit ? 'Libellé (optionnel en modification)' : 'Libellé *'}</label>
+                <label className="label">
+                  {isEdit ? 'Libellé (optionnel en modification)' : 'Libellé *'}
+                </label>
                 <input
                   className="input"
                   placeholder="Ex: Assurance Voyage - Schengen"
@@ -1112,7 +1362,9 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
               </div>
 
               <div className="min-w-0">
-                <label className="label">{isEdit ? 'Date début (optionnel)' : 'Date début *'}</label>
+                <label className="label">
+                  {isEdit ? 'Date début (optionnel)' : 'Date début *'}
+                </label>
                 <InputWithIcon icon={<Calendar size={16} />}>
                   <input
                     type="date"
@@ -1134,18 +1386,16 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                   />
                 </InputWithIcon>
               </div>
-
-              {isEdit ? (
-                <div className="md:col-span-2 text-xs text-gray-600 dark:text-gray-400">
-                  En modification, tu peux laisser vide : le backend n’écrase pas si tu n’envoies rien (et ignore <code>{'{}'}</code>).
-                </div>
-              ) : null}
             </div>
           </div>
         ) : form.type === 'forfait' ? (
           <div className="min-w-0">
             <label className="label">Forfait *</label>
-            <select className="input" value={form.forfait_id ?? ''} onChange={(e) => set('forfait_id', e.target.value ? Number(e.target.value) : null)}>
+            <select
+              className="input"
+              value={form.forfait_id ?? ''}
+              onChange={(e) => set('forfait_id', e.target.value ? Number(e.target.value) : null)}
+            >
               <option value="">— Choisir —</option>
               {forfaits.map((f) => (
                 <option key={f.id} value={f.id}>
@@ -1157,7 +1407,11 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
         ) : (
           <div className="min-w-0">
             <label className="label">Produit *</label>
-            <select className="input" value={form.produit_id ?? ''} onChange={(e) => set('produit_id', e.target.value ? Number(e.target.value) : null)}>
+            <select
+              className="input"
+              value={form.produit_id ?? ''}
+              onChange={(e) => set('produit_id', e.target.value ? Number(e.target.value) : null)}
+            >
               <option value="">— Choisir —</option>
               {produitsOfType.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -1165,8 +1419,6 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                 </option>
               ))}
             </select>
-
-            <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">Produits filtrés automatiquement selon le type ({TYPE_META[form.type].label}).</div>
           </div>
         )}
       </Card>
@@ -1185,13 +1437,6 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
             <span className="text-gray-600 dark:text-gray-400 shrink-0">Détails</span>
             <span className="font-medium truncate">{summary.details}</span>
           </div>
-
-          {String(form.notes || '').trim() ? (
-            <div className="rounded-xl bg-black/[0.03] dark:bg-white/[0.06] p-3 text-xs text-gray-700 dark:text-gray-200">
-              <div className="font-semibold mb-1">Note</div>
-              <div className="line-clamp-3 whitespace-pre-wrap">{String(form.notes || '')}</div>
-            </div>
-          ) : null}
         </div>
       </Card>
     </div>
@@ -1199,24 +1444,160 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
 
   const Step2 = (
     <div className="grid grid-cols-1 lg:grid-cols-[1.15fr_0.85fr] gap-4 min-w-0">
-      <Card title={form.type === 'billet_avion' || form.type === 'assurance' ? 'Bénéficiaire' : 'Participants'} icon={<Users size={16} />}>
-        {form.type === 'billet_avion' || form.type === 'assurance' ? (
-          <div className="space-y-3 min-w-0">
-            <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] p-3 min-w-0">
+      <Card
+        title={form.type === 'billet_avion' || form.type === 'assurance' ? 'Bénéficiaire' : 'Participants'}
+        icon={<Users size={16} />}
+      >
+        {form.type === 'billet_avion' ? (
+          <div className="space-y-4 min-w-0">
+            <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] p-4">
               <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                {form.type === 'assurance' ? "Qui bénéficie de l’assurance ?" : 'Qui bénéficie du billet ?'}
+                Qui est le bénéficiaire ?
               </div>
-              <div className="mt-2 flex flex-wrap gap-2">
+
+              <div className="mt-3 flex flex-wrap gap-2">
                 <button
                   type="button"
-                  className={cx('btn px-3', form.passenger_is_client ? 'bg-gray-900 text-white dark:bg-white dark:text-black' : 'bg-gray-200 dark:bg-white/10')}
+                  className={cx(
+                    'btn px-3',
+                    form.passenger_is_client
+                      ? 'bg-gray-900 text-white dark:bg-white dark:text-black'
+                      : 'bg-gray-200 dark:bg-white/10'
+                  )}
                   onClick={() => set('passenger_is_client', true)}
                 >
-                  Le client
+                  Le payeur fait partie des bénéficiaires
+                </button>
+
+                <button
+                  type="button"
+                  className={cx(
+                    'btn px-3',
+                    !form.passenger_is_client
+                      ? 'bg-gray-900 text-white dark:bg-white dark:text-black'
+                      : 'bg-gray-200 dark:bg-white/10'
+                  )}
+                  onClick={() => set('passenger_is_client', false)}
+                >
+                  Le payeur n’est pas bénéficiaire
+                </button>
+              </div>
+
+              <div className="mt-3 text-xs text-gray-600 dark:text-gray-400">
+                À renseigner : <span className="font-semibold">{expectedBeneficiariesCount}</span>{' '}
+                bénéficiaire(s).
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-black/5 dark:border-white/10 p-4">
+              <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto_auto] gap-3 items-end">
+                <div>
+                  <label className="label">Nom *</label>
+                  <input
+                    className="input"
+                    value={beneficiaryDraft.nom ?? ''}
+                    onChange={(e) =>
+                      setBeneficiaryDraft((s) => ({ ...s, nom: e.target.value }))
+                    }
+                  />
+                </div>
+
+                <div>
+                  <label className="label">Prénom</label>
+                  <input
+                    className="input"
+                    value={beneficiaryDraft.prenom ?? ''}
+                    onChange={(e) =>
+                      setBeneficiaryDraft((s) => ({ ...s, prenom: e.target.value }))
+                    }
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  className="btn bg-gray-900 text-white dark:bg-white dark:text-black inline-flex items-center gap-2"
+                  onClick={addBeneficiary}
+                  disabled={(form.beneficiaries || []).length >= expectedBeneficiariesCount}
+                >
+                  <Save size={16} />
+                  Save
+                </button>
+
+                <button
+                  type="button"
+                  className="btn bg-gray-200 dark:bg-white/10 inline-flex items-center gap-2"
+                  onClick={() => setBeneficiaryDraft({ nom: '', prenom: '' })}
+                >
+                  <Plus size={16} />
+                  Nouveau
+                </button>
+              </div>
+
+              <div className="mt-3 text-xs text-gray-600 dark:text-gray-400">
+                {form.passenger_is_client
+                  ? 'Le payeur compte déjà comme bénéficiaire.'
+                  : 'Ajoute tous les bénéficiaires manuellement.'}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {(form.beneficiaries || []).length === 0 ? (
+                <div className="text-sm text-gray-500">Aucun bénéficiaire ajouté.</div>
+              ) : (
+                form.beneficiaries?.map((b, idx) => (
+                  <div
+                    key={idx}
+                    className="rounded-2xl border border-black/5 dark:border-white/10 bg-white dark:bg-panel p-3 flex items-center justify-between gap-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold truncate">
+                        {b.nom} {b.prenom || ''}
+                      </div>
+                      <div className="text-xs text-gray-600 dark:text-gray-400">
+                        Bénéficiaire #{idx + 1}
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="btn px-2 bg-gray-200 dark:bg-white/10 inline-flex items-center gap-2"
+                      onClick={() => removeBeneficiary(idx)}
+                    >
+                      <Trash2 size={14} />
+                      Supprimer
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        ) : form.type === 'assurance' ? (
+          <div className="space-y-4 min-w-0">
+            <div className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] p-4">
+              <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                Qui bénéficie de l’assurance ?
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className={cx(
+                    'btn px-3',
+                    form.passenger_is_client
+                      ? 'bg-gray-900 text-white dark:bg-white dark:text-black'
+                      : 'bg-gray-200 dark:bg-white/10'
+                  )}
+                  onClick={() => set('passenger_is_client', true)}
+                >
+                  Le payeur
                 </button>
                 <button
                   type="button"
-                  className={cx('btn px-3', !form.passenger_is_client ? 'bg-gray-900 text-white dark:bg-white dark:text-black' : 'bg-gray-200 dark:bg-white/10')}
+                  className={cx(
+                    'btn px-3',
+                    !form.passenger_is_client
+                      ? 'bg-gray-900 text-white dark:bg-white dark:text-black'
+                      : 'bg-gray-200 dark:bg-white/10'
+                  )}
                   onClick={() => set('passenger_is_client', false)}
                 >
                   Une autre personne
@@ -1225,27 +1606,22 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
             </div>
 
             {!form.passenger_is_client ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 min-w-0">
-                <div className="min-w-0">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
                   <label className="label">Nom bénéficiaire *</label>
-                  <input className="input" value={form.passenger?.nom ?? ''} onChange={(e) => setPassenger({ nom: e.target.value })} />
+                  <input
+                    className="input"
+                    value={form.passenger?.nom ?? ''}
+                    onChange={(e) => setPassenger({ nom: e.target.value })}
+                  />
                 </div>
-                <div className="min-w-0">
-                  <label className="label">Prénom bénéficiaire *</label>
-                  <input className="input" value={form.passenger?.prenom ?? ''} onChange={(e) => setPassenger({ prenom: e.target.value })} />
-                </div>
-
-                <div className="min-w-0">
-                  <label className="label">Passeport (optionnel)</label>
-                  <input className="input" value={form.passenger?.passport ?? ''} onChange={(e) => setPassenger({ passport: e.target.value })} />
-                </div>
-                <div className="min-w-0">
-                  <label className="label">Sexe (optionnel)</label>
-                  <select className="input" value={form.passenger?.sexe ?? ''} onChange={(e) => setPassenger({ sexe: e.target.value })}>
-                    <option value="">—</option>
-                    <option value="M">M</option>
-                    <option value="F">F</option>
-                  </select>
+                <div>
+                  <label className="label">Prénom bénéficiaire</label>
+                  <input
+                    className="input"
+                    value={form.passenger?.prenom ?? ''}
+                    onChange={(e) => setPassenger({ prenom: e.target.value })}
+                  />
                 </div>
               </div>
             ) : null}
@@ -1253,7 +1629,9 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
         ) : form.type === 'forfait' || form.type === 'evenement' ? (
           <div className="space-y-3 min-w-0">
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <div className="text-sm text-gray-600 dark:text-gray-400">Ajoute / modifie les participants. (Nom requis)</div>
+              <div className="text-sm text-gray-600 dark:text-gray-400">
+                Ajoute / modifie les participants.
+              </div>
               <button type="button" className="btn bg-gray-200 dark:bg-white/10" onClick={addParticipant}>
                 + Ajouter
               </button>
@@ -1264,10 +1642,17 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
             ) : (
               <div className="space-y-2 min-w-0">
                 {(form.participants || []).map((p, idx) => (
-                  <div key={idx} className="rounded-2xl border border-black/5 dark:border-white/10 bg-white dark:bg-panel p-3 min-w-0">
+                  <div
+                    key={idx}
+                    className="rounded-2xl border border-black/5 dark:border-white/10 bg-white dark:bg-panel p-3 min-w-0"
+                  >
                     <div className="flex items-center justify-between gap-2 mb-2 min-w-0">
                       <div className="text-sm font-semibold truncate">Participant {idx + 1}</div>
-                      <button type="button" className="btn px-2 bg-gray-200 dark:bg-white/10" onClick={() => removeParticipant(idx)}>
+                      <button
+                        type="button"
+                        className="btn px-2 bg-gray-200 dark:bg-white/10"
+                        onClick={() => removeParticipant(idx)}
+                      >
                         Supprimer
                       </button>
                     </div>
@@ -1275,28 +1660,19 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div className="min-w-0">
                         <label className="label">Nom *</label>
-                        <input className="input" value={p.nom ?? ''} onChange={(e) => updateParticipant(idx, { nom: e.target.value })} />
+                        <input
+                          className="input"
+                          value={p.nom ?? ''}
+                          onChange={(e) => updateParticipant(idx, { nom: e.target.value })}
+                        />
                       </div>
                       <div className="min-w-0">
                         <label className="label">Prénom</label>
-                        <input className="input" value={p.prenom ?? ''} onChange={(e) => updateParticipant(idx, { prenom: e.target.value })} />
-                      </div>
-                      <div className="min-w-0">
-                        <label className="label">Passeport</label>
-                        <input className="input" value={p.passport ?? ''} onChange={(e) => updateParticipant(idx, { passport: e.target.value })} />
-                      </div>
-                      <div className="min-w-0">
-                        <label className="label">Âge</label>
                         <input
-                          type="number"
                           className="input"
-                          value={p.age ?? ''}
-                          onChange={(e) => updateParticipant(idx, { age: e.target.value ? Number(e.target.value) : null })}
+                          value={p.prenom ?? ''}
+                          onChange={(e) => updateParticipant(idx, { prenom: e.target.value })}
                         />
-                      </div>
-                      <div className="md:col-span-2 min-w-0">
-                        <label className="label">Remarques</label>
-                        <input className="input" value={p.remarques ?? ''} onChange={(e) => updateParticipant(idx, { remarques: e.target.value })} />
                       </div>
                     </div>
                   </div>
@@ -1313,7 +1689,9 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
         <div className="text-sm text-gray-700 dark:text-gray-200 space-y-2 min-w-0">
           <div className="rounded-xl bg-black/[0.03] dark:bg-white/[0.06] p-3 min-w-0">
             <div className="font-semibold">Bon workflow</div>
-            <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">Créer / modifier → facture → paiements → suivi.</div>
+            <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">
+              Créer / modifier → facture → paiements → suivi.
+            </div>
           </div>
         </div>
       </Card>
@@ -1330,13 +1708,17 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                 <div className="flex items-center justify-between gap-2 min-w-0">
                   <div className="min-w-0">
                     <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
-                      {form.type === 'assurance' ? 'Assurance — Tarification' : "Billet d'avion — Tarification"}
+                      {form.type === 'assurance'
+                        ? 'Assurance — Tarification'
+                        : "Billet d'avion — Tarification"}
                     </div>
                     <div className="text-xs text-gray-600 dark:text-gray-400">
                       Saisis l&apos;achat (hors fees) et les fees (commission). Le total est envoyé au backend.
                     </div>
                   </div>
-                  <span className="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary shrink-0">Achat + Fees</span>
+                  <span className="text-xs px-2 py-1 rounded-full bg-primary/10 text-primary shrink-0">
+                    Achat + Fees
+                  </span>
                 </div>
               </div>
 
@@ -1347,7 +1729,9 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                   min={0}
                   className="input"
                   value={form.montant_sous_total ?? ''}
-                  onChange={(e) => set('montant_sous_total', e.target.value === '' ? null : Number(e.target.value))}
+                  onChange={(e) =>
+                    set('montant_sous_total', e.target.value === '' ? null : Number(e.target.value))
+                  }
                   placeholder="Ex: 50000"
                 />
               </div>
@@ -1359,23 +1743,11 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                   min={0}
                   className="input"
                   value={form.montant_taxes ?? ''}
-                  onChange={(e) => set('montant_taxes', e.target.value === '' ? null : Number(e.target.value))}
+                  onChange={(e) =>
+                    set('montant_taxes', e.target.value === '' ? null : Number(e.target.value))
+                  }
                   placeholder="Ex: 5000"
                 />
-              </div>
-
-              <div className="md:col-span-2 min-w-0">
-                <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white dark:bg-panel p-3 min-w-0">
-                  <div className="flex items-center justify-between gap-3 text-sm min-w-0">
-                    <span className="text-gray-600 dark:text-gray-400 shrink-0">Total estimé</span>
-                    <span className="font-semibold text-gray-900 dark:text-gray-100 truncate">
-                      {money(Number(form.montant_sous_total || 0) + Number(form.montant_taxes || 0))}
-                    </span>
-                  </div>
-                  <div className="mt-1 text-xs text-gray-600 dark:text-gray-400">
-                    Ce total est envoyé au backend via <code>montant_total</code>.
-                  </div>
-                </div>
               </div>
             </>
           ) : (
@@ -1386,19 +1758,29 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                 min={0}
                 className="input"
                 value={form.montant_total ?? ''}
-                onChange={(e) => set('montant_total', e.target.value === '' ? undefined : Number(e.target.value))}
+                onChange={(e) =>
+                  set('montant_total', e.target.value === '' ? undefined : Number(e.target.value))
+                }
               />
             </div>
           )}
 
           <div className="min-w-0">
             <label className="label">Référence (optionnel)</label>
-            <input className="input" placeholder="Laisse vide pour auto-génération" value={String(form.reference ?? '')} onChange={(e) => set('reference', e.target.value || null)} />
+            <input
+              className="input"
+              value={String(form.reference ?? '')}
+              onChange={(e) => set('reference', e.target.value || null)}
+            />
           </div>
 
           <div className="md:col-span-2 min-w-0">
             <label className="label">Notes</label>
-            <textarea className="input min-h-[110px]" value={String(form.notes ?? '')} onChange={(e) => set('notes', e.target.value)} />
+            <textarea
+              className="input min-h-[110px]"
+              value={String(form.notes ?? '')}
+              onChange={(e) => set('notes', e.target.value)}
+            />
           </div>
         </div>
       </Card>
@@ -1410,19 +1792,6 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
               <span className="text-gray-600 dark:text-gray-400 shrink-0">Total</span>
               <span className="font-semibold truncate">{money(summary.total)}</span>
             </div>
-            <div className="flex items-center justify-between gap-3 mt-2 min-w-0">
-              <span className="text-gray-600 dark:text-gray-400 shrink-0">Acompte (optionnel)</span>
-              <span className="font-semibold truncate">{money(summary.pay)}</span>
-            </div>
-            <div className="mt-3">
-              <div className="text-xs text-gray-600 dark:text-gray-400">% couvert</div>
-              <div className="mt-1 h-2 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
-                <div className="h-full bg-primary" style={{ width: `${summary.pct}%` }} />
-              </div>
-            </div>
-          </div>
-          <div className="text-xs text-gray-600 dark:text-gray-400">
-            L’acompte est enregistré après {isEdit ? 'modification' : 'création'} (géré dans <code>ReservationsPage.tsx</code>).
           </div>
         </div>
       </Card>
@@ -1439,7 +1808,11 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
               type="number"
               min={0}
               className="input"
-              value={form.acompte?.montant === undefined || form.acompte?.montant === null ? '' : String(form.acompte.montant)}
+              value={
+                form.acompte?.montant === undefined || form.acompte?.montant === null
+                  ? ''
+                  : String(form.acompte.montant)
+              }
               onChange={(e) => {
                 const raw = e.target.value
                 if (raw === '') {
@@ -1452,9 +1825,16 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
               }}
             />
           </div>
+
           <div className="min-w-0">
             <label className="label">Mode</label>
-            <select className="input" value={form.acompte?.mode_paiement ?? 'especes'} onChange={(e) => set('acompte', { ...(form.acompte || {}), mode_paiement: e.target.value })}>
+            <select
+              className="input"
+              value={form.acompte?.mode_paiement ?? 'especes'}
+              onChange={(e) =>
+                set('acompte', { ...(form.acompte || {}), mode_paiement: e.target.value })
+              }
+            >
               <option value="especes">Espèces</option>
               <option value="wave">Wave</option>
               <option value="orange_money">Orange Money</option>
@@ -1463,24 +1843,16 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
               <option value="cheque">Chèque</option>
             </select>
           </div>
+
           <div className="min-w-0">
             <label className="label">Référence</label>
-            <input className="input" value={form.acompte?.reference ?? ''} onChange={(e) => set('acompte', { ...(form.acompte || {}), reference: e.target.value })} />
-          </div>
-        </div>
-
-        <div className="mt-3 rounded-xl bg-black/[0.03] dark:bg-white/[0.06] p-3 text-sm min-w-0">
-          <div className="flex items-center justify-between gap-3 min-w-0">
-            <span className="text-gray-600 dark:text-gray-400 shrink-0">Total</span>
-            <span className="font-semibold truncate">{money(summary.total)}</span>
-          </div>
-          <div className="flex items-center justify-between gap-3 mt-2 min-w-0">
-            <span className="text-gray-600 dark:text-gray-400 shrink-0">Acompte</span>
-            <span className="font-semibold truncate">{money(form.acompte?.montant)}</span>
-          </div>
-          <div className="flex items-center justify-between gap-3 mt-2 min-w-0">
-            <span className="text-gray-600 dark:text-gray-400 shrink-0">Reste</span>
-            <span className="font-semibold truncate">{money(Math.max(0, Number(summary.total || 0) - Number(form.acompte?.montant || 0)))}</span>
+            <input
+              className="input"
+              value={form.acompte?.reference ?? ''}
+              onChange={(e) =>
+                set('acompte', { ...(form.acompte || {}), reference: e.target.value })
+              }
+            />
           </div>
         </div>
       </Card>
@@ -1490,11 +1862,10 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
           <div className="rounded-xl bg-black/[0.03] dark:bg-white/[0.06] p-3 min-w-0">
             <div className="font-semibold">Vérification rapide</div>
             <ul className="mt-2 text-xs text-gray-600 dark:text-gray-400 list-disc pl-4 space-y-1">
-              <li>Client sélectionné (ou nouveau client valide)</li>
-              <li>Détails du type (vol / produit / forfait / assurance)</li>
+              <li>Client sélectionné</li>
+              <li>Détails valides</li>
+              <li>Bénéficiaires cohérents avec le nombre de personnes</li>
               <li>Montant total</li>
-              <li>Acompte optionnel</li>
-              <li>Notes (si nécessaire)</li>
             </ul>
           </div>
         </div>
@@ -1507,7 +1878,12 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
 
   return (
     <div className="space-y-4 min-w-0">
-      <Stepper steps={steps} current={step} onGo={(i) => setStep(i)} title={isEdit ? 'Modifier réservation' : 'Nouvelle réservation'} />
+      <Stepper
+        steps={steps}
+        current={step}
+        onGo={(i) => setStep(i)}
+        title={isEdit ? 'Modifier réservation' : 'Nouvelle réservation'}
+      />
 
       {stepError ? (
         <div className="rounded-2xl border border-red-200 bg-red-50 text-red-800 px-4 py-3 text-sm dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-200">
@@ -1518,23 +1894,43 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
       {currentStepUI}
 
       <div className="flex items-center justify-between gap-2 pt-2 flex-wrap">
-        <button type="button" className="btn bg-gray-200 dark:bg-white/10" onClick={onCancel} disabled={!!submitting}>
+        <button
+          type="button"
+          className="btn bg-gray-200 dark:bg-white/10"
+          onClick={onCancel}
+          disabled={!!submitting}
+        >
           Annuler
         </button>
 
         <div className="flex items-center gap-2 flex-wrap">
-          <button type="button" className="btn bg-gray-200 dark:bg-white/10" onClick={prev} disabled={step === 0 || !!submitting}>
+          <button
+            type="button"
+            className="btn bg-gray-200 dark:bg-white/10"
+            onClick={prev}
+            disabled={step === 0 || !!submitting}
+          >
             <ChevronLeft size={16} className="mr-1" />
             Précédent
           </button>
 
           {step < steps.length - 1 ? (
-            <button type="button" className="btn bg-gray-900 text-white dark:bg-white dark:text-black" onClick={next} disabled={!canGoNext || !!submitting}>
+            <button
+              type="button"
+              className="btn bg-gray-900 text-white dark:bg-white dark:text-black"
+              onClick={next}
+              disabled={!canGoNext || !!submitting}
+            >
               Suivant
               <ChevronRight size={16} className="ml-1" />
             </button>
           ) : (
-            <button type="button" className="btn bg-gray-900 text-white dark:bg-white dark:text-black" onClick={onFinalSubmit} disabled={!!submitting}>
+            <button
+              type="button"
+              className="btn bg-gray-900 text-white dark:bg-white dark:text-black"
+              onClick={onFinalSubmit}
+              disabled={!!submitting}
+            >
               Enregistrer
             </button>
           )}

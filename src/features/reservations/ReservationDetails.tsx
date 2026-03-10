@@ -407,27 +407,39 @@ export function ReservationDetails({ reservation, onViewClientHistory, onChanged
       ? !!r.passenger_is_client
       : false
 
-  const passenger = useMemo(() => {
-    const p = r?.passenger ?? r?.beneficiaire ?? r?.beneficiary ?? r?.passager ?? null
-    if (p && typeof p === 'object') {
-      const hasName = !!buildName(p)
-      if (!hasName) return null
-      return p
-    }
-    return null
-  }, [r?.passenger, r?.beneficiaire, r?.beneficiary, r?.passager])
+  const passengers = useMemo(() => {
+  const arr =
+    r?.passengers ??
+    r?.passager ??
+    r?.beneficiaires ??
+    r?.participants ??
+    []
+
+  if (Array.isArray(arr)) {
+    return arr.filter((p: any) => p && (p.nom || p.prenom))
+  }
+
+  return []
+}, [r?.passengers, r?.participants])
 
   const passengerName = useMemo(() => {
-    if (typeKey !== 'billet_avion') return null
-    const direct = (r?.passenger_name ?? r?.beneficiary_name ?? r?.beneficiaire_nom ?? null) as any
-    if (direct && String(direct).trim()) return String(direct).trim()
-    if (passenger) {
-      const n = buildName(passenger)
-      if (n) return n
-    }
-    const n = buildName(client)
-    return n || client?.nom || null
-  }, [typeKey, r?.passenger_name, r?.beneficiary_name, r?.beneficiaire_nom, passenger, client])
+  if (typeKey !== 'billet_avion') return null
+
+  if (passengers.length === 1) {
+    return buildName(passengers[0])
+  }
+
+  if (passengers.length > 1) {
+    return `${passengers.length} passagers`
+  }
+
+  if (passengerIsClient) {
+    return buildName(client)
+  }
+
+  return null
+}, [typeKey, passengers, passengerIsClient, client])
+
 
   const headerRef = r?.reference ?? `#${r?.id ?? '—'}`
 
@@ -775,25 +787,51 @@ export function ReservationDetails({ reservation, onViewClientHistory, onChanged
     if (typeKey !== 'billet_avion' && typeKey !== 'assurance') return null
 
     if (typeKey === 'billet_avion') {
-      return (
-        <Card title="Bénéficiaire du billet" icon={<User size={18} />} right={passengerIsClient ? <ToneBadge tone="gray">Client</ToneBadge> : undefined}>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <Field label="Nom" value={passengerName || '—'} icon={<User size={14} />} />
-            {passenger && !passengerIsClient ? (
-              <>
-                {passenger?.passport ? <Field label="Passeport" value={passenger.passport} icon={<Ticket size={14} />} /> : null}
-                {passenger?.sexe ? <Field label="Sexe" value={passenger.sexe} icon={<Info size={14} />} /> : null}
-                {passenger?.telephone ? <Field label="Téléphone" value={passenger.telephone} icon={<Phone size={14} />} /> : null}
-                {passenger?.email ? <Field label="Email" value={passenger.email} icon={<Mail size={14} />} /> : null}
-              </>
-            ) : null}
-            {!passenger && passengerIsClient ? (
-              <div className="md:col-span-2 text-xs text-gray-600 dark:text-gray-400">Bénéficiaire = client sélectionné pour cette réservation.</div>
-            ) : null}
-          </div>
-        </Card>
-      )
-    }
+
+  const list =
+    passengers.length > 0
+      ? passengers
+      : passengerIsClient
+      ? [client]
+      : []
+
+  return (
+    <Card
+      title="Passagers"
+      icon={<Users size={18} />}
+      right={<ToneBadge tone="gray">{list.length}</ToneBadge>}
+    >
+      {list.length === 0 ? (
+        <div className="text-sm text-gray-500">
+          Aucun passager enregistré.
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {list.map((p: any, idx: number) => {
+            const name =
+              [p?.prenom, p?.nom].filter(Boolean).join(" ") ||
+              p?.nom ||
+              `Passager ${idx + 1}`
+
+            return (
+              <div
+                key={idx}
+                className="rounded-2xl bg-black/[0.03] dark:bg-white/[0.06] p-3 border border-black/5 dark:border-white/10"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="font-semibold">{name}</div>
+                  {passengerIsClient && idx === 0 ? (
+                    <ToneBadge tone="gray">Client</ToneBadge>
+                  ) : null}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </Card>
+  )
+}
 
     // assurance
     const count = assuranceBeneficiaries.length
