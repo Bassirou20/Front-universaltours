@@ -845,7 +845,7 @@ export function ReservationsForm({
         }
       }
 
-      payload.passenger_is_client = Boolean(payload.passenger_is_client)
+      // payload.passenger_is_client = Boolean(payload.passenger_is_client)
 
       const cleanBeneficiaries = (payload.beneficiaries || [])
         .filter((b: any) => String(b?.nom || '').trim() !== '')
@@ -854,7 +854,46 @@ export function ReservationsForm({
           prenom: toNullableStr(b.prenom),
         }))
 
-      payload.passengers = cleanBeneficiaries
+      const clientTravels = Boolean(payload.passenger_is_client)
+
+      if (clientTravels && cleanBeneficiaries.length === 0) {
+        payload.passenger_is_client = true
+        delete payload.passengers
+        payload.nombre_personnes = 1
+      }
+
+      else if (clientTravels && cleanBeneficiaries.length > 0) {
+        payload.passenger_is_client = false
+        payload.passengers = cleanBeneficiaries
+        payload.nombre_personnes = cleanBeneficiaries.length + 1
+      }
+
+      else {
+        payload.passenger_is_client = false
+        payload.passengers = cleanBeneficiaries
+        payload.nombre_personnes = cleanBeneficiaries.length
+      }
+
+      if (clientTravels) {
+          payload.passenger_is_client = true
+          payload.passengers = cleanBeneficiaries.length > 0 ? cleanBeneficiaries : undefined
+          payload.nombre_personnes = 1 + cleanBeneficiaries.length
+      } else {
+          payload.passenger_is_client = false
+          payload.passengers = cleanBeneficiaries
+          payload.nombre_personnes = cleanBeneficiaries.length
+      }
+
+
+
+
+      // payload.passengers = cleanBeneficiaries
+      // if (payload.passenger_is_client) {
+      //   delete payload.passengers
+      // } else {
+      //   payload.passengers = cleanBeneficiaries
+      // }
+
 
       delete payload.beneficiaries
       delete payload.passenger
@@ -868,7 +907,7 @@ export function ReservationsForm({
       payload.montant_sous_total = st
       payload.montant_taxes = tx
       payload.montant_total = st + tx
-      payload.nombre_personnes = Number(payload.nombre_personnes || 1)
+      // payload.nombre_personnes = Number(payload.nombre_personnes || 1)
     } else if (payload.type === 'assurance') {
       delete payload.flight_details
       delete payload.ville_depart
