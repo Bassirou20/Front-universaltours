@@ -783,13 +783,23 @@ export default function FacturesPage() {
                 </div>
               </div>
 
-              {/* (Optionnel) section technique */}
+              {/* Section infos */}
               <div className="rounded-2xl border border-black/5 dark:border-white/10 bg-white dark:bg-panel shadow-soft p-4">
                 <div className="font-semibold">Infos</div>
                 <div className="mt-2 text-sm space-y-1">
                   <div className="flex justify-between gap-3">
                     <span className="text-gray-600 dark:text-gray-400">ID</span>
                     <span className="font-medium">{facture.id}</span>
+                  </div>
+                  <div className="flex justify-between gap-3">
+                    <span className="text-gray-600 dark:text-gray-400">Réservation liée</span>
+                    <span className="font-medium">
+                      {facture.reservation?.reference
+                        ? facture.reservation.reference
+                        : facture.reservation_id
+                        ? `#${facture.reservation_id}`
+                        : '—'}
+                    </span>
                   </div>
                   <div className="flex justify-between gap-3">
                     <span className="text-gray-600 dark:text-gray-400">Date facture</span>

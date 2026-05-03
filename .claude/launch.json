@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "notif-demo",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["serve", "-p", "4444", "-s", ".claude"],
+      "port": 4444
+    }
+  ]
+}

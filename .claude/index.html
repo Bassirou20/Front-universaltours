@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Notification Preview — Design C</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Inter',sans-serif;background:#0f1117;min-height:100vh}
+
+  /* Faux écran app */
+  .app-shell{
+    width:100%;min-height:100vh;background:#0b1220;
+    display:flex;align-items:center;justify-content:center;
+    position:relative;overflow:hidden;
+  }
+  .app-bg{
+    width:100%;height:100%;position:absolute;inset:0;
+    background:linear-gradient(135deg,#0b1220 60%,#0d1a2e);
+    opacity:.9;
+  }
+
+  /* Fausse sidebar */
+  .fake-sidebar{
+    position:absolute;left:0;top:0;bottom:0;width:220px;
+    background:#111827;border-right:1px solid rgba(255,255,255,0.06);
+    padding:24px 16px;display:flex;flex-direction:column;gap:6px;
+    z-index:1;
+  }
+  .fake-logo{font-size:14px;font-weight:700;color:#fff;padding:0 8px;margin-bottom:20px;letter-spacing:-.01em}
+  .fake-logo span{color:#3CC5F6}
+  .fake-item{
+    padding:8px 12px;border-radius:10px;font-size:12.5px;font-weight:500;
+    color:#6b7280;display:flex;align-items:center;gap:8px;cursor:pointer;
+  }
+  .fake-item.active{background:#1e2d40;color:#60a5fa}
+  .fake-item .dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+
+  /* Faux contenu */
+  .fake-content{
+    position:absolute;left:220px;top:0;right:0;bottom:0;
+    padding:32px;z-index:1;
+  }
+  .fake-topbar{
+    height:44px;border-radius:14px;background:#111827;border:1px solid rgba(255,255,255,0.06);
+    margin-bottom:24px;display:flex;align-items:center;padding:0 16px;gap:8px;
+  }
+  .fake-title{color:#1e293b;font-weight:600;font-size:13px;flex:1;
+    background:#1e293b;height:12px;border-radius:99px;width:120px}
+  .fake-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
+  .fake-card{background:#111827;border:1px solid rgba(255,255,255,0.06);border-radius:14px;height:80px}
+  .fake-table{background:#111827;border:1px solid rgba(255,255,255,0.06);border-radius:14px;height:240px}
+
+  /* ===== TOASTS haut droite ===== */
+  .toast-stack{
+    position:absolute;top:20px;right:20px;
+    display:flex;flex-direction:column;gap:10px;
+    z-index:9999;
+  }
+
+  .toast-c{
+    width:340px;overflow:hidden;border-radius:16px;
+    border:1px solid rgba(255,255,255,0.08);
+    background:#1c2333;
+    box-shadow:0 20px 60px rgba(0,0,0,0.6),0 0 0 1px rgba(255,255,255,0.03);
+    animation: slideIn .3s cubic-bezier(.34,1.56,.64,1) both;
+  }
+  .toast-c:nth-child(2){animation-delay:.08s}
+  .toast-c:nth-child(3){animation-delay:.16s}
+  .toast-c:nth-child(4){animation-delay:.24s}
+
+  @keyframes slideIn{
+    from{opacity:0;transform:translateX(30px) scale(.96)}
+    to  {opacity:1;transform:translateX(0)    scale(1)}
+  }
+
+  .toast-body{display:flex;align-items:flex-start;gap:12px;padding:14px 14px 10px}
+
+  .t-icon{
+    width:40px;height:40px;border-radius:12px;
+    display:flex;align-items:center;justify-content:center;
+    font-size:18px;flex-shrink:0;
+  }
+  .t-text{flex:1;min-width:0}
+  .t-badge{
+    font-size:9.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+    padding:2px 8px;border-radius:999px;display:inline-block;margin-bottom:5px;
+  }
+  .t-title{font-size:13px;font-weight:600;color:#f1f5f9;line-height:1.35}
+  .t-desc{font-size:11.5px;color:#64748b;margin-top:3px;line-height:1.5}
+  .t-close{
+    width:24px;height:24px;border-radius:8px;display:flex;align-items:center;justify-content:center;
+    color:#475569;font-size:14px;cursor:pointer;flex-shrink:0;
+    background:rgba(255,255,255,0.04);
+  }
+  .t-close:hover{background:rgba(255,255,255,0.09);color:#94a3b8}
+
+  .t-bar-wrap{margin:0 14px 12px;height:3px;border-radius:99px;overflow:hidden}
+  .t-bar{height:100%;border-radius:99px}
+
+  /* success */
+  .tc-s .t-icon{background:rgba(52,211,153,0.1);color:#34d399}
+  .tc-s .t-badge{background:rgba(52,211,153,0.1);color:#34d399}
+  .tc-s .t-bar-wrap{background:rgba(52,211,153,0.1)}
+  .tc-s .t-bar{background:#34d399;width:60%}
+
+  /* error */
+  .tc-e .t-icon{background:rgba(248,113,113,0.1);color:#f87171}
+  .tc-e .t-badge{background:rgba(248,113,113,0.1);color:#f87171}
+  .tc-e .t-bar-wrap{background:rgba(248,113,113,0.1)}
+  .tc-e .t-bar{background:#f87171;width:30%}
+
+  /* info */
+  .tc-i .t-icon{background:rgba(96,165,250,0.1);color:#60a5fa}
+  .tc-i .t-badge{background:rgba(96,165,250,0.1);color:#60a5fa}
+  .tc-i .t-bar-wrap{background:rgba(96,165,250,0.1)}
+  .tc-i .t-bar{background:#60a5fa;width:75%}
+
+  /* warning */
+  .tc-w .t-icon{background:rgba(251,191,36,0.1);color:#fbbf24}
+  .tc-w .t-badge{background:rgba(251,191,36,0.1);color:#fbbf24}
+  .tc-w .t-bar-wrap{background:rgba(251,191,36,0.1)}
+  .tc-w .t-bar{background:#fbbf24;width:10%}
+</style>
+</head>
+<body>
+
+<div class="app-shell">
+  <div class="app-bg"></div>
+
+  <!-- Sidebar -->
+  <div class="fake-sidebar">
+    <div class="fake-logo">Universal <span>Tours</span></div>
+    <div class="fake-item"><span class="dot"></span>Dashboard</div>
+    <div class="fake-item"><span class="dot"></span>Clients</div>
+    <div class="fake-item"><span class="dot"></span>Réservations</div>
+    <div class="fake-item active"><span class="dot"></span>Factures</div>
+    <div class="fake-item"><span class="dot"></span>Paiements</div>
+    <div class="fake-item"><span class="dot"></span>Dépenses</div>
+  </div>
+
+  <!-- Contenu -->
+  <div class="fake-content">
+    <div class="fake-topbar"></div>
+    <div class="fake-cards">
+      <div class="fake-card"></div>
+      <div class="fake-card"></div>
+      <div class="fake-card"></div>
+      <div class="fake-card"></div>
+    </div>
+    <div class="fake-table"></div>
+  </div>
+
+  <!-- TOASTS — haut droite -->
+  <div class="toast-stack">
+
+    <div class="toast-c tc-s">
+      <div class="toast-body">
+        <div class="t-icon">✓</div>
+        <div class="t-text">
+          <span class="t-badge">Succès</span>
+          <div class="t-title">Paiement enregistré</div>
+          <div class="t-desc">150 000 XOF encaissés sur FAC-20260423-YVW3MT</div>
+        </div>
+        <div class="t-close">×</div>
+      </div>
+      <div class="t-bar-wrap"><div class="t-bar"></div></div>
+    </div>
+
+    <div class="toast-c tc-e">
+      <div class="toast-body">
+        <div class="t-icon">✕</div>
+        <div class="t-text">
+          <span class="t-badge">Erreur</span>
+          <div class="t-title">Impossible de charger les détails</div>
+          <div class="t-desc">Vérifiez votre connexion ou réessayez.</div>
+        </div>
+        <div class="t-close">×</div>
+      </div>
+      <div class="t-bar-wrap"><div class="t-bar"></div></div>
+    </div>
+
+    <div class="toast-c tc-i">
+      <div class="toast-body">
+        <div class="t-icon">ℹ</div>
+        <div class="t-text">
+          <span class="t-badge">Info</span>
+          <div class="t-title">Réservation mise à jour</div>
+          <div class="t-desc">UT-AV-20260113-YX7CYZ a été modifiée.</div>
+        </div>
+        <div class="t-close">×</div>
+      </div>
+      <div class="t-bar-wrap"><div class="t-bar"></div></div>
+    </div>
+
+    <div class="toast-c tc-w">
+      <div class="toast-body">
+        <div class="t-icon">⚠</div>
+        <div class="t-text">
+          <span class="t-badge">Attention</span>
+          <div class="t-title">Facture non émise</div>
+          <div class="t-desc">Émettez la facture avant d'encaisser un paiement.</div>
+        </div>
+        <div class="t-close">×</div>
+      </div>
+      <div class="t-bar-wrap"><div class="t-bar"></div></div>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>
