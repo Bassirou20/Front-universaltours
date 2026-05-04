@@ -1,7 +1,8 @@
 // src/features/clients/ClientDetails.tsx
 import React, { useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 import {
-  User,
   Phone,
   Mail,
   Globe,
@@ -11,7 +12,10 @@ import {
   Copy,
   Check,
   X,
+  Wallet,
 } from 'lucide-react'
+import { api } from '../../lib/axios'
+import { money } from '../../lib/helpers'
 
 type Props = {
   client: any
@@ -97,6 +101,17 @@ export default function ClientDetails({ client, onClose }: Props) {
   const name = useMemo(() => displayClientName(client), [client])
   const initials = useMemo(() => initialsFromClient(client), [client])
 
+  const qSolde = useQuery({
+    queryKey: ['avoir-solde', client?.id],
+    queryFn: async () => {
+      const { data } = await api.get(`/clients/${client.id}/solde-avoir`)
+      return data
+    },
+    enabled: !!client?.id,
+    staleTime: 30_000,
+  })
+  const soldeAvoir = Number(qSolde.data?.solde ?? 0)
+
   const copy = async (key: string, value?: string) => {
     const v = String(value || '').trim()
     if (!v) return
@@ -138,6 +153,32 @@ export default function ClientDetails({ client, onClose }: Props) {
             <X size={16} />
           </button>
         </div>
+
+        {/* Solde avoir */}
+        {!qSolde.isLoading && (
+          <div className={`mt-3 flex items-center justify-between rounded-xl px-3 py-2.5 ${
+            soldeAvoir > 0
+              ? 'bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200/50 dark:border-emerald-500/20'
+              : 'bg-gray-50 dark:bg-white/5 border border-black/5 dark:border-white/10'
+          }`}>
+            <div className="flex items-center gap-2">
+              <Wallet size={15} className={soldeAvoir > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'} />
+              <div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">Solde avoir disponible</div>
+                <div className={`text-base font-bold ${soldeAvoir > 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-gray-500 dark:text-gray-400'}`}>
+                  {money(soldeAvoir)}
+                </div>
+              </div>
+            </div>
+            <Link
+              to={`/avoirs?client_id=${client.id}`}
+              className="text-xs text-sky-600 dark:text-sky-400 hover:underline font-medium"
+              onClick={onClose}
+            >
+              Voir historique →
+            </Link>
+          </div>
+        )}
 
         {/* Actions rapides */}
         <div className="mt-4 flex flex-wrap gap-2">

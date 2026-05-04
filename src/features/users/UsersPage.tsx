@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../../lib/axios'
+import { useDebouncedValue, fetchAllPaged } from '../../lib/helpers'
+import type { LaravelPage } from '../../types/models'
 import { Modal } from '../../ui/Modal'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { T, Th, Td } from '../../ui/Table'
@@ -14,43 +16,6 @@ import { ActionsMenu } from '../../ui/ActionsMenu'
 import { Eye, Pencil, Trash2, Plus, Search, CheckCircle2, XCircle, Users, Shield } from 'lucide-react'
 import UsersForm, { type UserInput } from './UsersForm'
 import UserDetails, { type UserModel } from './UserDetails'
-
-type LaravelPage<T> = {
-  data: T[]
-  current_page: number
-  last_page: number
-  total?: number
-}
-
-function useDebouncedValue<T>(value: T, delay = 300) {
-  const [debounced, setDebounced] = useState(value)
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), delay)
-    return () => clearTimeout(t)
-  }, [value, delay])
-  return debounced
-}
-
-async function fetchAllPaged<T>(path: string, params?: any): Promise<T[]> {
-  const all: T[] = []
-  let page = 1
-  let last = 1
-
-  for (let guard = 0; guard < 60; guard++) {
-    const { data } = await api.get(path, { params: { ...params, page, per_page: 100 } })
-
-    if (Array.isArray(data)) return data as T[]
-
-    const lp = data as LaravelPage<T>
-    const items = Array.isArray(lp?.data) ? lp.data : []
-    all.push(...items)
-
-    last = Number(lp?.last_page ?? 1)
-    page = Number(lp?.current_page ?? page) + 1
-    if (page > last) break
-  }
-  return all
-}
 
 async function fetchUsers(): Promise<UserModel[]> {
   const res = await api.get('/users', { params: { page: 1, per_page: 100 } })

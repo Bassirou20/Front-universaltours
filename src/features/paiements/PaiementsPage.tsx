@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/axios'
+import { useDebouncedValue, fetchAllPaged } from '../../lib/helpers'
+import type { LaravelPage } from '../../types/models'
 import Modal from '../../ui/Modal'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { T, Th, Td } from '../../ui/Table'
@@ -14,8 +16,6 @@ import { Eye, Pencil, Trash2, Plus, Search, Wallet, Calendar, X } from 'lucide-r
 import PaiementsForm, { type PaiementInput, type FactureOption } from './PaiementsForm'
 import PaiementDetails, { type PaiementModel } from './PaiementDetails'
 
-type LaravelPage<T> = { data: T[]; current_page: number; last_page: number; total?: number }
-
 type Facture = {
   id: number
   numero?: string | null
@@ -24,33 +24,6 @@ type Facture = {
   total?: number | null
   created_at?: string | null
   paiements?: PaiementModel[]
-}
-
-function useDebouncedValue<T>(value: T, delay = 300) {
-  const [debounced, setDebounced] = useState(value)
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), delay)
-    return () => clearTimeout(t)
-  }, [value, delay])
-  return debounced
-}
-
-async function fetchAllPaged<T>(path: string, params?: any): Promise<T[]> {
-  const all: T[] = []
-  let page = 1
-  let last = 1
-
-  for (let guard = 0; guard < 60; guard++) {
-    const { data } = await api.get(path, { params: { ...params, page, per_page: 100 } })
-    if (Array.isArray(data)) return data as T[]
-    const lp = data as LaravelPage<T>
-    const items = Array.isArray(lp?.data) ? lp.data : []
-    all.push(...items)
-    last = Number(lp?.last_page ?? 1)
-    page = Number(lp?.current_page ?? page) + 1
-    if (page > last) break
-  }
-  return all
 }
 
 const MODE_LABEL: Record<string, string> = {
@@ -473,7 +446,7 @@ export default function PaiementsPage() {
           </div>
         </div>
       ) : (
-        <div className="rounded-2xl border border-black/5 dark:border-white/10 overflow-hidden bg-white dark:bg-panel shadow-soft">
+        <div className="rounded-2xl border border-black/5 dark:border-white/10 overflow-hidden overflow-x-auto bg-white dark:bg-panel shadow-soft">
           <T>
             <thead className="bg-gray-100/70 dark:bg-white/5">
               <tr>

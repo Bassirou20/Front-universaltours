@@ -1,7 +1,8 @@
 // src/features/clients/ClientsPage.tsx
-import React, { useMemo, useState, useEffect } from 'react'
+import React, { useMemo, useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { api } from '../../lib/axios'
+import { useDebouncedValue, normalizePaged, cx } from '../../lib/helpers'
 import Modal from '../../ui/Modal'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { FiltersBar } from '../../ui/FiltersBar'
@@ -14,44 +15,6 @@ import ClientsForm from './ClientsForm'
 import { Plus, Search, Eye, Pencil, Trash2, X, Upload, Users, Phone, Mail, Globe } from 'lucide-react'
 
 // -------------------- helpers --------------------
-function useDebouncedValue<T>(value: T, delay = 300) {
-  const [debounced, setDebounced] = useState(value)
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), delay)
-    return () => clearTimeout(t)
-  }, [value, delay])
-  return debounced
-}
-
-/**
- * Supporte:
- * 1) Laravel paginate direct: { data: [], current_page, last_page, total }
- * 2) Laravel paginate enveloppé: { data: { data: [], current_page, last_page, total } }
- * 3) fallback: { items: [], page, lastPage, total }
- */
-const normalizePaged = (input: any) => {
-  const root = input?.data?.data && Array.isArray(input.data.data) ? input.data : input
-
-  const items = Array.isArray(root?.data)
-    ? root.data
-    : Array.isArray(root?.items)
-    ? root.items
-    : Array.isArray(root)
-    ? root
-    : []
-
-  return {
-    items,
-    page: Number(root?.current_page ?? root?.page ?? 1) || 1,
-    lastPage: Number(root?.last_page ?? root?.lastPage ?? 1) || 1,
-    total: Number(root?.total ?? items.length ?? 0) || 0,
-  }
-}
-
-function cx(...cls: Array<string | false | undefined | null>) {
-  return cls.filter(Boolean).join(' ')
-}
-
 function initialsFromClient(c: any) {
   const a = String(c?.prenom || '').trim()
   const b = String(c?.nom || '').trim()
@@ -186,7 +149,33 @@ export default function ClientsPage() {
     },
   })
 
-  const isPending = mCreate.isPending || mUpdate.isPending || mDelete.isPending
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const mImport = useMutation({
+    mutationFn: async (file: File) => {
+      const form = new FormData()
+      form.append('file', file)
+      const { data } = await api.post('/clients/import-excel', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      return data
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['clients'] })
+      const inserted = data?.inserted_or_updated ?? 0
+      const skipped = data?.skipped ?? 0
+      const errorsCount = data?.errors_count ?? 0
+      let description = `${inserted} ajouté(s), ${skipped} ignoré(s)`
+      if (errorsCount > 0) description += `, ${errorsCount} erreur(s)`
+      toast.push({ title: 'Import terminé', tone: errorsCount > 0 ? 'warning' : 'success', description })
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.message || "Erreur lors de l'import."
+      toast.push({ title: msg, tone: 'error' })
+    },
+  })
+
+  const isPending = mCreate.isPending || mUpdate.isPending || mDelete.isPending || mImport.isPending
 
   // -------------------- actions --------------------
   const openCreate = () => {
@@ -238,13 +227,26 @@ export default function ClientsPage() {
         </div>
 
         <div className="flex items-center gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              if (file) mImport.mutate(file)
+              e.target.value = ''
+            }}
+          />
           <button
             type="button"
             className="btn bg-gray-200 dark:bg-white/10"
-            onClick={() => toast.push({ title: 'Branche ton import ici (ou garde ton bouton actuel).', tone: 'info' })}
-            title="Importer des clients"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={mImport.isPending}
+            title="Importer des clients depuis un fichier Excel"
           >
-            <Upload size={16} className="mr-2" /> Import Excel
+            <Upload size={16} className="mr-2" />
+            {mImport.isPending ? 'Import…' : 'Import Excel'}
           </button>
 
           <button type="button" className="btn-primary" onClick={openCreate}>

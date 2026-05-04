@@ -2,6 +2,7 @@
 import React, { useMemo, useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { api } from '../../lib/axios'
+import { useDebouncedValue, normalizePaged, money } from '../../lib/helpers'
 import Modal from '../../ui/Modal'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { FiltersBar } from '../../ui/FiltersBar'
@@ -28,27 +29,6 @@ import {
 } from 'lucide-react'
 
 // -------------------- helpers --------------------
-function useDebouncedValue<T>(value: T, delay = 300) {
-  const [debounced, setDebounced] = useState(value)
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), delay)
-    return () => clearTimeout(t)
-  }, [value, delay])
-  return debounced
-}
-
-const normalizePaged = (input: any) => {
-  const items = Array.isArray(input?.data) ? input.data : Array.isArray(input?.items) ? input.items : []
-  return {
-    items,
-    page: input?.current_page ?? input?.page ?? 1,
-    lastPage: input?.last_page ?? input?.lastPage ?? 1,
-    total: input?.total ?? 0,
-  }
-}
-
-const money = (n: any, devise = 'XOF') => `${Number(n || 0).toLocaleString()} ${devise}`
-
 const statutLabel = (s: any) => {
   const v = String(s || '').toLowerCase()
   if (v === 'confirmee' || v === 'confirmée') return 'Confirmée'

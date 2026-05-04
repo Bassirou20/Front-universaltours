@@ -8,7 +8,19 @@ import './index.css'
 import { AuthProvider } from './store/auth'
 import { ToastProvider } from './ui/Toasts'
 
-const qc = new QueryClient({ defaultOptions: { queries: { refetchOnWindowFocus: false, staleTime: 30000 } } })
+const qc = new QueryClient({
+  defaultOptions: {
+    queries: {
+      refetchOnWindowFocus: false,
+      staleTime: 30_000,
+      retry: 1,
+      retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 8000),
+    },
+    mutations: {
+      retry: 0,
+    },
+  },
+})
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

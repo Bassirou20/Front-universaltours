@@ -1,6 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/axios'
+import { useDebouncedValue } from '../../lib/helpers'
+import type { LaravelPage } from '../../types/models'
 import { Modal } from '../../ui/Modal'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { T, Th, Td } from '../../ui/Table'
@@ -12,22 +14,6 @@ import { ActionsMenu } from '../../ui/ActionsMenu'
 import { Eye, Pencil, Trash2, Plus, Search, Receipt } from 'lucide-react'
 import DepensesForm, { type DepenseInput } from './DepensesForm'
 import DepenseDetails, { type DepenseModel } from './DepenseDetails'
-
-type LaravelPage<T> = {
-  data: T[]
-  current_page: number
-  last_page: number
-  total?: number
-}
-
-function useDebouncedValue<T>(value: T, delay = 300) {
-  const [debounced, setDebounced] = useState(value)
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), delay)
-    return () => clearTimeout(t)
-  }, [value, delay])
-  return debounced
-}
 
 const catLabel: Record<string, string> = {
   billet_externe: 'Billet (autre agence)',
@@ -239,7 +225,7 @@ export default function DepensesPage() {
       </FiltersBar>
 
       {/* Table */}
-      <div className="card overflow-hidden">
+      <div className="card overflow-x-auto">
         <T>
           <thead>
             <tr>

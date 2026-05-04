@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/axios'
+import { useDebouncedValue, normalizeList, fetchAllPaged } from '../../lib/helpers'
 import { Modal } from '../../ui/Modal'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { T, Th, Td } from '../../ui/Table'
@@ -19,34 +20,9 @@ import { ForfaitDetails, type ForfaitModel } from './ForfaitDetails'
 // ---------------- Types ----------------
 export type Forfait = ForfaitModel
 
-type LaravelPage<T> = {
-  data: T[]
-  current_page: number
-  last_page: number
-  total?: number
-}
-
 type BadgeTone = 'gray' | 'blue' | 'green' | 'red' | 'amber' | 'purple'
 
 // ---------------- Helpers ----------------
-function useDebouncedValue<T>(value: T, delay = 300) {
-  const [debounced, setDebounced] = useState(value)
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), delay)
-    return () => clearTimeout(t)
-  }, [value, delay])
-  return debounced
-}
-
-const normalizeList = (input: any): any[] => {
-  if (!input) return []
-  if (Array.isArray(input)) return input
-  if (Array.isArray(input.data)) return input.data
-  if (Array.isArray(input?.data?.data)) return input.data.data
-  if (Array.isArray(input.items)) return input.items
-  return []
-}
-
 const TYPE_LABEL: Record<Forfait['type'], string> = {
   couple: 'Couple',
   famille: 'Famille',
@@ -69,28 +45,6 @@ const toFormDefaults = (f?: Forfait) =>
         prix_enfant: f.prix_enfant ?? undefined,
       }
     : undefined
-
-async function fetchAllForfaits(): Promise<Forfait[]> {
-  const all: Forfait[] = []
-  let page = 1
-  let last = 1
-
-  for (let guard = 0; guard < 50; guard++) {
-    const { data } = await api.get('/forfaits', { params: { page, per_page: 100 } })
-
-    if (Array.isArray(data)) return data as Forfait[]
-
-    const lp = data as LaravelPage<Forfait>
-    const items = Array.isArray(lp?.data) ? lp.data : []
-    all.push(...items)
-
-    last = Number(lp?.last_page ?? 1)
-    page = Number(lp?.current_page ?? page) + 1
-    if (page > last) break
-  }
-
-  return all
-}
 
 // ---------------- Component ----------------
 export default function ForfaitsPage() {
@@ -138,7 +92,7 @@ export default function ForfaitsPage() {
   // All forfaits
   const qAll = useQuery({
     queryKey: ['forfaits-all'],
-    queryFn: fetchAllForfaits,
+    queryFn: () => fetchAllPaged<Forfait>('/forfaits'),
     staleTime: 60_000,
   })
 
@@ -387,7 +341,7 @@ export default function ForfaitsPage() {
           ) : null}
         </div>
       ) : (
-        <div className="rounded-2xl border border-black/5 dark:border-white/10 overflow-hidden">
+        <div className="rounded-2xl border border-black/5 dark:border-white/10 overflow-hidden overflow-x-auto">
           <T>
             <thead className="bg-gray-100/70 dark:bg-white/5">
               <tr>

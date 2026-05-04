@@ -2,6 +2,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { api } from '../../lib/axios'
+import { useDebouncedValue, normalizePaged, money, cx, fetchAllPaged } from '../../lib/helpers'
 import { Modal } from '../../ui/Modal'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { FiltersBar } from '../../ui/FiltersBar'
@@ -15,13 +16,6 @@ import { Receipt, Search, Plus, Eye, Pencil, Trash2, FileText, CreditCard } from
 import { FacturesForm, type FactureInput } from './FacturesForm'
 import { AddPaymentForm, type AddPaymentInput } from './AddPaymentForm'
 import { CreateInvoiceForm, type CreateInvoiceInput } from './CreateInvoiceForm'
-
-type LaravelPage<T> = {
-  data: T[]
-  current_page: number
-  last_page: number
-  total?: number
-}
 
 type Paiement = {
   id: number
@@ -57,21 +51,6 @@ type Facture = {
   paiements?: Paiement[] | { data?: Paiement[]; items?: Paiement[] } | null
 }
 
-function useDebouncedValue<T>(value: T, delay = 300) {
-  const [debounced, setDebounced] = useState(value)
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), delay)
-    return () => clearTimeout(t)
-  }, [value, delay])
-  return debounced
-}
-
-function cx(...cls: Array<string | false | undefined | null>) {
-  return cls.filter(Boolean).join(' ')
-}
-
-const money = (n: any, devise = 'XOF') => `${Number(n || 0).toLocaleString()} ${devise}`
-
 function safeDate(d: any) {
   if (!d) return '—'
   const dt = new Date(d)
@@ -84,16 +63,6 @@ function safeDateTime(d: any) {
   const dt = new Date(d)
   if (Number.isNaN(dt.getTime())) return '—'
   return dt.toLocaleString()
-}
-
-function normalizePaged<T>(input: any): { items: T[]; page: number; lastPage: number; total: number } {
-  const items = Array.isArray(input?.data) ? input.data : Array.isArray(input?.items) ? input.items : []
-  return {
-    items,
-    page: Number(input?.current_page ?? input?.page ?? 1),
-    lastPage: Number(input?.last_page ?? input?.lastPage ?? 1),
-    total: Number(input?.total ?? 0),
-  }
 }
 
 function statutLabel(s?: string | null) {
@@ -147,29 +116,6 @@ function paymentSummary(f: Facture) {
   return { total, paid, remaining, pct, label, tone, paiements: arr }
 }
 
-async function fetchAllPaged<T>(path: string, params?: any): Promise<T[]> {
-  const all: T[] = []
-  let page = 1
-  let last = 1
-
-  for (let guard = 0; guard < 80; guard++) {
-    const { data } = await api.get(path, { params: { ...params, page, per_page: 100 } })
-
-    // certains endpoints renvoient un array direct
-    if (Array.isArray(data)) return data as T[]
-
-    const lp = data as LaravelPage<T>
-    const items = Array.isArray(lp?.data) ? lp.data : []
-    all.push(...items)
-
-    last = Number(lp?.last_page ?? 1)
-    page = Number(lp?.current_page ?? page) + 1
-    if (page > last) break
-  }
-
-  return all
-}
-
 export default function FacturesPage() {
   const qc = useQueryClient()
   const toast = useToast()
@@ -177,10 +123,16 @@ export default function FacturesPage() {
   const [page, setPage] = useState(1)
   const perPage = 10
 
+  // Initialise les filtres depuis l'URL
+  const urlParams = new URLSearchParams(window.location.search)
+  const urlStatut = urlParams.get('statut') ?? ''
+  const urlFollow = urlParams.get('follow') === '1'
+
   // filters
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebouncedValue(search, 300)
-  const [fStatut, setFStatut] = useState<string>('')
+  const [fStatut, setFStatut] = useState<string>(urlStatut)
+  const [follow, setFollow] = useState<boolean>(urlFollow)
   const [dateFrom, setDateFrom] = useState<string>('')
   const [dateTo, setDateTo] = useState<string>('')
 
@@ -190,10 +142,13 @@ export default function FacturesPage() {
   const [viewingId, setViewingId] = useState<number | null>(null)
   const [openAddPayment, setOpenAddPayment] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null)
+  const [forceDeleteInfo, setForceDeleteInfo] = useState<{
+    id: number; count: number; total: number
+  } | null>(null)
 
   // ------------- Query list -------------
   const qList = useQuery({
-    queryKey: ['factures', { page, perPage, search: debouncedSearch, statut: fStatut, dateFrom, dateTo }] as const,
+    queryKey: ['factures', { page, perPage, search: debouncedSearch, statut: fStatut, follow, dateFrom, dateTo }] as const,
     queryFn: async () => {
       const { data } = await api.get('/factures', {
         params: {
@@ -201,6 +156,7 @@ export default function FacturesPage() {
           per_page: perPage,
           search: debouncedSearch || undefined,
           statut: fStatut || undefined,
+          follow: follow ? 1 : undefined,
           date_from: dateFrom || undefined,
           date_to: dateTo || undefined,
         },
@@ -210,8 +166,8 @@ export default function FacturesPage() {
     placeholderData: keepPreviousData,
   })
 
-  const paged = useMemo(() => normalizePaged<Facture>(qList.data), [qList.data])
-  const rows: Facture[] = useMemo(() => paged.items ?? [], [paged.items])
+  const paged = useMemo(() => normalizePaged(qList.data), [qList.data])
+  const rows = useMemo(() => paged.items as Facture[], [paged.items])
 
   // ------------- Details query -------------
   const qDetails = useQuery({
@@ -260,7 +216,30 @@ export default function FacturesPage() {
       await qc.invalidateQueries({ queryKey: ['factures'] })
       toast.push({ title: 'Facture supprimée', tone: 'success' })
     },
-    onError: (e: any) => toast.push({ title: e?.response?.data?.message || 'Erreur suppression', tone: 'error' }),
+    onError: (e: any) => {
+      const body = e?.response?.data
+      // Le backend signale qu'il y a des paiements encaissés → proposer forçage
+      if (e?.response?.status === 422 && body?.has_paid) {
+        setForceDeleteInfo({
+          id: confirmDeleteId!,
+          count: body.paiements_count ?? 1,
+          total: body.paiements_total ?? 0,
+        })
+      } else {
+        toast.push({ title: body?.message || 'Erreur suppression', tone: 'error' })
+      }
+    },
+  })
+
+  const mForceDelete = useMutation({
+    mutationFn: (id: number) => api.delete(`/factures/${id}`, { params: { force: 1 } }),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ['factures'] })
+      setForceDeleteInfo(null)
+      toast.push({ title: 'Facture et paiements supprimés', tone: 'success' })
+    },
+    onError: (e: any) =>
+      toast.push({ title: e?.response?.data?.message || 'Erreur suppression forcée', tone: 'error' }),
   })
 
   const mAddPayment = useMutation({
@@ -291,7 +270,7 @@ export default function FacturesPage() {
       toast.push({ title: 'Facture assurée (réservation)', tone: 'success' })
     },
     onError: (e: any) =>
-      toast.push({ title: e?.response?.data?.message || 'Impossible d’assurer la facture', tone: 'error' }),
+      toast.push({ title: e?.response?.data?.message || "Impossible d'assurer la facture", tone: 'error' }),
   })
 
   const downloadPdf = async (factureId: number, numero?: string | null) => {
@@ -324,6 +303,7 @@ export default function FacturesPage() {
   const clearFilters = () => {
     setSearch('')
     setFStatut('')
+    setFollow(false)
     setDateFrom('')
     setDateTo('')
     setPage(1)
@@ -350,7 +330,17 @@ export default function FacturesPage() {
             <Badge tone="gray">
               {total} facture{total > 1 ? 's' : ''}
             </Badge>
-            {debouncedSearch ? <Badge tone="blue">Filtre: “{debouncedSearch}”</Badge> : null}
+            {follow && (
+              <Badge tone="amber">
+                <span>Vue : Factures à suivre</span>
+                <button
+                  className="ml-1.5 opacity-60 hover:opacity-100 leading-none"
+                  onClick={() => setFollow(false)}
+                  title="Retirer ce filtre"
+                >{'x'}</button>
+              </Badge>
+            )}
+            {debouncedSearch ? <Badge tone="blue">Filtre: "{debouncedSearch}"</Badge> : null}
             {fStatut ? <Badge tone={statutTone(fStatut) as any}>Statut: {statutLabel(fStatut)}</Badge> : null}
           </div>
         </div>
@@ -816,7 +806,7 @@ export default function FacturesPage() {
         </div>
       </Modal>
 
-      {/* Delete confirm */}
+      {/* Confirmation suppression normale */}
       <ConfirmDialog
         open={confirmDeleteId !== null}
         onCancel={() => setConfirmDeleteId(null)}
@@ -826,6 +816,21 @@ export default function FacturesPage() {
         }}
         title="Supprimer cette facture ?"
         message="Cette action est irréversible."
+      />
+
+      {/* Confirmation suppression forcée (facture avec paiements encaissés) */}
+      <ConfirmDialog
+        open={forceDeleteInfo !== null}
+        onCancel={() => setForceDeleteInfo(null)}
+        onConfirm={() => {
+          if (forceDeleteInfo) mForceDelete.mutate(forceDeleteInfo.id)
+        }}
+        title="Supprimer malgré les paiements encaissés ?"
+        message={
+          forceDeleteInfo
+            ? `Cette facture contient ${forceDeleteInfo.count} paiement(s) encaissé(s) pour un total de ${Number(forceDeleteInfo.total).toLocaleString()} XOF. Tout sera supprimé définitivement. Confirmez-vous ?`
+            : ''
+        }
       />
     </div>
   )

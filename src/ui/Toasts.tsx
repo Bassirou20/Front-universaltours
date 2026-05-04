@@ -65,7 +65,8 @@ const CONFIG: Record<Tone, {
   },
 }
 
-function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: (id: number) => void }) {
+const ToastItem = React.forwardRef<HTMLDivElement, { toast: Toast; onRemove: (id: number) => void }>(
+  function ToastItem({ toast, onRemove }, _ref) {
   const tone     = toast.tone ?? 'info'
   const duration = toast.duration ?? 4500
   const cfg      = CONFIG[tone]
@@ -138,7 +139,7 @@ function ToastItem({ toast, onRemove }: { toast: Toast; onRemove: (id: number) =
       </div>
     </motion.div>
   )
-}
+})
 
 export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [items, setItems] = React.useState<Toast[]>([])

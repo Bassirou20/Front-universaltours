@@ -2,6 +2,8 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/axios'
+import { useDebouncedValue, fetchAllPaged } from '../../lib/helpers'
+import type { Produit as ProduitModel } from '../../types/models'
 import { Modal } from '../../ui/Modal'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { T, Th, Td } from '../../ui/Table'
@@ -15,61 +17,13 @@ import { ProductDetails, type ProductDetailsModel } from './ProductDetails'
 import { Badge } from '../../ui/Badge'
 import { ActionsMenu } from '../../ui/ActionsMenu'
 
-type Produit = {
-  id: number
-  type: 'billet_avion' | 'hotel' | 'voiture' | 'evenement'
-  nom: string
-  description?: string | null
-  prix_base: number
-  actif: boolean | number
-  created_at?: string
-  updated_at?: string
-}
+type Produit = ProduitModel
 
 const TYPE_LABELS: Record<Produit['type'], string> = {
   billet_avion: 'Billet d’avion',
   hotel: 'Hôtel',
   voiture: 'Voiture',
   evenement: 'Événement',
-}
-
-function useDebouncedValue<T>(value: T, delay = 300) {
-  const [debounced, setDebounced] = useState(value)
-  useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), delay)
-    return () => clearTimeout(t)
-  }, [value, delay])
-  return debounced
-}
-
-type LaravelPage<T> = {
-  data: T[]
-  current_page: number
-  last_page: number
-  total?: number
-}
-
-async function fetchAllProduits(): Promise<Produit[]> {
-  const all: Produit[] = []
-  let page = 1
-  let last = 1
-
-  for (let guard = 0; guard < 50; guard++) {
-    const { data } = await api.get('/produits', { params: { page, per_page: 100 } })
-
-    if (Array.isArray(data)) return data as Produit[]
-
-    const lp = data as LaravelPage<Produit>
-    const items = Array.isArray(lp.data) ? lp.data : []
-    all.push(...items)
-
-    last = Number(lp.last_page ?? 1)
-    page = Number(lp.current_page ?? page) + 1
-
-    if (page > last) break
-  }
-
-  return all
 }
 
 export default function ProduitsPage() {
@@ -99,7 +53,7 @@ export default function ProduitsPage() {
 
   const qAll = useQuery({
     queryKey: ['produits-all'],
-    queryFn: fetchAllProduits,
+    queryFn: () => fetchAllPaged<Produit>('/produits'),
     staleTime: 60_000,
   })
 
@@ -256,7 +210,7 @@ export default function ProduitsPage() {
       {qAll.isLoading ? (
         <p>Chargement…</p>
       ) : (
-        <div className="rounded-2xl border border-black/5 dark:border-white/10 overflow-hidden">
+        <div className="rounded-2xl border border-black/5 dark:border-white/10 overflow-hidden overflow-x-auto">
           <T>
             <thead className="bg-gray-100/70 dark:bg-white/5">
               <tr>

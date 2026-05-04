@@ -8,6 +8,7 @@ import {
   Receipt,
   Wallet,
   Briefcase,
+  PiggyBank,
 } from 'lucide-react'
 import clsx from 'clsx'
 import { useAuth } from '../store/auth'
@@ -77,7 +78,8 @@ export const Sidebar: React.FC<{ onNavigate?: () => void }> = ({ onNavigate }) =
         items: [
           { to: '/factures', label: 'Factures', icon: <Wallet size={18} /> },
           { to: '/paiements', label: 'Paiements', icon: <Briefcase size={18} /> },
-          { to: '/depenses', label: 'depenses', icon: <Receipt size={18} /> },
+          { to: '/avoirs', label: 'Avoirs clients', icon: <PiggyBank size={18} /> },
+          { to: '/depenses', label: 'Dépenses', icon: <Receipt size={18} /> },
         ],
       },
     ]

@@ -21,7 +21,7 @@
   --ut-bg: #0B1220;
   --ut-text: #E5E7EB;
 }
-html, body, #root { height: 100%; }
+html, body, #root { height: 100%; overflow: hidden; }
 
 /* base */
 body { 
@@ -89,14 +89,15 @@ body {
    ========================= */
 
 .ut-sidebar{
-  width: 260px; /* correspond à ton AppShell */
-  height: 100vh;
+  width: 260px;
+  height: 100%;          /* suit la hauteur du flex parent */
   position: relative;
-  background: rgba(255,255,255,0.90);
+  background: rgba(255,255,255,0.92);
   border-right: 1px solid rgba(0,0,0,0.06);
   backdrop-filter: blur(10px);
   display: flex;
   flex-direction: column;
+  overflow: hidden;      /* évite tout débordement propre */
 }
 
 .dark .ut-sidebar{
@@ -128,7 +129,8 @@ body {
 
 .ut-side-nav{
   padding: 12px;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;    /* pas de scroll horizontal dans la sidebar */
   flex: 1;
 }
 
@@ -209,3 +211,37 @@ body {
 .dark .ut-side-footer{
   border-top-color: rgba(255,255,255,0.10);
 }
+
+/* ── Scrollbars fines (main + sidebar nav) ─────────────────────────────── */
+
+/* Main content scrollbar */
+.ut-scrollbar::-webkit-scrollbar       { width: 5px; height: 5px; }
+.ut-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.ut-scrollbar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.12); border-radius: 99px; }
+.dark .ut-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.10); }
+.ut-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.22); }
+.dark .ut-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.20); }
+
+/* Sidebar nav scrollbar */
+.ut-side-nav::-webkit-scrollbar       { width: 3px; }
+.ut-side-nav::-webkit-scrollbar-track { background: transparent; }
+.ut-side-nav::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.10); border-radius: 99px; }
+.dark .ut-side-nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); }
+
+/* Topbar — colle au haut de la colonne droite (pas au body) */
+.ut-topbar-sticky {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+}
+
+/* Empêche le contenu de déborder horizontalement dans les tableaux */
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.table-scroll::-webkit-scrollbar       { height: 4px; }
+.table-scroll::-webkit-scrollbar-track { background: transparent; }
+.table-scroll::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.10); border-radius: 99px; }
+.dark .table-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); }
