@@ -15,32 +15,16 @@ export default defineConfig({
   },
   build: {
     chunkSizeWarningLimit: 800,
-    rollupOptions: {
-      output: {
-        // Découpage des dépendances en chunks séparés.
-        // → meilleure mise en cache navigateur entre déploiements
-        //   (un changement de page n'invalide plus tous les vendors).
-        manualChunks: (id) => {
-          if (!id.includes('node_modules')) return undefined
-          // ⚠️ react + react-dom + scheduler DOIVENT être dans le MÊME chunk,
-          // sinon React-DOM se charge avant React et plante avec :
-          // "Cannot read properties of undefined (reading '__SECRET_INTERNALS...')"
-          // Ce check doit aussi être AVANT react-router (qui contient "react").
-          if (
-            id.includes('node_modules/react-dom/') ||
-            id.includes('node_modules/react/') ||
-            id.includes('node_modules/scheduler/')
-          ) return 'vendor-react'
-          if (id.includes('react-router')) return 'vendor-router'
-          if (id.includes('@tanstack/react-query')) return 'vendor-query'
-          if (id.includes('lucide-react')) return 'vendor-icons'
-          if (id.includes('recharts') || id.includes('d3-')) return 'vendor-charts'
-          if (id.includes('react-hook-form') || id.includes('zod') || id.includes('@hookform')) return 'vendor-forms'
-          if (id.includes('axios')) return 'vendor-http'
-          // tout le reste des dépendances tierces
-          return 'vendor-misc'
-        },
-      },
-    },
+    // ⚠️ Pas de manualChunks personnalisés.
+    //
+    // Les anciens splits (vendor-react / vendor-misc / vendor-icons / ...) cassaient
+    // l'ordre de chargement : certains chunks dépendaient de React mais Rollup ne
+    // garantissait pas leur ordre dans le HTML, d'où des erreurs runtime du type :
+    //   "Cannot read properties of undefined (reading 'createContext')"
+    //   "Cannot read properties of undefined (reading '__SECRET_INTERNALS...')"
+    //
+    // On laisse Vite/Rollup gérer le code splitting tout seul à partir des
+    // React.lazy() qui sont déjà en place sur toutes les routes. C'est moins
+    // optimal pour le cache cross-deploy, mais c'est FIABLE.
   },
 })
