@@ -2,6 +2,7 @@ import React from "react"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
 import { zodResolver } from "@hookform/resolvers/zod"
+import { Loader2 } from "lucide-react"
 import { Row } from "../../ui/Form"
 
 const schema = z.object({
@@ -56,7 +57,8 @@ export const CreateInvoiceForm: React.FC<{
         >
           Annuler
         </button>
-        <button type="submit" disabled={submitting} className="btn-primary">
+        <button type="submit" disabled={submitting} className="btn-primary inline-flex items-center gap-2">
+          {submitting && <Loader2 size={15} className="animate-spin" />}
           Créer
         </button>
       </div>

@@ -21,13 +21,21 @@
   --ut-bg: #0B1220;
   --ut-text: #E5E7EB;
 }
-html, body, #root { height: 100%; overflow: hidden; }
+html, body, #root { height: 100%; }
+
+/* Base font-size shrink: passes navigateur defaults from 16px to 14px,
+   so all rem-based components (Tailwind) render compacter on standard laptops */
+html { font-size: 14px; }
 
 /* base */
-body { 
-  @apply text-gray-900;
+body {
+  @apply text-gray-900 font-sans antialiased;
+  font-family: 'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-feature-settings: 'cv11', 'ss01', 'ss03';
   background: var(--ut-bg);
   color: var(--ut-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 .dark body, body.dark { 
   @apply text-gray-200;
@@ -41,8 +49,8 @@ body {
 }
 
 /* Buttons */
-.btn { 
-  @apply inline-flex items-center justify-center px-4 py-2 rounded-lg font-medium transition;
+.btn {
+  @apply inline-flex items-center justify-center px-3 py-1.5 rounded-lg text-sm font-medium transition whitespace-nowrap;
 }
 
 /* Primary = navy */
@@ -65,8 +73,8 @@ body {
 .btn-ghost { @apply btn bg-transparent hover:bg-black/5 dark:hover:bg-white/10; }
 
 /* Inputs with brand focus */
-.input { 
-  @apply w-full rounded-lg px-3 py-2 bg-white dark:bg-panel;
+.input {
+  @apply w-full rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-panel;
   @apply border border-black/10 dark:border-white/10;
   @apply focus:outline-none focus:ring-2;
   /* focus ring brand */
@@ -78,138 +86,117 @@ body {
 }
 
 /* labels */
-.label { @apply block text-sm mb-1 font-medium; }
+.label { @apply block text-xs mb-1 font-medium text-gray-600 dark:text-gray-400; }
 
 /* nav */
 .navlink { @apply flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/10 transition; }
 .nav-active { @apply bg-white/10 text-white font-semibold; }
+
+/* ─────────────────────────────────────────────────────────────────────
+   Animations landing page (en CSS pur pour bypass Tailwind config issue)
+   ──────────────────────────────────────────────────────────────────── */
+@keyframes ut-fade-in       { from { opacity: 0 } to { opacity: 1 } }
+@keyframes ut-fade-in-up    { from { opacity: 0; transform: translateY(20px) } to { opacity: 1; transform: translateY(0) } }
+@keyframes ut-fade-in-down  { from { opacity: 0; transform: translateY(-20px) } to { opacity: 1; transform: translateY(0) } }
+@keyframes ut-scale-in      { from { opacity: 0; transform: scale(0.92) } to { opacity: 1; transform: scale(1) } }
+@keyframes ut-float         { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-10px) } }
+@keyframes ut-float-slow    { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(-14px) } }
+@keyframes ut-gradient-pan  { 0%, 100% { background-position: 0% 50% } 50% { background-position: 100% 50% } }
+@keyframes ut-count-up      { from { opacity: 0; transform: translateY(8px) } to { opacity: 1; transform: translateY(0) } }
+
+.animate-fade-in        { animation: ut-fade-in        0.6s ease-out forwards }
+.animate-fade-in-up     { animation: ut-fade-in-up     0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards }
+.animate-fade-in-down   { animation: ut-fade-in-down   0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards }
+.animate-scale-in       { animation: ut-scale-in       0.5s cubic-bezier(0.22, 1, 0.36, 1) forwards }
+.animate-float          { animation: ut-float          6s ease-in-out infinite }
+.animate-float-slow     { animation: ut-float-slow     9s ease-in-out infinite }
+.animate-gradient-pan   { animation: ut-gradient-pan   18s ease-in-out infinite }
+.animate-count-up       { animation: ut-count-up       1.4s cubic-bezier(0.22, 1, 0.36, 1) forwards }
+
+/* Respecte la préférence utilisateur "Réduire les animations" (a11y + perfs).
+   Désactive toutes les animations infinies/coûteuses tout en gardant la lisibilité. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .animate-float,
+  .animate-float-slow,
+  .animate-gradient-pan,
+  .animate-fade-in,
+  .animate-fade-in-up,
+  .animate-fade-in-down,
+  .animate-scale-in,
+  .animate-count-up {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
 
 /* =========================
    Universal Tours Sidebar (PRO)
    ========================= */
 
 .ut-sidebar{
-  width: 260px;
-  height: 100%;          /* suit la hauteur du flex parent */
+  width: 100%;
+  height: 100%;
   position: relative;
-  background: rgba(255,255,255,0.92);
+  background: #ffffff;
   border-right: 1px solid rgba(0,0,0,0.06);
-  backdrop-filter: blur(10px);
   display: flex;
   flex-direction: column;
-  overflow: hidden;      /* évite tout débordement propre */
-}
-
-.dark .ut-sidebar{
-  background: rgba(17,24,39,0.72);
-  border-right-color: rgba(255,255,255,0.10);
-}
-
-.ut-side-header{
-  height: 64px;
-  padding: 0 14px;
-  display: flex;
-  align-items: center;
-  border-bottom: 1px solid rgba(0,0,0,0.06);
-}
-
-.dark .ut-side-header{
-  border-bottom-color: rgba(255,255,255,0.10);
-}
-
-.ut-side-logo{
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
-  display: grid;
-  place-items: center;
-  background: rgba(5,36,104,0.06); /* ut-navy */
   overflow: hidden;
 }
 
+.dark .ut-sidebar{
+  background: #0d1321;
+  border-right-color: rgba(255,255,255,0.07);
+}
+
+.ut-side-header{
+  height: 48px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(0,0,0,0.05);
+}
+
+.dark .ut-side-header{
+  border-bottom-color: rgba(255,255,255,0.07);
+}
+
+.ut-side-logo{
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: rgba(5,36,104,0.06);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
 .ut-side-nav{
-  padding: 12px;
+  padding: 6px 0;
   overflow-y: auto;
-  overflow-x: hidden;    /* pas de scroll horizontal dans la sidebar */
+  overflow-x: hidden;
   flex: 1;
 }
 
-.ut-side-group-title{
-  padding: 8px 10px;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: .06em;
-  color: rgba(107,114,128,1);
-}
-
-.dark .ut-side-group-title{
-  color: rgba(156,163,175,1);
-}
-
-.ut-side-item{
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 10px 10px 12px;
-  border-radius: 14px;
-  transition: background 150ms ease, color 150ms ease, transform 80ms ease;
-  color: rgba(55,65,81,1);
-}
-
-.dark .ut-side-item{
-  color: rgba(229,231,235,1);
-}
-
-.ut-side-item-idle:hover{
-  background: rgba(5,36,104,0.06);
-}
-
-.dark .ut-side-item-idle:hover{
-  background: rgba(255,255,255,0.06);
-}
-
-.ut-side-item-active{
-  background: rgba(60,197,246,0.16);  /* ut-sky */
-  color: rgba(5,36,104,1);            /* ut-navy */
-}
-
-.dark .ut-side-item-active{
-  background: rgba(60,197,246,0.14);
-  color: rgba(255,255,255,1);
-}
-
-.ut-side-indicator{
-  position: absolute;
-  left: 6px;
-  top: 8px;
-  bottom: 8px;
-  width: 3px;
-  border-radius: 999px;
-  background: transparent;
-}
-
-.ut-side-item-active .ut-side-indicator{
-  background: var(--ut-orange);
-}
-
-.ut-side-icon{
-  width: 24px;
-  display: inline-flex;
-  justify-content: center;
-  opacity: 0.9;
-}
-
 .ut-side-footer{
-  height: 72px;
-  padding: 12px 14px;
-  border-top: 1px solid rgba(0,0,0,0.06);
-  display: flex;
-  align-items: center;
+  padding: 8px 10px 10px;
+  border-top: 1px solid rgba(0,0,0,0.05);
+  flex-shrink: 0;
 }
 
 .dark .ut-side-footer{
-  border-top-color: rgba(255,255,255,0.10);
+  border-top-color: rgba(255,255,255,0.07);
 }
 
 /* ── Scrollbars fines (main + sidebar nav) ─────────────────────────────── */
@@ -222,11 +209,12 @@ body {
 .ut-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.22); }
 .dark .ut-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.20); }
 
-/* Sidebar nav scrollbar */
-.ut-side-nav::-webkit-scrollbar       { width: 3px; }
-.ut-side-nav::-webkit-scrollbar-track { background: transparent; }
-.ut-side-nav::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.10); border-radius: 99px; }
-.dark .ut-side-nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); }
+/* Sidebar nav — scrollbar masquée totalement */
+.ut-side-nav {
+  scrollbar-width: none;       /* Firefox */
+  -ms-overflow-style: none;    /* IE/Edge ancien */
+}
+.ut-side-nav::-webkit-scrollbar { display: none; }
 
 /* Topbar — colle au haut de la colonne droite (pas au body) */
 .ut-topbar-sticky {
@@ -245,3 +233,4 @@ body {
 .table-scroll::-webkit-scrollbar-track { background: transparent; }
 .table-scroll::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.10); border-radius: 99px; }
 .dark .table-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); }
+

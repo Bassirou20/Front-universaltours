@@ -8,6 +8,19 @@ import './index.css'
 import { AuthProvider } from './store/auth'
 import { ToastProvider } from './ui/Toasts'
 
+// ──────────────────────────────────────────────────────────────────────────────
+// Redirection au chargement de l'app : toute URL "interne" (non publique)
+// est remplacée par la landing page AVANT que React monte.
+// → Pas de flash de la page protégée avant redirection.
+// → Les pages publiques (login, forgot, reset) restent intactes (utile si
+//   l'utilisateur est en train de remplir le formulaire de connexion / reset).
+// ──────────────────────────────────────────────────────────────────────────────
+const PUBLIC_PATHS = ['/', '/login', '/forgot-password', '/reset-password']
+const currentPath = window.location.pathname
+if (!PUBLIC_PATHS.includes(currentPath)) {
+  window.history.replaceState(null, '', '/')
+}
+
 const qc = new QueryClient({
   defaultOptions: {
     queries: {

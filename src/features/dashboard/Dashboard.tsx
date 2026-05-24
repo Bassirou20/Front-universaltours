@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, TooltipProps,
+  BarChart, Bar, Cell,
+  PieChart, Pie,
 } from 'recharts'
 import { api } from '../../lib/axios'
 import { Link } from 'react-router-dom'
@@ -28,6 +30,10 @@ type DashboardPayload = {
   series?: {
     reservations_7d?: Array<{ date: string; label: string; value: number }>
     ca_30d?: Array<{ date: string; label: string; value: number }>
+    ca_12_mois?: Array<{ mois: string; label: string; value: number }>
+  }
+  charts?: {
+    repartition_par_type?: Array<{ type: string; label: string; value: number }>
   }
   lists?: {
     last_reservations?: Array<{
@@ -37,6 +43,10 @@ type DashboardPayload = {
     factures_follow?: Array<{
       id: number; numero?: string; statut?: string; montant_total?: number; created_at?: string
       reservation?: { id?: number; reference?: string; client?: { prenom?: string; nom?: string } }
+    }>
+    top_clients?: Array<{
+      id: number; nom?: string; prenom?: string; email?: string
+      nb_reservations?: number; ca_total?: number
     }>
   }
 }
@@ -83,6 +93,16 @@ const STATUT_FACTURE: Record<string, { label: string; cls: string }> = {
   paye_partiellement:{ label: 'Partielle', cls: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300' },
   payee:             { label: 'Payée',     cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300' },
   annule:            { label: 'Annulée',   cls: 'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-gray-300' },
+}
+
+const TYPE_COLORS: Record<string, string> = {
+  billet_avion: '#38bdf8',
+  hotel:        '#34d399',
+  voiture:      '#fb923c',
+  evenement:    '#a78bfa',
+  forfait:      '#f472b6',
+  assurance:    '#facc15',
+  evisa:        '#2dd4bf',
 }
 
 function StatutBadge({ statut, map }: { statut?: string | null; map: typeof STATUT_RESERVATION }) {
@@ -157,7 +177,7 @@ function KpiCard({ label, value, sub, icon, iconBg, accent, sparkData, sparkColo
     <div className="relative overflow-hidden rounded-2xl border border-black/5 dark:border-white/[0.08] bg-white dark:bg-[#151d2e] shadow-sm hover:shadow-md transition-shadow group">
       <div className={`absolute top-0 left-0 right-0 h-[3px] ${accent}`} />
 
-      <div className="p-5">
+      <div className="p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{label}</div>
@@ -193,7 +213,7 @@ function KpiCard({ label, value, sub, icon, iconBg, accent, sparkData, sparkColo
       {to && (
         <Link
           to={to}
-          className="flex items-center justify-between px-5 py-2.5 border-t border-black/5 dark:border-white/[0.06] text-xs text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-50/60 dark:hover:bg-white/[0.03] transition-all group/footer"
+          className="flex items-center justify-between px-5 py-1.5 border-t border-black/5 dark:border-white/[0.06] text-xs text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-50/60 dark:hover:bg-white/[0.03] transition-all group/footer"
         >
           <span>Voir détails</span>
           <ChevronRight size={13} className="group-hover/footer:translate-x-0.5 transition-transform" />
@@ -241,7 +261,7 @@ function HeroBanner({ caMonth, r7, clientsTotal, followCount, loading }: HeroBan
   ]
 
   return (
-    <div className="relative overflow-hidden rounded-2xl border border-black/5 dark:border-white/[0.08] bg-gradient-to-br from-[#0f1929] via-[#111827] to-[#0c1320] shadow-lg p-6">
+    <div className="relative overflow-hidden rounded-2xl border border-black/5 dark:border-white/[0.08] bg-gradient-to-br from-[#0f1929] via-[#111827] to-[#0c1320] shadow-lg p-4">
       <div className="pointer-events-none absolute -top-20 -right-20 h-64 w-64 rounded-full bg-sky-500/10 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-10 -left-10 h-48 w-48 rounded-full bg-violet-500/10 blur-3xl" />
 
@@ -255,7 +275,7 @@ function HeroBanner({ caMonth, r7, clientsTotal, followCount, loading }: HeroBan
           </div>
           {loading
             ? <Skeleton className="h-10 w-52 bg-white/10" />
-            : <div className="text-[2.25rem] font-extrabold text-white leading-none tracking-tight">{moneyXOF(caMonth)}</div>
+            : <div className="text-2xl font-extrabold text-white leading-none tracking-tight">{moneyXOF(caMonth)}</div>
           }
           <div className="mt-2 text-xs text-gray-500">Factures payées ce mois</div>
         </div>
@@ -299,10 +319,13 @@ export default function Dashboard() {
     newClientsMonth: Number(d?.kpis?.new_clients_month ?? 0),
   }
 
-  const chartR7   = useMemo(() => d?.series?.reservations_7d ?? [], [d])
-  const chartCA   = useMemo(() => d?.series?.ca_30d ?? [], [d])
-  const lastRes   = useMemo(() => d?.lists?.last_reservations ?? [], [d])
-  const followTop = useMemo(() => d?.lists?.factures_follow ?? [], [d])
+  const chartR7      = useMemo(() => d?.series?.reservations_7d ?? [], [d])
+  const chartCA      = useMemo(() => d?.series?.ca_30d ?? [], [d])
+  const chartCA12    = useMemo(() => d?.series?.ca_12_mois ?? [], [d])
+  const repartition  = useMemo(() => d?.charts?.repartition_par_type ?? [], [d])
+  const lastRes      = useMemo(() => d?.lists?.last_reservations ?? [], [d])
+  const followTop    = useMemo(() => d?.lists?.factures_follow ?? [], [d])
+  const topClients   = useMemo(() => d?.lists?.top_clients ?? [], [d])
 
   const overdueCount = useMemo(() => {
     const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000
@@ -321,7 +344,7 @@ export default function Dashboard() {
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+          <h1 className="text-xl font-bold text-gray-900 dark:text-white">
             {greeting()} 👋
           </h1>
           <p className="mt-0.5 text-sm text-gray-400 dark:text-gray-500 capitalize">{today}</p>
@@ -335,13 +358,13 @@ export default function Dashboard() {
           )}
           <Link
             to="/reservations"
-            className="inline-flex items-center gap-1.5 rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-white/5 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/10 transition-colors shadow-sm"
+            className="inline-flex whitespace-nowrap items-center gap-1.5 rounded-xl border border-black/10 dark:border-white/10 bg-white dark:bg-white/5 px-3 py-1.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-white/10 transition-colors shadow-sm"
           >
             Voir réservations
           </Link>
           <Link
             to="/reservations"
-            className="inline-flex items-center gap-1.5 rounded-xl bg-[var(--ut-orange)] px-4 py-2 text-sm font-semibold text-white hover:brightness-95 transition shadow-sm"
+            className="inline-flex whitespace-nowrap items-center gap-1.5 rounded-xl bg-[var(--ut-orange)] px-3 py-1.5 text-sm font-semibold text-white hover:brightness-95 transition shadow-sm"
           >
             <Plus size={15} /> Nouvelle réservation
           </Link>
@@ -376,7 +399,7 @@ export default function Dashboard() {
       {loading ? (
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="rounded-2xl border border-black/5 dark:border-white/[0.08] bg-white dark:bg-[#151d2e] p-5 space-y-3">
+            <div key={i} className="rounded-2xl border border-black/5 dark:border-white/[0.08] bg-white dark:bg-[#151d2e] p-4 space-y-3">
               <Skeleton className="h-3 w-24" />
               <Skeleton className="h-8 w-28" />
               <Skeleton className="h-3 w-16" />
@@ -559,6 +582,143 @@ export default function Dashboard() {
             )}
           </div>
         </div>
+      </div>
+
+      {/* ── CA 12 mois + Répartition par type ─────────────────────────────── */}
+      <div className="grid lg:grid-cols-[1.6fr_1fr] gap-4">
+
+        {/* CA mensuel 12 mois */}
+        <div className="rounded-2xl border border-black/5 dark:border-white/[0.08] bg-white dark:bg-[#151d2e] shadow-sm overflow-hidden">
+          <div className="flex items-start justify-between gap-4 px-5 pt-5 pb-2">
+            <div>
+              <div className="flex items-center gap-2">
+                <div className="h-2 w-2 rounded-full bg-emerald-400" />
+                <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">CA mensuel</span>
+              </div>
+              <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 ml-4">12 derniers mois · factures payées</div>
+            </div>
+          </div>
+          <div className="h-52 px-2 pb-4">
+            {loading ? <Skeleton className="h-full w-full" /> : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartCA12} margin={{ top: 4, right: 12, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="currentColor" strokeOpacity={0.05} vertical={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'currentColor', opacity: 0.45 }} axisLine={false} tickLine={false} />
+                  <YAxis
+                    tick={{ fontSize: 10, fill: 'currentColor', opacity: 0.45 }}
+                    axisLine={false} tickLine={false}
+                    tickFormatter={(v) => v >= 1_000_000 ? `${(v/1_000_000).toFixed(1)}M` : v >= 1000 ? `${(v/1000).toFixed(0)}k` : String(v)}
+                  />
+                  <Tooltip content={(p: any) => <ChartTooltip {...p} money />} />
+                  <Bar dataKey="value" fill="#34d399" radius={[4, 4, 0, 0]} maxBarSize={32} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </div>
+
+        {/* Répartition par type */}
+        <div className="rounded-2xl border border-black/5 dark:border-white/[0.08] bg-white dark:bg-[#151d2e] shadow-sm overflow-hidden">
+          <div className="px-5 pt-5 pb-2">
+            <div className="flex items-center gap-2">
+              <div className="h-2 w-2 rounded-full bg-violet-400" />
+              <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">Réservations par type</span>
+            </div>
+            <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 ml-4">12 derniers mois</div>
+          </div>
+          {loading ? (
+            <div className="h-52 px-5 pb-4"><Skeleton className="h-full w-full" /></div>
+          ) : repartition.length === 0 ? (
+            <div className="flex items-center justify-center h-52 text-sm text-gray-400">Aucune donnée</div>
+          ) : (
+            <div className="flex flex-col gap-0 px-5 pb-4 mt-2">
+              {/* Mini donut */}
+              <div className="flex justify-center">
+                <ResponsiveContainer width={120} height={120}>
+                  <PieChart>
+                    <Pie data={repartition} dataKey="value" cx="50%" cy="50%" innerRadius={32} outerRadius={52} strokeWidth={2} stroke="transparent">
+                      {repartition.map((entry) => (
+                        <Cell key={entry.type} fill={TYPE_COLORS[entry.type] ?? '#94a3b8'} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(v: number, _: any, p: any) => [v, p.payload?.label]} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              {/* Légende */}
+              <div className="space-y-1.5 mt-1">
+                {repartition.map((item) => {
+                  const total = repartition.reduce((s, r) => s + r.value, 0)
+                  const pct = total > 0 ? Math.round((item.value / total) * 100) : 0
+                  return (
+                    <div key={item.type} className="flex items-center gap-2">
+                      <div className="h-2 w-2 rounded-full shrink-0" style={{ background: TYPE_COLORS[item.type] ?? '#94a3b8' }} />
+                      <span className="text-xs text-gray-600 dark:text-gray-400 flex-1 truncate">{item.label}</span>
+                      <span className="text-xs font-semibold text-gray-900 dark:text-gray-100">{item.value}</span>
+                      <span className="text-[10px] text-gray-400 w-8 text-right">{pct}%</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Top clients ─────────────────────────────────────────────────────── */}
+      <div className="rounded-2xl border border-black/5 dark:border-white/[0.08] bg-white dark:bg-[#151d2e] shadow-sm overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-black/5 dark:border-white/[0.06]">
+          <div>
+            <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">Top clients</div>
+            <div className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Par chiffre d'affaires total</div>
+          </div>
+          <Link to="/clients" className="inline-flex items-center gap-1 text-xs font-semibold text-sky-600 dark:text-sky-400 hover:underline">
+            Voir tous <ChevronRight size={12} />
+          </Link>
+        </div>
+        {loading ? (
+          <div className="divide-y divide-black/5 dark:divide-white/[0.06]">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-3 px-5 py-3.5">
+                <Skeleton className="h-8 w-8 rounded-xl shrink-0" />
+                <div className="flex-1 space-y-2"><Skeleton className="h-3 w-32" /><Skeleton className="h-2 w-20" /></div>
+                <Skeleton className="h-4 w-24" />
+              </div>
+            ))}
+          </div>
+        ) : topClients.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-10 text-sm text-gray-400">Aucun client trouvé</div>
+        ) : (
+          <div className="divide-y divide-black/5 dark:divide-white/[0.06]">
+            {topClients.map((c, idx) => {
+              const nom = [c.prenom, c.nom].filter(Boolean).join(' ') || c.email || `Client #${c.id}`
+              const ini = initials(c.prenom, c.nom)
+              const medal = ['🥇', '🥈', '🥉'][idx] ?? null
+              const maxCA = topClients[0]?.ca_total ?? 1
+              const pct = maxCA > 0 ? Math.round(((c.ca_total ?? 0) / maxCA) * 100) : 0
+              return (
+                <div key={c.id} className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50/80 dark:hover:bg-white/[0.025] transition-colors">
+                  <div className="h-8 w-8 shrink-0 rounded-xl bg-violet-50 dark:bg-violet-500/10 flex items-center justify-center text-[11px] font-bold text-violet-700 dark:text-violet-300 border border-violet-100 dark:border-violet-500/20">
+                    {ini}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      {medal && <span className="text-[13px] leading-none">{medal}</span>}
+                      <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{nom}</span>
+                    </div>
+                    <div className="mt-1 h-1 rounded-full bg-gray-100 dark:bg-white/10 overflow-hidden w-32">
+                      <div className="h-full rounded-full bg-violet-400" style={{ width: `${pct}%` }} />
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-sm font-bold text-gray-900 dark:text-gray-100">{moneyShort(c.ca_total ?? 0)}</div>
+                    <div className="text-[10px] text-gray-400">{c.nb_reservations} rés.</div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       {/* ── Lists ──────────────────────────────────────────────────────────── */}

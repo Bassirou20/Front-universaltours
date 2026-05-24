@@ -152,7 +152,6 @@ export function ActionsMenu({
   const btnRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
-  // ✅ IMPORTANT: click-outside doit considérer menu+button (Portal)
   useEffect(() => {
     if (!open) return
     const onDown = (e: MouseEvent | TouchEvent) => {
@@ -169,7 +168,6 @@ export function ActionsMenu({
     }
   }, [open])
 
-  // ESC ferme
   useEffect(() => {
     if (!open) return
     const onKey = (e: KeyboardEvent) => {
@@ -179,7 +177,6 @@ export function ActionsMenu({
     return () => document.removeEventListener('keydown', onKey)
   }, [open])
 
-  // recalcul position
   useEffect(() => {
     if (!open || isMobile) return
     const btn = btnRef.current
@@ -205,7 +202,6 @@ export function ActionsMenu({
     setOpen((v) => !v)
   }
 
-  // Mobile => bottom sheet
   if (isMobile) {
     return (
       <>
@@ -225,7 +221,6 @@ export function ActionsMenu({
     )
   }
 
-  // Desktop => dropdown portal
   return (
     <>
       <button

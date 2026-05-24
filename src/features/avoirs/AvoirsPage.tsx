@@ -17,6 +17,7 @@ import {
   Wallet, Trash2, ArrowDownToLine, ArrowUpFromLine,
   Search, Loader2, TrendingUp, ChevronDown, X as XIcon, User,
 } from 'lucide-react'
+import { SkeletonTable } from '../../ui/Skeleton'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -200,11 +201,11 @@ function ClientSelect({
           {/* List */}
           <div className="max-h-56 overflow-y-auto">
             {q.isLoading ? (
-              <div className="flex items-center justify-center gap-2 py-6 text-sm text-gray-500">
+              <div className="flex items-center justify-center gap-2 py-4 text-sm text-gray-500">
                 <Loader2 size={14} className="animate-spin" /> Chargement…
               </div>
             ) : clients.length === 0 ? (
-              <div className="py-6 text-center text-sm text-gray-500">Aucun client trouvé</div>
+              <div className="py-4 text-center text-sm text-gray-500">Aucun client trouvé</div>
             ) : (
               clients.map((c) => {
                 const isActive = String(c.id) === String(value)
@@ -213,7 +214,7 @@ function ClientSelect({
                     key={c.id}
                     type="button"
                     onClick={() => handleSelect(c)}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-sky-50 dark:hover:bg-sky-500/10 transition-colors ${
+                    className={`w-full flex items-center gap-3 px-3 py-1.5 text-left hover:bg-sky-50 dark:hover:bg-sky-500/10 transition-colors ${
                       isActive ? 'bg-sky-50 dark:bg-sky-500/10' : ''
                     }`}
                   >
@@ -298,6 +299,7 @@ export default function AvoirsPage() {
       const { data } = await api.get('/avoirs', {
         params: {
           page,
+          per_page: 10,
           search: debouncedSearch || undefined,
           type: filterType || undefined,
         },
@@ -383,60 +385,67 @@ export default function AvoirsPage() {
 
   return (
     <div className="space-y-4">
-
       {/* Header */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <Wallet size={18} /> Avoirs clients
-          </h2>
-          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-            Crédit prépayé — dépôts et utilisations par client
-          </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-100 text-sky-600 dark:bg-sky-500/15 dark:text-sky-400">
+            <Wallet size={16} />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 leading-tight">Avoirs clients</h2>
+            <p className="text-xs text-gray-400 dark:text-gray-500 leading-tight">
+              Crédit prépayé — dépôts et utilisations
+            </p>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
           <button
-            className="btn bg-emerald-600 hover:bg-emerald-700 text-white inline-flex items-center gap-2"
+            className="inline-flex whitespace-nowrap items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 text-sm font-semibold shadow-sm transition"
             onClick={() => { setDepotOpen(true); depotForm.reset(); setDepotClientId(0) }}
           >
-            <ArrowDownToLine size={16} /> Nouveau dépôt
+            <ArrowDownToLine size={15} /> Nouveau dépôt
           </button>
           <button
-            className="btn bg-amber-500 hover:bg-amber-600 text-white inline-flex items-center gap-2"
+            className="inline-flex whitespace-nowrap items-center gap-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 text-sm font-semibold shadow-sm transition"
             onClick={() => { setUtilisationOpen(true); utilForm.reset(); setUtilClientId(0) }}
           >
-            <ArrowUpFromLine size={16} /> Utiliser avoir
+            <ArrowUpFromLine size={15} /> Utiliser avoir
           </button>
         </div>
       </div>
 
-      {/* KPI cards */}
+      {/* KPI cards inline */}
       {stats.data && (
-        <div className="grid sm:grid-cols-3 gap-4">
-          <div className="card">
-            <div className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
-              <ArrowDownToLine size={15} className="text-emerald-500" /> Total dépôts
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-black/[0.05] dark:border-white/[0.07] bg-white dark:bg-[#151d2e] px-3 py-2 shadow-sm">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-500/15">
+                <ArrowDownToLine size={14} className="text-emerald-600 dark:text-emerald-400" />
+              </div>
+              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide truncate">Total dépôts</div>
             </div>
-            <div className="text-2xl font-bold mt-1 text-emerald-600 dark:text-emerald-400">
-              {money(stats.data.totalDepots)}
-            </div>
+            <div className="text-sm font-bold text-emerald-600 dark:text-emerald-400 tabular-nums truncate">{money(stats.data.totalDepots)}</div>
           </div>
-          <div className="card">
-            <div className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
-              <ArrowUpFromLine size={15} className="text-amber-500" /> Total utilisations
+
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-black/[0.05] dark:border-white/[0.07] bg-white dark:bg-[#151d2e] px-3 py-2 shadow-sm">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-500/15">
+                <ArrowUpFromLine size={14} className="text-amber-600 dark:text-amber-400" />
+              </div>
+              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide truncate">Utilisations</div>
             </div>
-            <div className="text-2xl font-bold mt-1 text-amber-600 dark:text-amber-400">
-              {money(stats.data.totalUtil)}
-            </div>
+            <div className="text-sm font-bold text-amber-600 dark:text-amber-400 tabular-nums truncate">{money(stats.data.totalUtil)}</div>
           </div>
-          <div className="card">
-            <div className="text-sm text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
-              <TrendingUp size={15} className="text-sky-500" /> Solde global
+
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-black/[0.05] dark:border-white/[0.07] bg-white dark:bg-[#151d2e] px-3 py-2 shadow-sm">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-sky-100 dark:bg-sky-500/15">
+                <TrendingUp size={14} className="text-sky-600 dark:text-sky-400" />
+              </div>
+              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide truncate">Solde global</div>
             </div>
-            <div className={`text-2xl font-bold mt-1 ${stats.data.soldeGlobal >= 0 ? 'text-sky-600 dark:text-sky-400' : 'text-red-600 dark:text-red-400'}`}>
-              {money(stats.data.soldeGlobal)}
-            </div>
+            <div className={`text-sm font-bold tabular-nums truncate ${stats.data.soldeGlobal >= 0 ? 'text-sky-600 dark:text-sky-400' : 'text-red-600 dark:text-red-400'}`}>{money(stats.data.soldeGlobal)}</div>
           </div>
         </div>
       )}
@@ -444,11 +453,14 @@ export default function AvoirsPage() {
       {/* Filters */}
       <FiltersBar>
         <div>
-          <label className="label">Recherche client</label>
+          <label className="label flex items-center gap-1.5">
+            Recherche client
+            {q.isFetching && !q.isLoading && <Loader2 size={12} className="animate-spin text-gray-400" />}
+          </label>
           <div className="relative">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 opacity-60" />
             <input
-              className="input pl-9"
+              className="input !pl-9"
               placeholder="Nom, email…"
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(1) }}
@@ -478,86 +490,149 @@ export default function AvoirsPage() {
         </div>
       </FiltersBar>
 
-      {/* Table */}
-      {q.isLoading ? (
-        <div className="card flex items-center gap-2 text-sm text-gray-500">
-          <Loader2 size={16} className="animate-spin" /> Chargement…
+      {/* Liste */}
+      <div className="rounded-xl border border-black/[0.05] dark:border-white/[0.07] bg-white dark:bg-[#151d2e] shadow-sm overflow-hidden">
+        {/* List header */}
+        <div className="hidden sm:grid sm:grid-cols-[minmax(0,1.8fr)_minmax(0,1fr)_minmax(0,1fr)_72px] md:grid-cols-[minmax(0,1.8fr)_100px_minmax(0,1fr)_minmax(0,1fr)_100px_72px] items-center gap-3 px-4 py-2 border-b border-black/[0.04] dark:border-white/[0.05] bg-gray-50/80 dark:bg-white/[0.02]">
+          <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider">Client</span>
+          <span className="hidden md:inline text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Type</span>
+          <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Montant</span>
+          <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Solde</span>
+          <span className="hidden md:inline text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Date</span>
+          <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Actions</span>
         </div>
-      ) : rows.length === 0 ? (
-        <div className="card">
-          <div className="font-semibold">Aucun avoir trouvé</div>
-          <div className="text-sm text-gray-500 mt-1">
-            Commencez par enregistrer un dépôt pour un client.
+
+        {q.isLoading ? (
+          <div className="divide-y divide-black/[0.04] dark:divide-white/[0.04]">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-3 px-4 py-2.5">
+                <div className="h-7 w-7 rounded-full bg-black/[0.06] animate-pulse shrink-0" />
+                <div className="flex-1 h-3 rounded bg-black/[0.06] animate-pulse" />
+                <div className="h-5 w-16 rounded-full bg-black/[0.04] animate-pulse" />
+              </div>
+            ))}
           </div>
-        </div>
-      ) : (
-        <div className="rounded-2xl border border-black/5 dark:border-white/10 overflow-hidden overflow-x-auto">
-          <T>
-            <thead className="bg-gray-100/70 dark:bg-white/5">
-              <tr>
-                <Th>Client</Th>
-                <Th>Type</Th>
-                <Th>Montant</Th>
-                <Th className="hidden md:table-cell">Solde après</Th>
-                <Th className="hidden lg:table-cell">Référence</Th>
-                <Th className="hidden lg:table-cell">Facture</Th>
-                <Th className="hidden md:table-cell">Date</Th>
-                <Th className="w-12"></Th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((a) => (
-                <tr key={a.id} className="border-t border-black/5 dark:border-white/10">
-                  <Td>
-                    <div className="font-medium">{clientLabel(a.client)}</div>
-                    {a.client?.email && (
-                      <div className="text-xs text-gray-500 truncate">{a.client.email}</div>
-                    )}
-                  </Td>
-                  <Td>
-                    {a.type === 'depot' ? (
-                      <Badge tone="green">
-                        <ArrowDownToLine size={12} className="mr-1" /> Dépôt
-                      </Badge>
-                    ) : (
-                      <Badge tone="amber">
-                        <ArrowUpFromLine size={12} className="mr-1" /> Utilisation
-                      </Badge>
-                    )}
-                  </Td>
-                  <Td>
-                    <span className={`font-semibold ${a.type === 'depot' ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                      {a.type === 'utilisation' ? '−' : '+'}{money(a.montant)}
-                    </span>
-                  </Td>
-                  <Td className="hidden md:table-cell text-sm">{money(a.solde_apres)}</Td>
-                  <Td className="hidden lg:table-cell text-sm">{a.reference || '—'}</Td>
-                  <Td className="hidden lg:table-cell text-sm">
-                    {a.facture ? (
-                      <span className="text-sky-600 dark:text-sky-400">{a.facture.numero || `#${a.facture.id}`}</span>
-                    ) : '—'}
-                  </Td>
-                  <Td className="hidden md:table-cell text-sm">{safeDate(a.date_avoir || a.created_at)}</Td>
-                  <Td>
+        ) : rows.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center px-5">
+            <div className="h-14 w-14 rounded-2xl bg-gray-100 dark:bg-white/[0.05] flex items-center justify-center mb-4">
+              <Wallet size={22} className="text-gray-300 dark:text-gray-600" />
+            </div>
+            <div className="text-base font-semibold text-gray-500 dark:text-gray-400">Aucun avoir trouvé</div>
+            <div className="text-sm text-gray-400 dark:text-gray-600 mt-1 mb-4">
+              Commencez par enregistrer un dépôt pour un client
+            </div>
+            <button
+              onClick={() => { setDepotOpen(true); depotForm.reset(); setDepotClientId(0) }}
+              className="inline-flex whitespace-nowrap items-center gap-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 text-sm font-semibold transition"
+            >
+              <ArrowDownToLine size={15} /> Nouveau dépôt
+            </button>
+          </div>
+        ) : (
+          <div className="divide-y divide-black/[0.04] dark:divide-white/[0.04]">
+            {rows.map((a) => {
+              const ini = clientInitials({
+                id: a.client?.id ?? 0,
+                nom: a.client?.nom ?? '',
+                prenom: (a.client as any)?.prenom ?? '',
+                email: a.client?.email ?? '',
+              } as ClientOption)
+              const isDepot = a.type === 'depot'
+
+              return (
+                <div
+                  key={a.id}
+                  className="group flex flex-col sm:grid sm:grid-cols-[minmax(0,1.8fr)_minmax(0,1fr)_minmax(0,1fr)_72px] md:grid-cols-[minmax(0,1.8fr)_100px_minmax(0,1fr)_minmax(0,1fr)_100px_72px] sm:items-center gap-1 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-2 hover:bg-gray-50/80 dark:hover:bg-white/[0.025] transition-colors"
+                >
+                  {/* Cell 1 : Client */}
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
+                      isDepot ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
+                              : 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
+                    }`}>
+                      {ini}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate" title={clientLabel(a.client)}>{clientLabel(a.client)}</div>
+                      {a.client?.email && (
+                        <div className="text-[11px] text-gray-400 dark:text-gray-500 truncate hidden lg:block">{a.client.email}</div>
+                      )}
+                    </div>
+                    {/* Actions mobile */}
                     {isAdmin && (
                       <button
                         type="button"
-                        className="btn px-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10"
-                        onClick={() => setConfirmDelete({ open: true, id: a.id })}
+                        className="flex sm:hidden shrink-0 h-7 w-7 items-center justify-center rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 -mr-1"
+                        onClick={(e) => { e.stopPropagation(); setConfirmDelete({ open: true, id: a.id }) }}
                         title="Supprimer"
                       >
                         <Trash2 size={14} />
                       </button>
                     )}
-                  </Td>
-                </tr>
-              ))}
-            </tbody>
-          </T>
-        </div>
-      )}
+                  </div>
 
-      <Pagination page={page} lastPage={paged.lastPage} total={paged.total} onPage={setPage} />
+                  {/* Cell 2 : Type (md+) */}
+                  <div className="hidden md:flex items-center justify-center">
+                    {isDepot ? (
+                      <Badge tone="green"><ArrowDownToLine size={11} className="mr-1" /> Dépôt</Badge>
+                    ) : (
+                      <Badge tone="amber"><ArrowUpFromLine size={11} className="mr-1" /> Utilisation</Badge>
+                    )}
+                  </div>
+
+                  {/* Cell 3 : Montant (sm+) */}
+                  <div className="hidden sm:flex items-center justify-center">
+                    <span className={`text-sm font-bold tabular-nums ${isDepot ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                      {isDepot ? '+' : '−'}{money(a.montant)}
+                    </span>
+                  </div>
+
+                  {/* Cell 4 : Solde après (sm+) */}
+                  <div className="hidden sm:flex items-center justify-center text-sm text-gray-700 dark:text-gray-300 tabular-nums">
+                    {money(a.solde_apres)}
+                  </div>
+
+                  {/* Cell 5 : Date (md+) */}
+                  <div className="hidden md:flex items-center justify-center text-sm text-gray-500 dark:text-gray-400 tabular-nums">
+                    {safeDate(a.date_avoir || a.created_at)}
+                  </div>
+
+                  {/* Mobile summary */}
+                  <div className="flex sm:hidden flex-wrap items-center justify-between gap-2 pl-9">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {isDepot ? (
+                        <Badge tone="green"><ArrowDownToLine size={11} className="mr-1" /> Dépôt</Badge>
+                      ) : (
+                        <Badge tone="amber"><ArrowUpFromLine size={11} className="mr-1" /> Utilisation</Badge>
+                      )}
+                      <span className="text-[10px] text-gray-400 tabular-nums">{safeDate(a.date_avoir || a.created_at)}</span>
+                    </div>
+                    <span className={`text-sm font-bold tabular-nums shrink-0 ${isDepot ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                      {isDepot ? '+' : '−'}{money(a.montant)}
+                    </span>
+                  </div>
+
+                  {/* Cell 6 : Actions (sm+) */}
+                  <div className="hidden sm:flex justify-center">
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        className="h-7 w-7 flex items-center justify-center rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10"
+                        onClick={(e) => { e.stopPropagation(); setConfirmDelete({ open: true, id: a.id }) }}
+                        title="Supprimer"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      <Pagination page={page} lastPage={paged.lastPage} total={paged.total} perPage={10} onPage={setPage} />
 
       {/* ── Modal Dépôt ─────────────────────────────────────────────────────── */}
       <Modal
@@ -566,7 +641,7 @@ export default function AvoirsPage() {
         title="Nouveau dépôt d'avoir"
         widthClass="max-w-lg"
       >
-        <form onSubmit={depotForm.handleSubmit(onDepotSubmit)} className="space-y-4">
+        <form onSubmit={depotForm.handleSubmit(onDepotSubmit)} className="space-y-3">
           <div>
             <label className="label">Client</label>
             <Controller
@@ -636,7 +711,7 @@ export default function AvoirsPage() {
         title="Utiliser un avoir"
         widthClass="max-w-lg"
       >
-        <form onSubmit={utilForm.handleSubmit(onUtilSubmit)} className="space-y-4">
+        <form onSubmit={utilForm.handleSubmit(onUtilSubmit)} className="space-y-3">
           <div>
             <label className="label">Client</label>
             <Controller

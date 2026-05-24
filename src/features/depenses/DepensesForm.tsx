@@ -2,7 +2,10 @@ import React, { useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Row } from '../../ui/Form'
+import { AlertCircle, CalendarDays, FileText, StickyNote, Building2, Hash, Loader2 } from 'lucide-react'
+import { cx } from '../../lib/helpers'
+import { CAT_CONFIG } from './DepenseDetails'
+import type { DepenseCategorie } from './DepenseDetails'
 
 const Categories = [
   'billet_externe',
@@ -32,7 +35,6 @@ const schema = z
   .superRefine((v, ctx) => {
     const cat = v.categorie
 
-    // Catégories "externes" -> fournisseur requis (c'est logique/pro)
     if (cat === 'billet_externe' || cat === 'hotel_externe') {
       if (!v.fournisseur_nom || !v.fournisseur_nom.trim()) {
         ctx.addIssue({
@@ -43,7 +45,6 @@ const schema = z
       }
     }
 
-    // Billet externe -> référence fortement recommandée (je la mets obligatoire pour éviter erreurs)
     if (cat === 'billet_externe') {
       if (!v.reference || !v.reference.trim()) {
         ctx.addIssue({
@@ -54,7 +55,6 @@ const schema = z
       }
     }
 
-    // Salaires -> notes conseillées (ex: employé + mois)
     if (cat === 'salaires') {
       if (!v.notes || !v.notes.trim()) {
         ctx.addIssue({
@@ -68,16 +68,46 @@ const schema = z
 
 export type DepenseInput = z.infer<typeof schema>
 
-type ReservationMini = { id: number; reference?: string | null; nom?: string | null }
+const MODE_PAIEMENT = [
+  { value: 'cash', label: 'Cash', emoji: '💵' },
+  { value: 'carte', label: 'Carte', emoji: '💳' },
+  { value: 'virement', label: 'Virement', emoji: '🏦' },
+  { value: 'wave', label: 'Wave', emoji: '🌊' },
+  { value: 'orange_money', label: 'Orange Money', emoji: '🟠' },
+  { value: 'free_money', label: 'Free Money', emoji: '🟣' },
+  { value: 'cheque', label: 'Chèque', emoji: '📄' },
+  { value: 'autre', label: 'Autre', emoji: '—' },
+]
 
-const catLabel: Record<DepenseInput['categorie'], string> = {
-  billet_externe: 'Billet (autre agence)',
-  hotel_externe: 'Hôtel (externe)',
-  transport: 'Transport',
-  bureau: 'Bureau',
-  marketing: 'Marketing',
-  salaires: 'Salaires',
-  autre: 'Autre',
+const inputBase = (hasError?: boolean) =>
+  cx(
+    'w-full rounded-xl border py-1.5 text-sm transition-all',
+    'bg-white dark:bg-[#1c2535]',
+    'text-gray-900 dark:text-gray-100',
+    'placeholder-gray-400 dark:placeholder-gray-600',
+    'focus:outline-none focus:ring-2 focus:ring-[var(--ut-orange)]/20 focus:border-[var(--ut-orange)]',
+    hasError
+      ? 'border-red-400 dark:border-red-500'
+      : 'border-black/10 dark:border-white/10 hover:border-black/20 dark:hover:border-white/20',
+  )
+
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2 pb-2 border-b border-black/[0.05] dark:border-white/[0.07]">
+      <span className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+        {children}
+      </span>
+    </div>
+  )
+}
+
+function FieldError({ message }: { message?: string }) {
+  if (!message) return null
+  return (
+    <p className="flex items-center gap-1 mt-1.5 text-xs text-red-500">
+      <AlertCircle size={11} className="shrink-0" /> {message}
+    </p>
+  )
 }
 
 export default function DepensesForm({
@@ -85,13 +115,11 @@ export default function DepensesForm({
   onSubmit,
   onCancel,
   submitting,
-  reservations,
 }: {
   defaultValues?: Partial<DepenseInput>
   onSubmit: (vals: DepenseInput) => void
   onCancel: () => void
   submitting?: boolean
-  reservations?: ReservationMini[]
 }) {
   const {
     register,
@@ -109,13 +137,11 @@ export default function DepensesForm({
   })
 
   const categorie = watch('categorie')
+  const statut = watch('statut')
+  const modePaiement = watch('mode_paiement')
 
   const ui = useMemo(() => {
     const showFournisseur = categorie === 'billet_externe' || categorie === 'hotel_externe'
-    const showReference = categorie === 'billet_externe' || categorie === 'hotel_externe'
-    const showReservation = categorie === 'billet_externe' // uniquement billet externe (cas métier principal)
-    const showModePaiement = true
-    const showNotes = true
 
     const libellePh =
       categorie === 'billet_externe'
@@ -135,9 +161,7 @@ export default function DepensesForm({
     const fournisseurPh =
       categorie === 'billet_externe'
         ? 'Ex: Agence partenaire (où le billet est émis)'
-        : categorie === 'hotel_externe'
-          ? 'Ex: Hôtel / Agence partenaire'
-          : 'Ex: Fournisseur'
+        : 'Ex: Hôtel / Agence partenaire'
 
     const referencePh =
       categorie === 'billet_externe'
@@ -151,24 +175,11 @@ export default function DepensesForm({
           ? 'Ex: Campagne: Facebook • Période: ... • Objectif...'
           : 'Notes (optionnel)'
 
-    return {
-      showFournisseur,
-      showReference,
-      showReservation,
-      showModePaiement,
-      showNotes,
-      libellePh,
-      fournisseurPh,
-      referencePh,
-      notesPh,
-    }
+    return { showFournisseur, libellePh, fournisseurPh, referencePh, notesPh }
   }, [categorie])
 
-  // Petite amélioration UX: si on change de catégorie vers une catégorie non externe,
-  // on peut nettoyer fournisseur/référence (sans forcer — tu peux retirer si tu préfères conserver).
-  const handleCategorieChange = (value: DepenseInput['categorie'] | '') => {
-    setValue('categorie', value as DepenseInput['categorie'])
-
+  const handleCategorieChange = (value: DepenseCategorie) => {
+    setValue('categorie', value)
     if (value !== 'billet_externe' && value !== 'hotel_externe') {
       setValue('fournisseur_nom', '')
       setValue('reference', '')
@@ -179,115 +190,232 @@ export default function DepensesForm({
   }
 
   return (
-    <form onSubmit={handleSubmit((vals) => onSubmit(vals))} className="space-y-3">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <Row label="Date dépense">
-          <input className="input" type="date" {...register('date_depense')} />
-          {errors.date_depense && <p className="text-red-600 text-xs mt-1">{String(errors.date_depense.message)}</p>}
-        </Row>
+    <form onSubmit={handleSubmit((vals) => onSubmit(vals))} className="space-y-5">
 
-        <Row label="Statut">
-          <select className="input" {...register('statut')}>
-            <option value="paye">Payé</option>
-            <option value="en_attente">En attente</option>
-          </select>
-        </Row>
+      <div className="space-y-3">
+        <SectionTitle>
+          <FileText size={12} className="inline mr-1" />
+          Informations
+        </SectionTitle>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              Date <span className="text-red-400">*</span>
+            </label>
+            <div className="relative">
+              <CalendarDays size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              <input
+                type="date"
+                {...register('date_depense')}
+                className={cx(inputBase(!!errors.date_depense), 'pl-9 pr-3')}
+              />
+            </div>
+            <FieldError message={errors.date_depense?.message} />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              Libellé <span className="text-red-400">*</span>
+            </label>
+            <div className="relative">
+              <FileText size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              <input
+                {...register('libelle')}
+                placeholder={ui.libellePh}
+                className={cx(inputBase(!!errors.libelle), 'pl-9 pr-3')}
+              />
+            </div>
+            <FieldError message={errors.libelle?.message} />
+          </div>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <Row label="Catégorie">
-          <select
-            className="input"
-            value={categorie ?? ''}
-            onChange={(e) => handleCategorieChange(e.target.value as any)}
-          >
-            <option value="">— Choisir —</option>
-            {Categories.map((c) => (
-              <option key={c} value={c}>
-                {catLabel[c]}
-              </option>
-            ))}
-          </select>
-          {errors.categorie && <p className="text-red-600 text-xs mt-1">{String(errors.categorie.message)}</p>}
-        </Row>
-
-        <Row label="Montant">
-          <input className="input" type="number" step="0.01" {...register('montant')} />
-          {errors.montant && <p className="text-red-600 text-xs mt-1">{String(errors.montant.message)}</p>}
-        </Row>
+      <div className="space-y-3">
+        <SectionTitle>Catégorie</SectionTitle>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+          {(Object.keys(CAT_CONFIG) as DepenseCategorie[]).map((key) => {
+            const conf = CAT_CONFIG[key]
+            const CatIcon = conf.icon
+            const isSelected = categorie === key
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => handleCategorieChange(key)}
+                className={cx(
+                  'flex flex-col items-center gap-1.5 rounded-xl border px-2 py-3 text-xs font-medium transition-all',
+                  isSelected
+                    ? cx('border-transparent', conf.badge)
+                    : 'border-black/10 dark:border-white/10 text-gray-600 dark:text-gray-400 hover:border-black/20 dark:hover:border-white/20 bg-transparent',
+                )}
+              >
+                <CatIcon size={16} />
+                <span className="text-center leading-tight">{conf.label}</span>
+              </button>
+            )
+          })}
+        </div>
+        <FieldError message={errors.categorie?.message} />
       </div>
 
-      <Row label="Libellé">
-        <input className="input" placeholder={ui.libellePh} {...register('libelle')} />
-        {errors.libelle && <p className="text-red-600 text-xs mt-1">{String(errors.libelle.message)}</p>}
-      </Row>
+      <div className="space-y-3">
+        <SectionTitle>Montant &amp; Paiement</SectionTitle>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              Montant <span className="text-red-400">*</span>
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                {...register('montant')}
+                placeholder="0"
+                className={cx(inputBase(!!errors.montant), 'pl-3 pr-14 font-mono')}
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-gray-400 pointer-events-none">
+                XOF
+              </span>
+            </div>
+            <FieldError message={errors.montant?.message} />
+          </div>
 
-      {(ui.showFournisseur || ui.showReference) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {ui.showFournisseur && (
-            <Row label="Fournisseur">
-              <input className="input" placeholder={ui.fournisseurPh} {...register('fournisseur_nom')} />
-              {errors.fournisseur_nom && <p className="text-red-600 text-xs mt-1">{String(errors.fournisseur_nom.message)}</p>}
-            </Row>
-          )}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              Statut
+            </label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setValue('statut', 'paye')}
+                className={cx(
+                  'flex-1 rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all',
+                  statut === 'paye'
+                    ? 'bg-emerald-500 border-emerald-500 text-white'
+                    : 'border-black/10 dark:border-white/10 text-gray-600 dark:text-gray-400 hover:border-black/20 dark:hover:border-white/20',
+                )}
+              >
+                Payé
+              </button>
+              <button
+                type="button"
+                onClick={() => setValue('statut', 'en_attente')}
+                className={cx(
+                  'flex-1 rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all',
+                  statut === 'en_attente'
+                    ? 'bg-amber-500 border-amber-500 text-white'
+                    : 'border-black/10 dark:border-white/10 text-gray-600 dark:text-gray-400 hover:border-black/20 dark:hover:border-white/20',
+                )}
+              >
+                En attente
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
 
-          {ui.showReference && (
-            <Row label="Référence">
-              <input className="input" placeholder={ui.referencePh} {...register('reference')} />
-              {errors.reference && <p className="text-red-600 text-xs mt-1">{String(errors.reference.message)}</p>}
-            </Row>
-          )}
+      <div className="space-y-3">
+        <SectionTitle>Mode de paiement</SectionTitle>
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+          {MODE_PAIEMENT.map((m) => (
+            <button
+              key={m.value}
+              type="button"
+              onClick={() => setValue('mode_paiement', modePaiement === m.value ? null : m.value)}
+              className={cx(
+                'flex flex-col items-center gap-1 rounded-xl border px-2 py-1.5 text-xs font-medium transition-all',
+                modePaiement === m.value
+                  ? 'border-[var(--ut-orange)] bg-[var(--ut-orange)]/10 text-[var(--ut-orange)]'
+                  : 'border-black/10 dark:border-white/10 text-gray-600 dark:text-gray-400 hover:border-black/20 dark:hover:border-white/20',
+              )}
+            >
+              <span className="text-base">{m.emoji}</span>
+              <span>{m.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {ui.showFournisseur && (
+        <div className="space-y-3">
+          <SectionTitle>Fournisseur &amp; Référence</SectionTitle>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                Fournisseur <span className="text-red-400">*</span>
+              </label>
+              <div className="relative">
+                <Building2 size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                <input
+                  {...register('fournisseur_nom')}
+                  placeholder={ui.fournisseurPh}
+                  className={cx(inputBase(!!errors.fournisseur_nom), 'pl-9 pr-3')}
+                />
+              </div>
+              <FieldError message={errors.fournisseur_nom?.message} />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                Référence{categorie === 'billet_externe' && <span className="text-red-400"> *</span>}
+              </label>
+              <div className="relative">
+                <Hash size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                <input
+                  {...register('reference')}
+                  placeholder={ui.referencePh}
+                  className={cx(inputBase(!!errors.reference), 'pl-9 pr-3')}
+                />
+              </div>
+              <FieldError message={errors.reference?.message} />
+            </div>
+          </div>
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {ui.showModePaiement && (
-          <Row label="Mode de paiement">
-            <select className="input" {...register('mode_paiement')}>
-              <option value="">—</option>
-              <option value="cash">Cash</option>
-              <option value="wave">Wave</option>
-              <option value="orange_money">Orange Money</option>
-              <option value="virement">Virement</option>
-              <option value="cheque">Chèque</option>
-              <option value="carte">Carte</option>
-              <option value="autre">Autre</option>
-            </select>
-          </Row>
-        )}
-
-        {ui.showReservation ? (
-          <Row label="Réservation liée (optionnel)">
-            <select className="input" {...register('reservation_id')}>
-              <option value="">—</option>
-              {(reservations ?? []).map((r) => (
-                <option key={r.id} value={r.id}>
-                  #{r.id} {r.reference ? `• ${r.reference}` : ''} {r.nom ? `• ${r.nom}` : ''}
-                </option>
-              ))}
-            </select>
-            <p className="text-xs text-gray-500 mt-1">
-              Conseillé pour calculer la marge (vente - dépenses externes).
-            </p>
-          </Row>
-        ) : (
-          <div />
-        )}
+      <div className="space-y-3">
+        <SectionTitle>
+          <StickyNote size={12} className="inline mr-1" />
+          Notes
+        </SectionTitle>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+            {categorie === 'salaires' ? (
+              <>Notes <span className="text-red-400">*</span></>
+            ) : (
+              <>Notes <span className="text-xs font-normal text-gray-400">(optionnel)</span></>
+            )}
+          </label>
+          <div className="relative">
+            <StickyNote size={14} className="absolute left-3 top-3 text-gray-400 pointer-events-none" />
+            <textarea
+              {...register('notes')}
+              placeholder={ui.notesPh}
+              rows={3}
+              className={cx(inputBase(!!errors.notes), 'pl-9 pr-3 resize-none')}
+            />
+          </div>
+          <FieldError message={errors.notes?.message} />
+        </div>
       </div>
 
-      {ui.showNotes && (
-        <Row label={categorie === 'salaires' ? 'Notes (obligatoire)' : 'Notes (optionnel)'}>
-          <textarea className="input min-h-[90px]" placeholder={ui.notesPh} {...register('notes')} />
-          {errors.notes && <p className="text-red-600 text-xs mt-1">{String(errors.notes.message)}</p>}
-        </Row>
-      )}
-
-      <div className="flex justify-end gap-2 pt-2">
-        <button type="button" className="btn bg-gray-200 dark:bg-white/10" onClick={onCancel}>
+      <div className="flex justify-end gap-2 pt-2 border-t border-black/[0.05] dark:border-white/[0.07]">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="inline-flex items-center rounded-xl border border-black/10 dark:border-white/10 px-3 py-1.5 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+        >
           Annuler
         </button>
-        <button type="submit" disabled={submitting} className="btn-primary">
-          Enregistrer
+        <button
+          type="submit"
+          disabled={submitting}
+          className="inline-flex items-center gap-2 rounded-xl bg-[var(--ut-orange)] px-5 py-1.5 text-sm font-semibold text-white hover:brightness-95 transition shadow-sm disabled:opacity-60"
+        >
+          {submitting && <Loader2 size={15} className="animate-spin" />}
+          {submitting ? 'Enregistrement...' : 'Enregistrer'}
         </button>
       </div>
     </form>

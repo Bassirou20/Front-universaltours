@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Lock, Eye, EyeOff, ArrowLeft, CheckCircle2, Loader2 } from 'lucide-react'
 import { api } from '../../lib/axios'
-import logo from '../../assets/brand/logounivtours.jpg'
+import logo from '../../assets/brand/logounivtours.webp'
 
 const schema = z.object({
   password: z.string().min(6, 'Minimum 6 caractères'),
@@ -61,8 +61,8 @@ export default function ResetPasswordPage() {
         <div className="card p-8">
           {!done ? (
             <>
-              <div className="mb-6">
-                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
+              <div className="mb-4">
+                <h1 className="text-xl font-bold text-gray-900 dark:text-white">
                   Nouveau mot de passe
                 </h1>
                 <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -70,7 +70,7 @@ export default function ResetPasswordPage() {
                 </p>
               </div>
 
-              <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+              <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
                 {/* Nouveau mot de passe */}
                 <div>
                   <label className="label">Nouveau mot de passe</label>
@@ -78,7 +78,7 @@ export default function ResetPasswordPage() {
                     <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                     <input
                       type={showPwd ? 'text' : 'password'}
-                      className="input pl-9 pr-10"
+                      className="input !pl-9 pr-10"
                       placeholder="••••••••"
                       {...register('password')}
                     />
@@ -102,7 +102,7 @@ export default function ResetPasswordPage() {
                     <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                     <input
                       type={showConfirm ? 'text' : 'password'}
-                      className="input pl-9 pr-10"
+                      className="input !pl-9 pr-10"
                       placeholder="••••••••"
                       {...register('password_confirmation')}
                     />
@@ -144,7 +144,7 @@ export default function ResetPasswordPage() {
             </>
           ) : (
             /* Succès */
-            <div className="text-center space-y-4">
+            <div className="text-center space-y-3">
               <div className="flex justify-center">
                 <div className="h-16 w-16 rounded-2xl bg-emerald-100 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
                   <CheckCircle2 size={32} />
@@ -165,7 +165,7 @@ export default function ResetPasswordPage() {
           )}
 
           {!done && (
-            <div className="mt-6 text-center">
+            <div className="mt-4 text-center">
               <Link
                 to="/login"
                 className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"

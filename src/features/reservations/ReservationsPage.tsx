@@ -3,30 +3,57 @@ import React, { useMemo, useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { api } from '../../lib/axios'
 import { useDebouncedValue, normalizePaged, money } from '../../lib/helpers'
-import Modal from '../../ui/Modal'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { FiltersBar } from '../../ui/FiltersBar'
+import { Modal } from '../../ui/Modal'
 import { Pagination } from '../../ui/Pagination'
-import { T, Th, Td } from '../../ui/Table'
 import { useToast } from '../../ui/Toasts'
 import { ActionsMenu } from '../../ui/ActionsMenu'
-import { ReservationsForm, type ReservationInput } from './ReservationsForm'
-import { ReservationDetails } from './ReservationDetails'
 import { useAuth } from '../../store/auth'
-import { useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import {
-  Plus,
-  Search,
-  Eye,
-  Pencil,
-  Trash2,
-  CheckCircle2,
-  XCircle,
-  X,
-  Receipt,
-  FileText,
-  RefreshCw,
+  Plus, Search, Eye, Pencil, Trash2, CheckCircle2, XCircle, X,
+  Receipt, FileText, RefreshCw, Loader2, FileSpreadsheet,
+  Plane, Hotel, Car, PartyPopper, Package, Shield, Stamp,
+  ClipboardList, CalendarCheck, AlertCircle, AlertTriangle,
 } from 'lucide-react'
+import { ReservationsForm, type ReservationInput } from './ReservationsForm'
+import PenaltyModal from './PenaltyModal'
+
+// helper acompte
+async function applyAcompte(reservationId: number, acompte: any) {
+  const montant = Number(acompte?.montant || 0)
+  if (!reservationId || montant <= 0) return
+  await api.post(`/reservations/${reservationId}/encaisser`, {
+    montant,
+    mode_paiement: acompte.mode_paiement || 'especes',
+    reference:     acompte.reference     || null,
+    date_paiement: new Date().toISOString().slice(0, 10),
+  })
+}
+
+// Visual metadata per reservation type
+const TYPE_META: Record<string, { label: string; icon: React.ReactNode; bg: string; text: string }> = {
+  billet_avion: { label: "Billet d'avion", icon: <Plane size={14} />,       bg: 'bg-sky-100 dark:bg-sky-500/15',         text: 'text-sky-700 dark:text-sky-300' },
+  hotel:        { label: 'Hôtel',          icon: <Hotel size={14} />,       bg: 'bg-emerald-100 dark:bg-emerald-500/15', text: 'text-emerald-700 dark:text-emerald-300' },
+  voiture:      { label: 'Voiture',        icon: <Car size={14} />,         bg: 'bg-amber-100 dark:bg-amber-500/15',     text: 'text-amber-700 dark:text-amber-300' },
+  evenement:    { label: 'Événement',      icon: <PartyPopper size={14} />, bg: 'bg-violet-100 dark:bg-violet-500/15',   text: 'text-violet-700 dark:text-violet-300' },
+  forfait:      { label: 'Forfait',        icon: <Package size={14} />,     bg: 'bg-indigo-100 dark:bg-indigo-500/15',   text: 'text-indigo-700 dark:text-indigo-300' },
+  assurance:    { label: 'Assurance',      icon: <Shield size={14} />,      bg: 'bg-rose-100 dark:bg-rose-500/15',       text: 'text-rose-700 dark:text-rose-300' },
+  evisa:        { label: 'E-Visa',         icon: <Stamp size={14} />,       bg: 'bg-teal-100 dark:bg-teal-500/15',       text: 'text-teal-700 dark:text-teal-300' },
+}
+const DEFAULT_TYPE_META = { label: '—', icon: <ClipboardList size={14} />, bg: 'bg-gray-100 dark:bg-white/10', text: 'text-gray-600 dark:text-gray-300' }
+
+function typeMetaFor(t: any) {
+  const key = String(t || '').toLowerCase()
+  return TYPE_META[key] || DEFAULT_TYPE_META
+}
+
+function initialsFromClient(c: any) {
+  const a = String(c?.prenom || '').trim()[0] || ''
+  const b = String(c?.nom || '').trim()[0] || ''
+  return (a + b).toUpperCase() || '??'
+}
 
 // -------------------- helpers --------------------
 const statutLabel = (s: any) => {
@@ -54,10 +81,6 @@ function StatusBadge({ statut }: { statut: any }) {
   return <span className={`${base} ${cls}`}>{statutLabel(statut)}</span>
 }
 
-/**
- * Paiement badge:
- * calcule paid depuis facture->paiements.
- */
 function computePaymentSummaryFromReservation(r: any): {
   total: number
   paid: number
@@ -144,7 +167,6 @@ function PaymentBadge({ reservation }: { reservation: any }) {
   )
 }
 
-// ✅ options "mois"
 function buildMonthOptions(count = 12) {
   const out: Array<{ value: string; label: string }> = []
   const now = new Date()
@@ -166,9 +188,8 @@ type Reservation = any
 export default function ReservationsPage() {
   const qc = useQueryClient()
   const toast = useToast()
+  const navigate = useNavigate()
   const [sp] = useSearchParams()
-  const [prefillCreate, setPrefillCreate] = useState<{ client_id?: number } | null>(null)
-
   const { user } = useAuth()
   const isAdmin = String(user?.role || '').toLowerCase() === 'admin'
 
@@ -178,25 +199,33 @@ export default function ReservationsPage() {
   const [search, setSearch] = useState('')
   const debouncedSearch = useDebouncedValue(search, 300)
   const [type, setType] = useState<string>('')
+  const [statut, setStatut] = useState<string>(sp.get('statut') ?? '')
+  const [dateFilter, setDateFilter] = useState<string>(sp.get('date') ?? '')
 
-  const [month, setMonth] = useState<string>('') // YYYY-MM
+  const [month, setMonth] = useState<string>('')
+  const [exportMonth, setExportMonth] = useState<string>(() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  })
 
   const [clientIdFilter, setClientIdFilter] = useState<number | null>(null)
   const [clientLabelFilter, setClientLabelFilter] = useState<string>('')
 
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id?: number; name?: string }>({ open: false })
+
+  // ── form modal state ──
   const [formOpen, setFormOpen] = useState(false)
-  const [editing, setEditing] = useState<Reservation | null>(null)
+  const [editing, setEditing] = useState<any | null>(null)
+  const [prefillCreate, setPrefillCreate] = useState<Partial<ReservationInput> | undefined>(undefined)
 
-  const [detailsOpen, setDetailsOpen] = useState(false)
-  const [viewingId, setViewingId] = useState<number | null>(null)
-
-  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id?: number }>({ open: false })
+  // ── penalty modal state ──
+  const [penaltyTarget, setPenaltyTarget] = useState<any | null>(null)
 
   const monthOptions = useMemo(() => buildMonthOptions(12), [])
 
   // -------------------- Queries --------------------
   const q = useQuery({
-    queryKey: ['reservations', { page, perPage, search: debouncedSearch, type, month, clientIdFilter }] as const,
+    queryKey: ['reservations', { page, perPage, search: debouncedSearch, type, statut, month, dateFilter, clientIdFilter }] as const,
     queryFn: async () => {
       const { data } = await api.get('/reservations', {
         params: {
@@ -204,7 +233,9 @@ export default function ReservationsPage() {
           per_page: perPage,
           search: debouncedSearch || undefined,
           type: type || undefined,
+          statut: statut || undefined,
           month: month || undefined,
+          date: dateFilter || undefined,
           client_id: clientIdFilter || undefined,
         },
       })
@@ -214,21 +245,12 @@ export default function ReservationsPage() {
   })
 
   const refreshList = () => {
-    // ✅ refetch direct (comme dans ReservationForm où ça marche)
     q.refetch()
   }
 
-  // ✅ fermeture du modal détails => refresh liste
-  const closeDetails = () => {
-    setDetailsOpen(false)
-    setViewingId(null)
-    refreshList()
-  }
-
   useEffect(() => {
-    const cid = sp.get('client_id')
+    const cid   = sp.get('client_id')
     const label = sp.get('client_label') || ''
-    const create = sp.get('create')
 
     if (cid) {
       const idNum = Number(cid)
@@ -238,35 +260,20 @@ export default function ReservationsPage() {
         setPage(1)
       }
     }
-
-    if (create === '1' && cid) {
-      const idNum = Number(cid)
-      if (!Number.isNaN(idNum)) {
-        setPrefillCreate({ client_id: idNum })
-        setEditing(null)
-        setFormOpen(true)
-      }
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Synchronise statut + date avec l'URL (pour les liens "Épinglés" depuis la sidebar)
+  useEffect(() => {
+    const urlStatut = sp.get('statut') ?? ''
+    const urlDate = sp.get('date') ?? ''
+    if (urlStatut !== statut) { setStatut(urlStatut); setPage(1) }
+    if (urlDate !== dateFilter) { setDateFilter(urlDate); setPage(1) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sp])
+
   const paged = useMemo(() => normalizePaged(q.data), [q.data])
   const rows: Reservation[] = useMemo(() => paged.items ?? [], [paged.items])
-
-  const qDetails = useQuery({
-    queryKey: ['reservation', viewingId] as const,
-    enabled: detailsOpen && !!viewingId,
-    queryFn: async () => {
-      const { data } = await api.get(`/reservations/${viewingId}`)
-      return data
-    },
-  })
-
-  const viewingReservation = useMemo(() => {
-    const d: any = qDetails.data
-    if (!d) return null
-    return d?.data ?? d
-  }, [qDetails.data])
 
   // -------------------- Facture helpers --------------------
   const pickFactureIdFromReservation = (r: any): number | null => {
@@ -323,99 +330,53 @@ export default function ReservationsPage() {
     }
   }
 
-  // ✅ helper: enregistrer acompte (create OU update)
-  const applyAcompteToReservation = async (reservation: any, acompte: any) => {
-    const montant = Number(acompte?.montant || 0)
-    if (!reservation?.id || montant <= 0) return
-
-    const date_facture = new Date().toISOString().slice(0, 10)
-
-    const factureRes = await api.post(`/reservations/${reservation.id}/factures`, { date_facture })
-    const facture = factureRes.data?.data ?? factureRes.data
-
-    try {
-      await api.post(`/factures/${facture.id}/emettre`)
-    } catch {}
-
-    await api.post(`/factures/${facture.id}/paiements`, {
-      montant,
-      mode_paiement: acompte.mode_paiement,
-      reference: acompte.reference || null,
-      statut: 'recu',
-    })
-  }
-
   // -------------------- Mutations --------------------
   const mCreate = useMutation({
     mutationFn: async (vals: ReservationInput) => {
       const { acompte, ...raw } = vals as any
-      const payload = { ...raw, statut: 'confirmee' }
-      const res = await api.post('/reservations', payload)
-      return { reservation: res.data?.data ?? res.data, acompte }
+      // Si as_devis=true, laisse le backend choisir statut=en_attente.
+      // Sinon, force confirmee (comportement historique pour les autres cas).
+      const body = raw?.as_devis ? raw : { ...raw, statut: 'confirmee' }
+      const res = await api.post('/reservations', body)
+      return { reservation: res.data?.data ?? res.data, acompte, asDevis: !!raw?.as_devis }
     },
-    onSuccess: async ({ reservation, acompte }) => {
-      try {
-        qc.invalidateQueries({ queryKey: ['reservations'] })
-        setFormOpen(false)
-        setEditing(null)
-
-        await applyAcompteToReservation(reservation, acompte)
-
-        toast.push({
-          title: Number(acompte?.montant || 0) > 0 ? 'Réservation confirmée + acompte enregistré' : 'Réservation confirmée',
-          tone: 'success',
-        })
-      } catch (err: any) {
-        const msg = err?.response?.data?.message || "Réservation créée, mais échec lors de l'enregistrement de l'acompte."
-        toast.push({ title: msg, tone: 'error' })
-      } finally {
-        qc.invalidateQueries({ queryKey: ['reservations'] })
-      }
+    onSuccess: async ({ reservation: created, acompte, asDevis }) => {
+      try { await applyAcompte(created?.id, acompte) } catch { /* acompte optionnel */ }
+      qc.invalidateQueries({ queryKey: ['reservations'] })
+      toast.push({
+        title: asDevis
+          ? 'Devis créé ✓ — envoyez-le au client via WhatsApp'
+          : Number(acompte?.montant || 0) > 0
+          ? 'Réservation créée + acompte enregistré ✓'
+          : 'Réservation créée ✓',
+        tone: 'success',
+      })
+      setFormOpen(false)
+      setEditing(null)
+    },
+    onError: (err: any) => {
+      const msg = err?.response?.data?.message || 'Erreur lors de la création.'
+      toast.push({ title: msg, tone: 'error' })
     },
   })
 
   const mUpdate = useMutation({
     mutationFn: async (vals: ReservationInput) => {
-      const { acompte, ...payload } = vals as any
-      const res = await api.put(`/reservations/${editing?.id}`, payload)
+      const { acompte, id, ...payload } = vals as any
+      const res = await api.put(`/reservations/${id}`, payload)
       return { reservation: res.data?.data ?? res.data, acompte }
     },
-    onSuccess: async ({ reservation, acompte }) => {
-      try {
-        qc.invalidateQueries({ queryKey: ['reservations'] })
-        if (reservation?.id) qc.invalidateQueries({ queryKey: ['reservation', reservation.id] })
-
-        const montant = Number(acompte?.montant || 0)
-        if (reservation?.id && montant > 0) {
-          const date_facture = new Date().toISOString().slice(0, 10)
-          const factureRes = await api.post(`/reservations/${reservation.id}/factures`, { date_facture })
-          const facture = factureRes.data?.data ?? factureRes.data
-
-          try {
-            await api.post(`/factures/${facture.id}/emettre`)
-          } catch {}
-
-          await api.post(`/factures/${facture.id}/paiements`, {
-            montant,
-            mode_paiement: acompte?.mode_paiement || 'especes',
-            reference: acompte?.reference || null,
-            statut: 'recu',
-          })
-
-          toast.push({ title: 'Réservation mise à jour + acompte enregistré', tone: 'success' })
-        } else {
-          toast.push({ title: 'Réservation mise à jour', tone: 'success' })
-        }
-
-        setFormOpen(false)
-        setEditing(null)
-      } catch (err: any) {
-        const msg = err?.response?.data?.message || "Réservation modifiée, mais échec lors de l'enregistrement de l'acompte."
-        toast.push({ title: msg, tone: 'error' })
-      } finally {
-        qc.invalidateQueries({ queryKey: ['reservations'] })
-        if (reservation?.id) qc.invalidateQueries({ queryKey: ['reservation', reservation.id] })
-      }
+    onSuccess: async ({ reservation: updated, acompte }) => {
+      try { await applyAcompte(updated?.id, acompte) } catch { /* acompte optionnel */ }
+      qc.invalidateQueries({ queryKey: ['reservations'] })
+      toast.push({
+        title: Number(acompte?.montant || 0) > 0
+          ? 'Réservation mise à jour + acompte enregistré ✓'
+          : 'Réservation mise à jour ✓',
+        tone: 'success',
+      })
+      setFormOpen(false)
+      setEditing(null)
     },
     onError: (err: any) => {
       const msg = err?.response?.data?.message || 'Erreur lors de la mise à jour.'
@@ -423,64 +384,99 @@ export default function ReservationsPage() {
     },
   })
 
+  // Helper : applique une mise à jour optimiste sur toutes les queries 'reservations'
+  // — l'UI réagit instantanément, rollback automatique si l'API échoue.
+  const optimisticPatch = (id: number, patch: Partial<{ statut: string }> | 'delete') => {
+    const previousSnapshots: Array<[any, any]> = []
+    const queries = qc.getQueryCache().findAll({ queryKey: ['reservations'] })
+    queries.forEach((query) => {
+      const old: any = qc.getQueryData(query.queryKey)
+      if (!old) return
+      previousSnapshots.push([query.queryKey, old])
+      const rowsKey =
+        Array.isArray(old?.data) ? 'data'
+        : Array.isArray(old?.items) ? 'items'
+        : null
+      if (!rowsKey) return
+      const updated = {
+        ...old,
+        [rowsKey]: patch === 'delete'
+          ? old[rowsKey].filter((r: any) => r.id !== id)
+          : old[rowsKey].map((r: any) => (r.id === id ? { ...r, ...patch } : r)),
+      }
+      qc.setQueryData(query.queryKey, updated)
+    })
+    return previousSnapshots
+  }
+
+  const rollback = (snapshots: Array<[any, any]>) => {
+    snapshots.forEach(([key, data]) => qc.setQueryData(key, data))
+  }
+
   const mDelete = useMutation({
     mutationFn: (id: number) => api.delete(`/reservations/${id}`),
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: ['reservations'] })
+      return { snapshots: optimisticPatch(id, 'delete') }
+    },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['reservations'] })
       toast.push({ title: 'Réservation supprimée', tone: 'success' })
     },
-    onError: (err: any) => {
+    onError: (err: any, _id, ctx: any) => {
+      if (ctx?.snapshots) rollback(ctx.snapshots)
       const msg = err?.response?.data?.message || 'Erreur lors de la suppression.'
       toast.push({ title: msg, tone: 'error' })
     },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['reservations'] }),
   })
 
   const mConfirmer = useMutation({
     mutationFn: (id: number) => api.post(`/reservations/${id}/confirmer`),
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: ['reservations'] })
+      return { snapshots: optimisticPatch(id, { statut: 'confirmee' }) }
+    },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['reservations'] })
-      if (detailsOpen && viewingId) qc.invalidateQueries({ queryKey: ['reservation', viewingId] })
       toast.push({ title: 'Réservation confirmée', tone: 'success' })
     },
-    onError: (err: any) => {
-      qc.invalidateQueries({ queryKey: ['reservations'] })
+    onError: (err: any, _id, ctx: any) => {
+      if (ctx?.snapshots) rollback(ctx.snapshots)
       const msg = err?.response?.data?.message || 'Impossible de confirmer.'
       toast.push({ title: msg, tone: 'error' })
     },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['reservations'] }),
   })
 
   const mAnnuler = useMutation({
     mutationFn: (id: number) => api.post(`/reservations/${id}/annuler`),
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: ['reservations'] })
+      return { snapshots: optimisticPatch(id, { statut: 'annulee' }) }
+    },
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['reservations'] })
-      if (detailsOpen && viewingId) qc.invalidateQueries({ queryKey: ['reservation', viewingId] })
       toast.push({ title: 'Réservation annulée', tone: 'success' })
     },
-    onError: (err: any) => {
-      qc.invalidateQueries({ queryKey: ['reservations'] })
+    onError: (err: any, _id, ctx: any) => {
+      if (ctx?.snapshots) rollback(ctx.snapshots)
       const msg = err?.response?.data?.message || "Impossible d'annuler."
       toast.push({ title: msg, tone: 'error' })
     },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['reservations'] }),
   })
 
-  const isPendingMutation =
-    mCreate.isPending || mUpdate.isPending || mDelete.isPending || mConfirmer.isPending || mAnnuler.isPending
+  const isPendingMutation = mDelete.isPending || mConfirmer.isPending || mAnnuler.isPending || mCreate.isPending || mUpdate.isPending
 
   // -------------------- actions helpers --------------------
   const openCreate = () => {
     setEditing(null)
+    setPrefillCreate(clientIdFilter ? ({ client_id: clientIdFilter } as Partial<ReservationInput>) : undefined)
     setFormOpen(true)
   }
 
-  const openEdit = async (r: any) => {
-    try {
-      const { data } = await api.get(`/reservations/${r.id}`)
-      const full = data?.data ?? data
-      setEditing(full)
-      setFormOpen(true)
-    } catch {
-      toast.push({ title: 'Impossible de charger la réservation pour modification.', tone: 'error' })
-    }
+  const openEdit = (r: any) => {
+    setEditing(r)
+    setPrefillCreate(undefined)
+    setFormOpen(true)
   }
 
   const openDetails = (rOrId: any) => {
@@ -489,11 +485,10 @@ export default function ReservationsPage() {
       toast.push({ title: "Impossible d'ouvrir: ID manquant.", tone: 'error' })
       return
     }
-    setViewingId(Number(id))
-    setDetailsOpen(true)
+    navigate(`/reservations/${id}`)
   }
 
-  const askDelete = (id: number) => setConfirmDelete({ open: true, id })
+  const askDelete = (id: number, name: string) => setConfirmDelete({ open: true, id, name })
   const doDelete = () => {
     if (confirmDelete.id) mDelete.mutate(confirmDelete.id)
     setConfirmDelete({ open: false })
@@ -503,8 +498,6 @@ export default function ReservationsPage() {
     setClientIdFilter(clientId)
     setClientLabelFilter(label || `Client #${clientId}`)
     setPage(1)
-    setDetailsOpen(false)
-    setViewingId(null)
     toast.push({ title: 'Historique du client affiché', tone: 'info' })
   }
 
@@ -517,330 +510,320 @@ export default function ReservationsPage() {
   // -------------------- render --------------------
   return (
     <div className="space-y-4">
-      {/* Header */}
+      {/* ── Header ── */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-xl font-semibold">Réservations</h2>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            Gérez les réservations (vol, hôtel, voiture, événement, forfait).
-          </p>
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-100 dark:bg-sky-500/15 text-sky-600 dark:text-sky-400">
+            <CalendarCheck size={16} />
+          </div>
+          <div>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 leading-tight">Réservations</h2>
+            <p className="text-xs text-gray-400 dark:text-gray-500 leading-tight">
+              {paged.total ?? 0} réservation{(paged.total ?? 0) > 1 ? 's' : ''}
+            </p>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
           <button
             type="button"
             onClick={refreshList}
-            className="btn bg-gray-200 dark:bg-white/10 inline-flex items-center gap-2"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-white/5 px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/10 transition-colors whitespace-nowrap"
             title="Actualiser la liste"
           >
-            <RefreshCw size={16} className={q.isFetching ? 'animate-spin' : ''} />
+            <RefreshCw size={14} className={q.isFetching ? 'animate-spin' : ''} />
             Actualiser
           </button>
 
-          <button className="btn-primary" onClick={openCreate} type="button">
-            <Plus size={16} className="mr-2" /> Nouvelle réservation
+          <div className="flex items-center rounded-lg overflow-hidden border border-emerald-600/70 shadow-sm">
+            <select
+              value={exportMonth}
+              onChange={(e) => setExportMonth(e.target.value)}
+              className="h-full px-2 py-1.5 text-sm bg-white dark:bg-[#151d2e] text-gray-700 dark:text-gray-200 border-r border-emerald-600/70 focus:outline-none cursor-pointer"
+              title="Mois à exporter"
+            >
+              <option value="">Tous les mois</option>
+              {monthOptions.map((m) => (
+                <option key={m.value} value={m.value}>{m.label}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const res = await api.get('/reservations/export', {
+                    params: {
+                      search:    debouncedSearch   || undefined,
+                      type:      type              || undefined,
+                      month:     exportMonth       || undefined,
+                      client_id: clientIdFilter    || undefined,
+                    },
+                    responseType: 'blob',
+                  })
+                  const url = URL.createObjectURL(res.data)
+                  const a   = document.createElement('a')
+                  a.href    = url
+                  a.download = `reservations-${exportMonth || 'complet'}.xlsx`
+                  a.click()
+                  URL.revokeObjectURL(url)
+                } catch {
+                  toast.push({ title: "Erreur lors de l'export Excel.", tone: 'error' })
+                }
+              }}
+              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium inline-flex items-center gap-1.5 transition-colors whitespace-nowrap"
+              title="Télécharger le fichier Excel"
+            >
+              <FileSpreadsheet size={14} />
+              Exporter
+            </button>
+          </div>
+
+          <button
+            type="button"
+            className="inline-flex whitespace-nowrap items-center gap-1.5 rounded-lg bg-[var(--ut-orange)] px-3 py-1.5 text-sm font-semibold text-white hover:brightness-95 transition shadow-sm"
+            onClick={openCreate}
+          >
+            <Plus size={15} /> Nouvelle réservation
           </button>
         </div>
       </div>
 
-      {/* Chip filtre historique client */}
-      {clientIdFilter ? (
-        <div className="flex items-center gap-2">
-          <div className="inline-flex items-center gap-2 rounded-full border border-black/10 dark:border-white/10 bg-white dark:bg-panel px-3 py-1.5 text-sm shadow-soft">
-            <span className="text-gray-600 dark:text-gray-300">Historique :</span>
-            <span className="font-medium">{clientLabelFilter || `Client #${clientIdFilter}`}</span>
-            <button
-              type="button"
-              className="btn px-2 bg-gray-200 dark:bg-white/10"
-              onClick={clearClientHistoryFilter}
-              title="Réinitialiser"
-            >
-              <X size={14} />
+      {/* Chip filtre client actif */}
+      {clientIdFilter && (
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex items-center gap-2 rounded-full border border-sky-200 dark:border-sky-500/30 bg-sky-50 dark:bg-sky-500/10 px-3 py-1.5 text-sm">
+            <span className="text-sky-600 dark:text-sky-400 font-medium">
+              Historique : {clientLabelFilter || `Client #${clientIdFilter}`}
+            </span>
+            <button type="button" className="text-sky-400 hover:text-sky-700 dark:hover:text-sky-200" onClick={clearClientHistoryFilter} title="Retirer">
+              <X size={13} />
             </button>
           </div>
         </div>
-      ) : null}
+      )}
 
       {/* Filters */}
       <FiltersBar>
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_220px_220px] gap-3 w-full">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1fr_180px_180px] gap-3 w-full">
+          {/* Recherche */}
           <div>
-            <label className="label">Recherche</label>
+            <label className="label flex items-center gap-1.5">
+              Recherche
+              {q.isFetching && !q.isLoading && <Loader2 size={12} className="animate-spin text-gray-400" />}
+            </label>
             <div className="relative">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
               <input
-                className="input pl-9 pr-10"
+                className="input !pl-9 pr-10"
                 placeholder="Référence, client…"
                 value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value)
-                  setPage(1)
-                }}
+                onChange={(e) => { setSearch(e.target.value); setPage(1) }}
               />
               {search ? (
                 <button
                   type="button"
                   className="absolute right-2 top-1/2 -translate-y-1/2 btn px-2 bg-gray-200 dark:bg-white/10"
-                  onClick={() => {
-                    setSearch('')
-                    setPage(1)
-                  }}
+                  onClick={() => { setSearch(''); setPage(1) }}
                   title="Effacer"
-                >
-                  ×
-                </button>
+                ><X size={13} /></button>
               ) : null}
             </div>
           </div>
 
+          {/* Type */}
           <div>
             <label className="label">Type</label>
-            <select
-              className="input"
-              value={type}
-              onChange={(e) => {
-                setType(e.target.value)
-                setPage(1)
-              }}
-            >
-              <option value="">Tous</option>
-              <option value="billet_avion">Billet d’avion</option>
+            <select className="input" value={type} onChange={(e) => { setType(e.target.value); setPage(1) }}>
+              <option value="">Tous les types</option>
+              <option value="billet_avion">Billet d'avion</option>
               <option value="hotel">Hôtel</option>
               <option value="voiture">Voiture</option>
               <option value="evenement">Événement</option>
               <option value="forfait">Forfait</option>
+              <option value="assurance">Assurance</option>
+              <option value="evisa">E-Visa</option>
             </select>
           </div>
 
+          {/* Mois */}
           <div>
             <label className="label">Mois</label>
-            <select
-              className="input"
-              value={month}
-              onChange={(e) => {
-                setMonth(e.target.value)
-                setPage(1)
-              }}
-            >
-              <option value="">Tous</option>
+            <select className="input" value={month} onChange={(e) => { setMonth(e.target.value); setPage(1) }}>
+              <option value="">Tous les mois</option>
               {monthOptions.map((m) => (
-                <option key={m.value} value={m.value}>
-                  {m.label}
-                </option>
+                <option key={m.value} value={m.value}>{m.label}</option>
               ))}
             </select>
           </div>
         </div>
       </FiltersBar>
 
-      {/* Table */}
-      {q.isLoading ? (
-        <div>Chargement…</div>
-      ) : q.isError ? (
-        <div className="text-red-600">Erreur lors du chargement.</div>
-      ) : (
-        <div className="w-full overflow-x-auto rounded-2xl shadow-soft bg-white dark:bg-panel border border-black/5 dark:border-white/10">
-          <T className="w-full">
-            <thead className="bg-gray-100/70 dark:bg-white/5">
-              <tr>
-                <Th>date</Th>
-                <Th>Référence</Th>
-                <Th className="hidden lg:table-cell">Type</Th>
-                <Th>Client</Th>
-                <Th className="hidden lg:table-cell">Statut</Th>
-                <Th className="hidden lg:table-cell">Paiement</Th>
-                <Th className="hidden lg:table-cell">Total</Th>
-                <Th className="text-center">Actions</Th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {rows.length === 0 ? (
-                <tr>
-                  <Td colSpan={8} className="text-center py-6 text-gray-500">
-                    Aucune réservation trouvée
-                  </Td>
-                </tr>
-              ) : (
-                rows.map((r: any) => {
-                  const clientName =
-                    [r?.client?.prenom, r?.client?.nom].filter(Boolean).join(' ') || r?.client?.nom || '—'
-
-                  const canConfirm = r?.statut === 'en_attente' || r?.statut === 'brouillon'
-                  const canCancel = r?.statut === 'en_attente' || r?.statut === 'brouillon'
-                  const factureId = pickFactureIdFromReservation(r)
-
-                  const actions = [
-                    { label: 'Voir', icon: <Eye size={16} />, onClick: () => openDetails(r) },
-                    { label: 'Modifier', icon: <Pencil size={16} />, onClick: () => openEdit(r) },
-                    {
-                      label: 'Devis (PDF)',
-                      icon: <FileText size={16} />,
-                      disabled: false,
-                      onClick: () => downloadDevisPdf(r.id),
-                    },
-                    {
-                      label: 'Télécharger facture',
-                      icon: <Receipt size={16} />,
-                      disabled: isPendingMutation,
-                      onClick: async () => {
-                        try {
-                          const id = factureId ?? (await getFactureIdForReservation(r.id))
-                          if (!id) {
-                            toast.push({ title: 'Aucune facture trouvée pour cette réservation.', tone: 'error' })
-                            return
-                          }
-                          await downloadFacturePdf(id, `facture-${id}.pdf`)
-                        } catch (err: any) {
-                          const msg = err?.response?.data?.message || 'Impossible de télécharger la facture.'
-                          toast.push({ title: msg, tone: 'error' })
-                        }
-                      },
-                    },
-                    {
-                      label: 'Confirmer',
-                      icon: <CheckCircle2 size={16} />,
-                      disabled: !canConfirm || isPendingMutation,
-                      onClick: () => mConfirmer.mutate(r.id),
-                    },
-                    {
-                      label: 'Annuler',
-                      icon: <XCircle size={16} />,
-                      disabled: !canCancel || isPendingMutation,
-                      onClick: () => mAnnuler.mutate(r.id),
-                    },
-                    ...(isAdmin
-                      ? [
-                          {
-                            label: 'Supprimer',
-                            icon: <Trash2 size={16} />,
-                            tone: 'danger' as const,
-                            disabled: isPendingMutation,
-                            onClick: () => askDelete(r.id),
-                          },
-                        ]
-                      : []),
-                  ]
-
-                  return (
-                    <tr
-                      key={r.id}
-                      className="border-t border-black/5 dark:border-white/10 hover:bg-black/[0.02] dark:hover:bg-white/[0.03]"
-                    >
-                      <Td className="hidden lg:table-cell whitespace-nowrap">
-                        {r.created_at ? new Date(r.created_at).toLocaleDateString() : '—'}
-                      </Td>
-
-                      <Td className="font-medium whitespace-nowrap">{r.reference ?? `#${r.id}`}</Td>
-                      <Td className="hidden lg:table-cell">{r.type_label ?? r.type ?? '—'}</Td>
-
-                      <Td className="min-w-0">
-                        <div className="truncate">{clientName}</div>
-
-                        <div className="mt-1 text-xs text-gray-500 lg:hidden flex flex-wrap items-center gap-2">
-                          <span className="capitalize">{r.type_label ?? r.type ?? '—'}</span>
-                          <span>•</span>
-                          <StatusBadge statut={r.statut} />
-                          <span>•</span>
-                          <PaymentBadge reservation={r} />
-                          <span>•</span>
-                          <span className="font-medium">{money(r.montant_total, 'XOF')}</span>
-                        </div>
-                      </Td>
-
-                      <Td className="hidden lg:table-cell">
-                        <StatusBadge statut={r.statut} />
-                      </Td>
-
-                      <Td className="hidden lg:table-cell">
-                        <PaymentBadge reservation={r} />
-                      </Td>
-
-                      <Td className="hidden lg:table-cell">{money(r.montant_total, 'XOF')}</Td>
-
-                      <Td className="text-center whitespace-nowrap">
-                        <ActionsMenu items={actions} />
-                      </Td>
-                    </tr>
-                  )
-                })
-              )}
-            </tbody>
-          </T>
+      {/* ── Table / Liste ── */}
+      <div className="rounded-xl border border-black/[0.05] dark:border-white/[0.07] bg-white dark:bg-[#151d2e] shadow-sm overflow-hidden">
+        {/* List header — visible sm+, colonnes apparaissent progressivement */}
+        <div className="hidden sm:grid sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_72px] md:grid-cols-[minmax(0,2.2fr)_100px_minmax(0,1.4fr)_minmax(0,1fr)_72px] items-center gap-3 px-4 py-2 border-b border-black/[0.04] dark:border-white/[0.05] bg-gray-50/80 dark:bg-white/[0.02]">
+          <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider">Client · Référence</span>
+          <span className="hidden md:inline text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Date</span>
+          <span className="hidden md:inline text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Total · Paiement</span>
+          <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Statut</span>
+          <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Actions</span>
         </div>
-      )}
 
-      <Pagination page={paged.page} lastPage={paged.lastPage} total={paged.total} onPage={setPage} />
-
-      {/* Details Modal */}
-      <Modal open={detailsOpen} onClose={closeDetails} title="Détails de la réservation" widthClass="max-w-[1450px]">
-        <div className={['h-[90vh] lg:h-[98vh]', 'flex flex-col', 'min-w-0'].join(' ')}>
-          <div className="sticky top-0 z-10 -mx-4 -mt-4 mb-3 px-4 pt-4 pb-3 bg-white dark:bg-panel border-b border-black/5 dark:border-white/10">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="text-sm font-semibold truncate">
-                  {viewingReservation?.reference ? `Réservation ${viewingReservation.reference}` : 'Réservation'}
-                </div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-                  {viewingReservation?.client
-                    ? `${viewingReservation.client?.prenom ?? ''} ${viewingReservation.client?.nom ?? ''}`.trim()
-                    : ''}
-                </div>
+        {q.isLoading ? (
+          <div className="divide-y divide-black/[0.04] dark:divide-white/[0.04]">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-3 px-4 py-2.5">
+                <div className="h-7 w-7 rounded-full bg-black/[0.06] dark:bg-white/[0.06] animate-pulse shrink-0" />
+                <div className="flex-1 h-3 rounded bg-black/[0.06] dark:bg-white/[0.06] animate-pulse" />
+                <div className="h-3 w-20 rounded bg-black/[0.04] dark:bg-white/[0.04] animate-pulse" />
+                <div className="h-3 w-24 rounded bg-black/[0.04] dark:bg-white/[0.04] animate-pulse" />
+                <div className="h-5 w-16 rounded-full bg-black/[0.04] dark:bg-white/[0.04] animate-pulse" />
               </div>
-
-              <button type="button" className="btn px-3 bg-gray-200 dark:bg-white/10" onClick={closeDetails}>
-                Fermer
-              </button>
+            ))}
+          </div>
+        ) : q.isError ? (
+          <div className="flex flex-col items-center justify-center py-14 text-center px-5">
+            <div className="h-12 w-12 rounded-2xl bg-red-50 dark:bg-red-500/10 flex items-center justify-center mb-3">
+              <AlertCircle size={20} className="text-red-400" />
             </div>
+            <div className="text-sm font-semibold text-gray-500">Impossible de charger les réservations</div>
           </div>
+        ) : rows.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-center px-5">
+            <div className="h-14 w-14 rounded-2xl bg-gray-100 dark:bg-white/[0.05] flex items-center justify-center mb-4">
+              <CalendarCheck size={22} className="text-gray-300 dark:text-gray-600" />
+            </div>
+            <div className="text-base font-semibold text-gray-500 dark:text-gray-400">Aucune réservation trouvée</div>
+            <div className="text-sm text-gray-400 dark:text-gray-600 mt-1 mb-4">
+              Commencez par créer une réservation
+            </div>
+            <button
+              onClick={openCreate}
+              className="inline-flex whitespace-nowrap items-center gap-2 rounded-lg bg-[var(--ut-orange)] px-3 py-1.5 text-sm font-semibold text-white hover:brightness-95 transition"
+            >
+              <Plus size={15} /> Nouvelle réservation
+            </button>
+          </div>
+        ) : (
+          <div className="divide-y divide-black/[0.04] dark:divide-white/[0.04]">
+            {rows.map((r: any) => {
+              const clientName = [r?.client?.prenom, r?.client?.nom].filter(Boolean).join(' ') || r?.client?.nom || '—'
+              const ini = initialsFromClient(r?.client)
+              const tMeta = typeMetaFor(r?.type)
+              const pay = computePaymentSummaryFromReservation(r)
+              const totalDisplay = Number(r?.montant_total ?? pay.total ?? 0)
 
-          <div className="flex-1 overflow-auto pr-1">
-            {viewingId ? (
-              qDetails.isLoading ? (
-                <div className="py-6 text-sm text-gray-500">Chargement des détails…</div>
-              ) : qDetails.isError ? (
-                <div className="py-6 text-sm text-red-600">Impossible de charger les détails.</div>
-              ) : viewingReservation ? (
-                <ReservationDetails
-                  reservation={viewingReservation}
-                  onViewClientHistory={viewClientHistory as any}
-                  onChanged={() => {
-                    // ✅ après paiement / facture: refresh détails + liste
-                    qDetails.refetch()
-                    refreshList()
-                  }}
-                />
-              ) : (
-                <div className="py-6 text-sm text-gray-500">Aucune donnée.</div>
+              const canConfirm = r?.statut === 'en_attente' || r?.statut === 'brouillon'
+              const canCancel  = r?.statut !== 'annulee' && r?.statut !== 'annulée'
+              const factureId = pickFactureIdFromReservation(r)
+
+              const actions = [
+                { label: 'Voir', icon: <Eye size={15} />, onClick: () => openDetails(r) },
+                { label: 'Modifier', icon: <Pencil size={15} />, onClick: () => openEdit(r) },
+                { label: 'Devis (PDF)', icon: <FileText size={15} />, onClick: () => downloadDevisPdf(r.id) },
+                {
+                  label: 'Télécharger facture',
+                  icon: <Receipt size={15} />,
+                  disabled: isPendingMutation,
+                  onClick: async () => {
+                    try {
+                      const id = factureId ?? (await getFactureIdForReservation(r.id))
+                      if (!id) {
+                        toast.push({ title: 'Aucune facture trouvée pour cette réservation.', tone: 'error' })
+                        return
+                      }
+                      await downloadFacturePdf(id, `facture-${id}.pdf`)
+                    } catch (err: any) {
+                      toast.push({ title: err?.response?.data?.message || 'Impossible de télécharger la facture.', tone: 'error' })
+                    }
+                  },
+                },
+                { label: 'Confirmer', icon: <CheckCircle2 size={15} />, disabled: !canConfirm || isPendingMutation, onClick: () => mConfirmer.mutate(r.id) },
+                { label: 'Annuler avec pénalité', icon: <AlertTriangle size={15} />, disabled: !canCancel || isPendingMutation, onClick: () => setPenaltyTarget(r) },
+                { label: 'Annuler (simple)',  icon: <XCircle size={15} />, disabled: !canCancel || isPendingMutation, onClick: () => mAnnuler.mutate(r.id) },
+                ...(isAdmin ? [{ label: 'Supprimer', icon: <Trash2 size={15} />, tone: 'danger' as const, disabled: isPendingMutation, onClick: () => askDelete(r.id, r.reference ?? `#${r.id}`) }] : []),
+              ]
+
+              const payTone = pay.tone === 'green' ? 'bg-emerald-500' : pay.tone === 'amber' ? 'bg-amber-500' : 'bg-gray-300 dark:bg-gray-600'
+
+              return (
+                <div
+                  key={r.id}
+                  onClick={() => navigate(`/reservations/${r.id}`)}
+                  className="group flex flex-col sm:grid sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_72px] md:grid-cols-[minmax(0,2.2fr)_100px_minmax(0,1.4fr)_minmax(0,1fr)_72px] sm:items-center gap-1 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-2 hover:bg-gray-50/80 dark:hover:bg-white/[0.025] transition-colors cursor-pointer"
+                >
+                  {/* Cell 1 : Avatar + client + (Actions inline on mobile, hidden on sm+) */}
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${tMeta.bg} ${tMeta.text}`} title={tMeta.label}>
+                      {tMeta.icon}
+                    </div>
+                    <div className="min-w-0 flex-1 flex items-baseline gap-1.5 overflow-hidden">
+                      <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate" title={clientName}>{clientName}</span>
+                      <span className="text-[11px] text-gray-400 dark:text-gray-500 truncate hidden lg:inline min-w-0" title={r.reference || `#${r.id}`}>
+                        · {r.reference || `#${r.id}`}
+                      </span>
+                    </div>
+                    {/* Actions à droite sur mobile uniquement */}
+                    <div onClick={(e) => e.stopPropagation()} className="flex sm:hidden shrink-0 -mr-1">
+                      <ActionsMenu items={actions} />
+                    </div>
+                  </div>
+
+                  {/* Cell 2 : Date */}
+                  <div className="hidden md:block text-sm text-gray-600 dark:text-gray-300 tabular-nums truncate text-center">
+                    {r.created_at ? new Date(r.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'}
+                  </div>
+
+                  {/* Cell 3 : Montant + mini progress (progress visible lg+) */}
+                  <div className="hidden md:flex items-center justify-center gap-2 min-w-0">
+                    <div className="text-sm font-bold text-gray-900 dark:text-gray-100 tabular-nums shrink-0">
+                      {totalDisplay.toLocaleString('fr-FR')}<span className="text-[10px] font-normal text-gray-400 ml-1">XOF</span>
+                    </div>
+                    {pay.total > 0 && (
+                      <div className="hidden lg:flex items-center gap-2 shrink-0">
+                        <div className="h-1 w-10 rounded-full bg-black/[0.06] dark:bg-white/[0.08] overflow-hidden">
+                          <div className={`h-full rounded-full ${payTone}`} style={{ width: `${pay.percent}%` }} />
+                        </div>
+                        <span className="text-[10px] text-gray-400 tabular-nums">{pay.percent}%</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Cell 4 : Statut (sm+) */}
+                  <div className="hidden sm:flex items-center justify-center">
+                    <StatusBadge statut={r.statut} />
+                  </div>
+
+                  {/* Mobile summary (xs only) — type, statut, date, montant alignés */}
+                  <div className="flex sm:hidden flex-wrap items-center justify-between gap-2 pl-9">
+                    <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap ${tMeta.bg} ${tMeta.text}`}>
+                        {tMeta.icon}<span>{tMeta.label}</span>
+                      </span>
+                      <StatusBadge statut={r.statut} />
+                      {r.created_at && (
+                        <span className="text-[10px] text-gray-400 tabular-nums">
+                          {new Date(r.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-sm font-bold text-gray-900 dark:text-gray-100 tabular-nums shrink-0">
+                      {totalDisplay.toLocaleString('fr-FR')} <span className="text-[10px] font-normal text-gray-400">XOF</span>
+                    </span>
+                  </div>
+
+                  {/* Cell 5 : Actions (sm+ only — sur mobile elles sont inline cell 1) */}
+                  <div onClick={(e) => e.stopPropagation()} className="hidden sm:flex justify-center">
+                    <ActionsMenu items={actions} />
+                  </div>
+                </div>
               )
-            ) : (
-              <div className="py-6 text-sm text-gray-500">ID manquant.</div>
-            )}
+            })}
           </div>
-        </div>
-      </Modal>
+        )}
+      </div>
 
-      {/* Form Modal */}
-      <Modal
-        open={formOpen}
-        onClose={() => {
-          setFormOpen(false)
-          setEditing(null)
-          setPrefillCreate(null)
-        }}
-        title={editing ? 'Modifier réservation' : 'Nouvelle réservation'}
-        widthClass="max-w-[1300px]"
-      >
-        <ReservationsForm
-          defaultValues={(editing ?? (prefillCreate ?? undefined)) as any}
-          onSubmit={(vals) => (editing ? mUpdate.mutate(vals) : mCreate.mutate(vals))}
-          onCancel={() => {
-            setFormOpen(false)
-            setEditing(null)
-          }}
-          submitting={mCreate.isPending || mUpdate.isPending}
-        />
-      </Modal>
+      <Pagination page={paged.page} lastPage={paged.lastPage} total={paged.total} perPage={perPage} onPage={setPage} />
 
       <ConfirmDialog
         open={confirmDelete.open}
@@ -848,7 +831,36 @@ export default function ReservationsPage() {
         onConfirm={doDelete}
         title="Supprimer cette réservation ?"
         message="Cette action est irréversible."
+        itemName={confirmDelete.name}
       />
+
+      {/* ── Modal formulaire ── */}
+      <Modal
+        open={formOpen}
+        onClose={() => { setFormOpen(false); setEditing(null) }}
+        title={editing ? 'Modifier la réservation' : 'Nouvelle réservation'}
+        widthClass="max-w-4xl"
+      >
+        <ReservationsForm
+          defaultValues={editing ?? prefillCreate}
+          submitting={mCreate.isPending || mUpdate.isPending}
+          onCancel={() => { setFormOpen(false); setEditing(null) }}
+          onSubmit={(vals) => {
+            if (editing) mUpdate.mutate({ ...vals, id: editing.id } as any)
+            else         mCreate.mutate(vals)
+          }}
+        />
+      </Modal>
+
+      {/* Modal pénalité (annuler avec pénalité) */}
+      <PenaltyModal
+        open={!!penaltyTarget}
+        onClose={() => setPenaltyTarget(null)}
+        reservation={penaltyTarget || { id: 0 }}
+        withCancel={true}
+        onSuccess={() => q.refetch()}
+      />
+
     </div>
   )
 }

@@ -21,7 +21,7 @@ export const Th: React.FC<React.ThHTMLAttributes<HTMLTableCellElement>> = ({
   ...rest
 }) => (
   <th
-    className={`p-2 text-left text-gray-600 dark:text-gray-300 ${className}`}
+    className={`px-3 py-2 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide ${className}`}
     {...rest}
   >
     {children}
@@ -34,7 +34,7 @@ export const Td: React.FC<React.TdHTMLAttributes<HTMLTableCellElement>> = ({
   className = '',
   ...rest
 }) => (
-  <td className={`p-2 ${className}`} {...rest}>
+  <td className={`px-3 py-2 ${className}`} {...rest}>
     {children}
   </td>
 )

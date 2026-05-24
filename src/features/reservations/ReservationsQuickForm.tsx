@@ -3,6 +3,7 @@ import { useForm, useFieldArray } from 'react-hook-form'
 import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { useQuery } from '@tanstack/react-query'
+import { Loader2 } from 'lucide-react'
 import { api } from '../../lib/axios'
 
 // ----------------- Schéma aligné backend -----------------
@@ -141,7 +142,7 @@ export const ReservationsQuickForm: React.FC<{
   }
 
   return (
-    <form onSubmit={handleSubmit(submit)} className="space-y-4">
+    <form onSubmit={handleSubmit(submit)} className="space-y-3">
       {/* Entête */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <div>
@@ -299,7 +300,10 @@ export const ReservationsQuickForm: React.FC<{
       {/* Actions */}
       <div className="flex justify-end gap-2 pt-2">
         <button type="button" className="btn bg-gray-200 dark:bg-white/10" onClick={onCancel}>Annuler</button>
-        <button type="submit" disabled={submitting} className="btn-primary">Enregistrer</button>
+        <button type="submit" disabled={submitting} className="btn-primary inline-flex items-center gap-2">
+          {submitting && <Loader2 size={15} className="animate-spin" />}
+          Enregistrer
+        </button>
       </div>
     </form>
   )

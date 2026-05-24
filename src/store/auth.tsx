@@ -2,7 +2,16 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from '
 import { api } from '../lib/axios'
 
 type Role = 'admin' | 'employee' | string
-type User = { id: number; nom?: string; prenom?: string; email: string; role?: Role; actif?: number | boolean }
+type User = {
+  id: number
+  nom?: string
+  prenom?: string
+  email: string
+  role?: Role
+  actif?: number | boolean
+  must_change_password?: boolean
+  last_login_at?: string | null
+}
 
 type AuthCtx = {
   user: User | null

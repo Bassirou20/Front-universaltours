@@ -5,22 +5,35 @@ import { api } from '../../lib/axios'
 import { useDebouncedValue, normalizeList, fetchAllPaged } from '../../lib/helpers'
 import { Modal } from '../../ui/Modal'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
-import { T, Th, Td } from '../../ui/Table'
 import { Pagination } from '../../ui/Pagination'
 import { FiltersBar } from '../../ui/FiltersBar'
 import { useToast } from '../../ui/Toasts'
 import { useAuth } from '../../store/auth'
 import { Badge } from '../../ui/Badge'
 import { ActionsMenu } from '../../ui/ActionsMenu'
-import { Eye, Pencil, Trash2, CheckCircle2, XCircle, Plus, Search, Package } from 'lucide-react'
+import {
+  Eye,
+  Pencil,
+  Trash2,
+  CheckCircle2,
+  XCircle,
+  Plus,
+  Search,
+  Package,
+  FolderGit2,
+  User,
+  Users,
+  Home,
+  CalendarDays,
+  Loader2,
+} from 'lucide-react'
+import { SkeletonCards } from '../../ui/Skeleton'
 
 import { ForfaitsForm, type ForfaitFormVals } from './ForfaitsForm'
 import { ForfaitDetails, type ForfaitModel } from './ForfaitDetails'
 
 // ---------------- Types ----------------
 export type Forfait = ForfaitModel
-
-type BadgeTone = 'gray' | 'blue' | 'green' | 'red' | 'amber' | 'purple'
 
 // ---------------- Helpers ----------------
 const TYPE_LABEL: Record<Forfait['type'], string> = {
@@ -46,6 +59,36 @@ const toFormDefaults = (f?: Forfait) =>
       }
     : undefined
 
+// Per-type visual config
+const TYPE_CONFIG: Record<
+  Forfait['type'],
+  {
+    accent: string
+    iconBg: string
+    iconColor: string
+    icon: React.ReactNode
+  }
+> = {
+  solo: {
+    accent: 'bg-gradient-to-r from-sky-400 to-sky-600',
+    iconBg: 'bg-sky-100 dark:bg-sky-500/15',
+    iconColor: 'text-sky-600 dark:text-sky-400',
+    icon: <User size={18} />,
+  },
+  couple: {
+    accent: 'bg-gradient-to-r from-rose-400 to-rose-600',
+    iconBg: 'bg-rose-100 dark:bg-rose-500/15',
+    iconColor: 'text-rose-600 dark:text-rose-400',
+    icon: <Users size={18} />,
+  },
+  famille: {
+    accent: 'bg-gradient-to-r from-emerald-400 to-emerald-600',
+    iconBg: 'bg-emerald-100 dark:bg-emerald-500/15',
+    iconColor: 'text-emerald-600 dark:text-emerald-400',
+    icon: <Home size={18} />,
+  },
+}
+
 // ---------------- Component ----------------
 export default function ForfaitsPage() {
   const qc = useQueryClient()
@@ -70,6 +113,7 @@ export default function ForfaitsPage() {
   const [editing, setEditing] = useState<Forfait | null>(null)
   const [selected, setSelected] = useState<Forfait | null>(null)
   const [confirmId, setConfirmId] = useState<number | null>(null)
+  const [confirmName, setConfirmName] = useState<string | undefined>(undefined)
 
   // Events (produits type "evenement")
   const qEvents = useQuery({
@@ -141,6 +185,10 @@ export default function ForfaitsPage() {
     return filtered.slice(start, start + perPage)
   }, [filtered, page, perPage])
 
+  // Summary counts
+  const activeCount = useMemo(() => allItems.filter((f) => !!f.actif).length, [allItems])
+  const inactiveCount = allItems.length - activeCount
+
   // Mutations
   const mCreate = useMutation({
     mutationFn: (vals: ForfaitFormVals) => api.post('/forfaits', vals),
@@ -148,9 +196,9 @@ export default function ForfaitsPage() {
       await qc.invalidateQueries({ queryKey: ['forfaits-all'] })
       setFormOpen(false)
       setEditing(null)
-      toast.push({ title: 'Forfait créé', tone: 'success' })
+      toast.push({ title: 'Forfait cree', tone: 'success' })
     },
-    onError: (e: any) => toast.push({ title: e?.response?.data?.message || 'Erreur création', tone: 'error' }),
+    onError: (e: any) => toast.push({ title: e?.response?.data?.message || 'Erreur creation', tone: 'error' }),
   })
 
   const mUpdate = useMutation({
@@ -159,16 +207,16 @@ export default function ForfaitsPage() {
       await qc.invalidateQueries({ queryKey: ['forfaits-all'] })
       setFormOpen(false)
       setEditing(null)
-      toast.push({ title: 'Forfait mis à jour', tone: 'success' })
+      toast.push({ title: 'Forfait mis a jour', tone: 'success' })
     },
-    onError: (e: any) => toast.push({ title: e?.response?.data?.message || 'Erreur mise à jour', tone: 'error' }),
+    onError: (e: any) => toast.push({ title: e?.response?.data?.message || 'Erreur mise a jour', tone: 'error' }),
   })
 
   const mDelete = useMutation({
     mutationFn: (id: number) => api.delete(`/forfaits/${id}`),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ['forfaits-all'] })
-      toast.push({ title: 'Forfait supprimé', tone: 'success' })
+      toast.push({ title: 'Forfait supprime', tone: 'success' })
     },
     onError: (e: any) => toast.push({ title: e?.response?.data?.message || 'Erreur suppression', tone: 'error' }),
   })
@@ -178,7 +226,7 @@ export default function ForfaitsPage() {
       api.patch(`/forfaits/${id}`, { actif: actif ? 1 : 0 }),
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ['forfaits-all'] })
-      toast.push({ title: 'Statut mis à jour', tone: 'success' })
+      toast.push({ title: 'Statut mis a jour', tone: 'success' })
     },
     onError: (e: any) =>
       toast.push({ title: e?.response?.data?.message || 'Impossible de modifier le statut', tone: 'error' }),
@@ -186,13 +234,13 @@ export default function ForfaitsPage() {
 
   // Handlers
   const openCreate = () => {
-    if (!isAdmin) return toast.push({ title: 'Accès réservé admin', tone: 'error' })
+    if (!isAdmin) return toast.push({ title: 'Acces reserve admin', tone: 'error' })
     setEditing(null)
     setFormOpen(true)
   }
 
   const openEdit = (f: Forfait) => {
-    if (!isAdmin) return toast.push({ title: 'Accès réservé admin', tone: 'error' })
+    if (!isAdmin) return toast.push({ title: 'Acces reserve admin', tone: 'error' })
     setEditing(f)
     setFormOpen(true)
   }
@@ -215,35 +263,51 @@ export default function ForfaitsPage() {
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h2 className="text-lg font-semibold flex items-center gap-2">
-            <Package size={18} /> Forfaits
-          </h2>
-          <div className="text-xs text-gray-500 dark:text-gray-400">
-            {total} forfait{total > 1 ? 's' : ''}{!isAdmin ? ' • lecture seule' : ''}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 shrink-0">
+            <FolderGit2 size={16} />
+          </div>
+          <div className="min-w-0">
+            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 leading-tight">Forfaits</h2>
+            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+              <p className="text-xs text-gray-400 dark:text-gray-500 leading-tight">
+                {total} forfait{total > 1 ? 's' : ''}
+              </p>
+              {allItems.length > 0 && (
+                <>
+                  <Badge tone="green">{activeCount} actif{activeCount > 1 ? 's' : ''}</Badge>
+                  {inactiveCount > 0 && (
+                    <Badge tone="red">{inactiveCount} inactif{inactiveCount > 1 ? 's' : ''}</Badge>
+                  )}
+                </>
+              )}
+            </div>
           </div>
         </div>
 
         <button
-          className="btn-primary inline-flex items-center gap-2"
+          className="inline-flex whitespace-nowrap items-center gap-1.5 rounded-lg bg-[var(--ut-orange)] px-3 py-1.5 text-sm font-semibold text-white hover:brightness-95 transition shadow-sm disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
           onClick={openCreate}
           disabled={!isAdmin}
           title={!isAdmin ? 'Réservé admin' : 'Créer un forfait'}
         >
-          <Plus size={16} /> Nouveau
+          <Plus size={15} /> Nouveau forfait
         </button>
       </div>
 
       {/* Filters */}
       <FiltersBar>
         <div>
-          <label className="label">Recherche</label>
+          <label className="label flex items-center gap-1.5">
+            Recherche
+            {qAll.isFetching && !qAll.isLoading && <Loader2 size={12} className="animate-spin text-gray-400" />}
+          </label>
           <div className="relative">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 opacity-60" />
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             <input
-              className="input pl-9"
-              placeholder="Nom, description, événement…"
+              className="input !pl-9"
+              placeholder="Nom, description, evenement..."
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value)
@@ -287,7 +351,7 @@ export default function ForfaitsPage() {
         </div>
 
         <div>
-          <label className="label">Événement</label>
+          <label className="label">Evenement</label>
           <select
             className="input"
             value={eventId}
@@ -307,146 +371,170 @@ export default function ForfaitsPage() {
 
         <div className="flex items-end">
           <button type="button" className="btn bg-gray-200 dark:bg-white/10 w-full" onClick={clearFilters}>
-            Réinitialiser
+            Reinitialiser
           </button>
         </div>
       </FiltersBar>
 
       {/* Content */}
       {qAll.isLoading ? (
-        <div className="card">
-          <div className="h-4 w-40 bg-black/10 dark:bg-white/10 rounded" />
-          <div className="h-8 w-64 bg-black/10 dark:bg-white/10 rounded mt-3" />
-          <div className="h-3 w-56 bg-black/10 dark:bg-white/10 rounded mt-2" />
-        </div>
+        <SkeletonCards count={6} />
       ) : qAll.isError ? (
         <div className="card">
           <div className="text-red-600 font-semibold">Impossible de charger les forfaits</div>
-          <div className="text-sm text-gray-500 mt-1">Vérifie l’endpoint /forfaits et ton authentification.</div>
+          <div className="text-sm text-gray-500 mt-1">Verifiez l'endpoint /forfaits et votre authentification.</div>
         </div>
       ) : total === 0 ? (
-        <div className="card">
-          <div className="font-semibold">Aucun forfait</div>
-          <div className="text-sm text-gray-500 mt-1">
-            {search || fType || actif !== 'all' || eventId !== 'all'
-              ? 'Aucun résultat avec ces filtres.'
-              : 'Commence par créer un forfait pour un événement.'}
+        <div className="flex flex-col items-center justify-center py-16 gap-4">
+          <div className="flex items-center justify-center bg-gray-100 dark:bg-white/5 rounded-2xl h-16 w-16">
+            <Package size={28} className="text-gray-400" />
           </div>
-          {isAdmin ? (
-            <div className="mt-3">
-              <button className="btn-primary inline-flex items-center gap-2" onClick={openCreate}>
-                <Plus size={16} /> Créer un forfait
-              </button>
-            </div>
-          ) : null}
+          <div className="text-center">
+            <p className="font-semibold text-gray-700 dark:text-gray-300">Aucun forfait</p>
+            <p className="text-sm text-gray-400 mt-1">
+              {search || fType || actif !== 'all' || eventId !== 'all'
+                ? 'Aucun resultat avec ces filtres.'
+                : 'Commencez par creer un forfait pour un evenement.'}
+            </p>
+          </div>
+          {isAdmin && (
+            <button className="inline-flex whitespace-nowrap items-center gap-2 rounded-xl px-3 py-1.5 text-sm font-medium text-white bg-[var(--ut-orange)] hover:opacity-90 transition-opacity" onClick={openCreate}>
+              <Plus size={16} /> Creer un forfait
+            </button>
+          )}
         </div>
       ) : (
-        <div className="rounded-2xl border border-black/5 dark:border-white/10 overflow-hidden overflow-x-auto">
-          <T>
-            <thead className="bg-gray-100/70 dark:bg-white/5">
-              <tr>
-                <Th>Nom</Th>
-                <Th className="hidden lg:table-cell">Événement</Th>
-                <Th className="hidden lg:table-cell">Type</Th>
-                <Th className="hidden lg:table-cell">Capacité</Th>
-                <Th>Tarifs</Th>
-                <Th className="hidden lg:table-cell">Statut</Th>
-                <Th className="w-[64px]"></Th>
-              </tr>
-            </thead>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {pageItems.map((f) => {
+            const eventName = eventMap.get(Number(f.event_id)) || `#${f.event_id}`
+            const isActive = !!f.actif
+            const cfg = TYPE_CONFIG[f.type]
+            const canMutate = isAdmin && !mSetActif.isPending && !mDelete.isPending
 
-            <tbody>
-              {pageItems.map((f) => {
-                const eventName = eventMap.get(Number(f.event_id)) || `#${f.event_id}`
-                const isActive = !!f.actif
-                const statusTone: BadgeTone = isActive ? 'green' : 'red'
+            const actions = [
+              {
+                label: 'Supprimer',
+                icon: <Trash2 size={16} />,
+                tone: 'danger' as const,
+                onClick: () => { setConfirmId(f.id); setConfirmName(f.nom) },
+                disabled: !isAdmin,
+              },
+            ]
 
-                const canMutate = isAdmin && !mSetActif.isPending && !mDelete.isPending
+            return (
+              <div
+                key={f.id}
+                className="rounded-2xl border border-black/5 dark:border-white/[0.08] bg-white dark:bg-[#151d2e] shadow-sm hover:shadow-md transition-all group overflow-hidden flex flex-col"
+              >
+                {/* Accent bar */}
+                <div className={`h-[3px] w-full ${cfg.accent}`} />
 
-                const actions = [
-                  { label: 'Voir', icon: <Eye size={16} />, onClick: () => openDetails(f) },
-
-                  {
-                    label: 'Modifier',
-                    icon: <Pencil size={16} />,
-                    onClick: () => openEdit(f),
-                    disabled: !isAdmin,
-                  },
-
-                  {
-                    label: isActive ? 'Désactiver' : 'Activer',
-                    icon: isActive ? <XCircle size={16} /> : <CheckCircle2 size={16} />,
-                    onClick: () => mSetActif.mutate({ id: f.id, actif: !isActive }),
-                    disabled: !canMutate,
-                  },
-
-                  {
-                    label: 'Supprimer',
-                    icon: <Trash2 size={16} />,
-                    tone: 'danger' as const,
-                    onClick: () => setConfirmId(f.id),
-                    disabled: !isAdmin,
-                  },
-                ]
-
-                return (
-                  <tr key={f.id} className="border-t border-black/5 dark:border-white/10">
-                    <Td>
-                      <div className="font-medium">{f.nom}</div>
-
-                      {/* Mobile summary */}
-                      <div className="text-xs text-gray-500 lg:hidden mt-1 flex flex-wrap gap-2">
-                        <Badge tone="blue">{TYPE_LABEL[f.type]}</Badge>
-                        <Badge tone="gray">{eventName}</Badge>
-                        <Badge tone={statusTone as any}>{isActive ? 'Actif' : 'Inactif'}</Badge>
+                {/* Body */}
+                <div className="p-4 flex-1 flex flex-col">
+                  {/* Top row */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className={`flex items-center justify-center rounded-lg h-9 w-9 ${cfg.iconBg} ${cfg.iconColor}`}>
+                        {cfg.icon}
                       </div>
-
-                      {f.description ? (
-                        <div className="text-xs text-gray-500 truncate max-w-[520px]">{f.description}</div>
-                      ) : (
-                        <div className="text-xs text-gray-400">—</div>
-                      )}
-                    </Td>
-
-                    <Td className="hidden lg:table-cell">
-                      <span className="text-sm">{eventName}</span>
-                    </Td>
-
-                    <Td className="hidden lg:table-cell">
                       <Badge tone="blue">{TYPE_LABEL[f.type]}</Badge>
-                    </Td>
+                    </div>
+                    <Badge tone={isActive ? 'green' : 'red'}>{isActive ? 'Actif' : 'Inactif'}</Badge>
+                  </div>
 
-                    <Td className="hidden lg:table-cell">{f.nombre_max_personnes}</Td>
+                  {/* Name */}
+                  <p className="font-semibold text-gray-900 dark:text-gray-100 mt-3 leading-snug">{f.nom}</p>
 
-                    <Td>
-                      {f.type === 'famille' ? (
-                        <span>
-                          {moneyXof(f.prix_adulte)} / Adulte — {moneyXof(f.prix_enfant)} / Enfant
-                        </span>
-                      ) : (
-                        <span>{moneyXof(f.prix)}</span>
-                      )}{' '}
-                      <span className="text-xs text-gray-500">XOF</span>
-                    </Td>
+                  {/* Event */}
+                  <div className="flex items-center gap-1 mt-1">
+                    <CalendarDays size={11} className="text-gray-400 shrink-0" />
+                    <span className="text-xs text-gray-400 truncate">{eventName}</span>
+                  </div>
 
-                    <Td className="hidden lg:table-cell">
-                      <Badge tone={statusTone as any}>{isActive ? 'Actif' : 'Inactif'}</Badge>
-                    </Td>
+                  {/* Description */}
+                  {f.description && (
+                    <p className="text-xs text-gray-400 truncate mt-0.5">{f.description}</p>
+                  )}
 
-                    <Td>
-                      <div className="flex justify-end">
-                        <ActionsMenu items={actions} />
+                  {/* Price section */}
+                  <div className="mt-3 pt-3 border-t border-black/5 dark:border-white/[0.06]">
+                    {f.type === 'famille' ? (
+                      <div className="space-y-0.5">
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-xs text-gray-500 dark:text-gray-400 w-14">Adulte :</span>
+                          <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                            {moneyXof(f.prix_adulte)}
+                          </span>
+                          <span className="text-xs text-gray-400">XOF</span>
+                        </div>
+                        <div className="flex items-baseline gap-1">
+                          <span className="text-xs text-gray-500 dark:text-gray-400 w-14">Enfant :</span>
+                          <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                            {moneyXof(f.prix_enfant)}
+                          </span>
+                          <span className="text-xs text-gray-400">XOF</span>
+                        </div>
                       </div>
-                    </Td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </T>
+                    ) : (
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-lg font-bold text-gray-900 dark:text-gray-50">
+                          {moneyXof(f.prix)}
+                        </span>
+                        <span className="text-xs text-gray-400">XOF</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Capacity */}
+                  {f.nombre_max_personnes != null && (
+                    <div className="flex items-center gap-1 mt-2">
+                      <Users size={11} className="text-gray-400 shrink-0" />
+                      <span className="text-xs text-gray-400">Max {f.nombre_max_personnes} pers.</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer */}
+                <div className="px-4 py-1.5 border-t border-black/5 dark:border-white/[0.08] flex items-center gap-1">
+                  <button
+                    onClick={() => openDetails(f)}
+                    className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
+                  >
+                    <Eye size={13} /> Voir
+                  </button>
+
+                  <button
+                    onClick={() => openEdit(f)}
+                    disabled={!isAdmin}
+                    className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Pencil size={13} /> Modifier
+                  </button>
+
+                  <button
+                    onClick={() => mSetActif.mutate({ id: f.id, actif: !isActive })}
+                    disabled={!canMutate}
+                    className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                      isActive
+                        ? 'text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10'
+                        : 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-500/10'
+                    }`}
+                  >
+                    {isActive ? <XCircle size={13} /> : <CheckCircle2 size={13} />}
+                    {isActive ? 'Desactiver' : 'Activer'}
+                  </button>
+
+                  <div className="ml-auto">
+                    <ActionsMenu items={actions} />
+                  </div>
+                </div>
+              </div>
+            )
+          })}
         </div>
       )}
 
-      <Pagination page={page} lastPage={lastPage} total={total} onPage={setPage} />
+      <Pagination page={page} lastPage={lastPage} total={total} perPage={perPage} onPage={setPage} />
 
       {/* DETAILS */}
       <Modal
@@ -455,7 +543,7 @@ export default function ForfaitsPage() {
           setDetailsOpen(false)
           setSelected(null)
         }}
-        title="Détails du forfait"
+        title="Details du forfait"
         widthClass="max-w-3xl"
       >
         {selected ? (
@@ -472,7 +560,7 @@ export default function ForfaitsPage() {
             }
           />
         ) : (
-          <div className="py-6 text-sm text-gray-500">Aucune donnée.</div>
+          <div className="py-4 text-sm text-gray-500">Aucune donnee.</div>
         )}
       </Modal>
 
@@ -501,11 +589,13 @@ export default function ForfaitsPage() {
       <ConfirmDialog
         open={confirmId !== null}
         title="Supprimer ce forfait ?"
-        message="Cette action est irréversible."
-        onCancel={() => setConfirmId(null)}
+        message="Cette action est irreversible."
+        itemName={confirmName}
+        onCancel={() => { setConfirmId(null); setConfirmName(undefined) }}
         onConfirm={() => {
           if (confirmId != null) mDelete.mutate(confirmId)
           setConfirmId(null)
+          setConfirmName(undefined)
         }}
       />
     </div>
