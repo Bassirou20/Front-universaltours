@@ -22,14 +22,21 @@ export default defineConfig({
         //   (un changement de page n'invalide plus tous les vendors).
         manualChunks: (id) => {
           if (!id.includes('node_modules')) return undefined
+          // ⚠️ react + react-dom + scheduler DOIVENT être dans le MÊME chunk,
+          // sinon React-DOM se charge avant React et plante avec :
+          // "Cannot read properties of undefined (reading '__SECRET_INTERNALS...')"
+          // Ce check doit aussi être AVANT react-router (qui contient "react").
+          if (
+            id.includes('node_modules/react-dom/') ||
+            id.includes('node_modules/react/') ||
+            id.includes('node_modules/scheduler/')
+          ) return 'vendor-react'
           if (id.includes('react-router')) return 'vendor-router'
           if (id.includes('@tanstack/react-query')) return 'vendor-query'
           if (id.includes('lucide-react')) return 'vendor-icons'
           if (id.includes('recharts') || id.includes('d3-')) return 'vendor-charts'
           if (id.includes('react-hook-form') || id.includes('zod') || id.includes('@hookform')) return 'vendor-forms'
           if (id.includes('axios')) return 'vendor-http'
-          if (id.includes('react-dom')) return 'vendor-react-dom'
-          if (id.includes('node_modules/react/')) return 'vendor-react'
           // tout le reste des dépendances tierces
           return 'vendor-misc'
         },
