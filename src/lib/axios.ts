@@ -6,6 +6,10 @@ export const API_BASE =
 
 export const api = axios.create({
   baseURL: API_BASE,
+  headers: {
+    "Content-Type": "application/json",
+    "Accept": "application/json",
+  },
 })
 
 const STORAGE_KEY = "ut_auth"
