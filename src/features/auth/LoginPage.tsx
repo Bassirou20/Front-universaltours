@@ -4,6 +4,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { Eye, EyeOff, Loader2, ChevronRight, Mail, Lock } from 'lucide-react'
 import { useAuth } from '../../store/auth'
 import { api } from '../../lib/axios'
+import logo from '../../assets/brand/itineo-mark.svg'
 
 type FormVals = {
   email: string
@@ -44,10 +45,15 @@ export default function LoginPage() {
       return
     }
     // Si le user a un mdp temporaire, on le redirige vers /profile
+    // Si super_admin, on l'envoie sur sa page Plateforme (et pas dans une agence)
     try {
       const { data: me } = await api.get('/me')
       if (me?.must_change_password) {
         navigate('/profile?force_pwd=1', { replace: true })
+        return
+      }
+      if (me?.role === 'super_admin') {
+        navigate('/super-admin/dashboard', { replace: true })
         return
       }
     } catch { /* ignore */ }
@@ -63,19 +69,11 @@ export default function LoginPage() {
 
           {/* Brand */}
           <div className="flex items-center gap-2.5 mb-10">
-            <div className="w-[34px] h-[34px] rounded-[9px] bg-gradient-to-br from-[#F07A1C] to-[#c84a14] text-white font-bold text-[13px] flex items-center justify-center">
-              UT
-            </div>
+            <img src={logo} alt="" className="h-[34px] w-auto" />
             <div className="leading-tight">
-              <div className="text-[14px] font-bold text-[#1a1916]">Universal Tours</div>
-              <div className="text-[10.5px] text-[#9e9d99] mt-px">Agence de voyage</div>
+              <div className="text-[14px] font-bold text-[#1a1916]">Itinéo</div>
+              <div className="text-[11px] text-[#6b6a66] mt-px">Gestion d'agence de voyage</div>
             </div>
-          </div>
-
-          {/* Badge */}
-          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#F07A1C]/10 text-[#F07A1C] text-[10.5px] font-semibold mb-3.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#F07A1C]" />
-            Plateforme v1.0
           </div>
 
           {/* Title */}
@@ -104,7 +102,7 @@ export default function LoginPage() {
                 <input
                   className="w-full pl-[34px] pr-3 py-2.5 border border-black/[0.14] rounded-lg bg-white text-[13px] text-[#1a1916] placeholder:text-[#9e9d99] outline-none transition focus:border-[#1a1916] focus:ring-[3px] focus:ring-black/[0.08]"
                   type="email"
-                  placeholder="prenom@universal-tours.com"
+                  placeholder="prenom@itineo.com"
                   autoComplete="email"
                   {...register('email', {
                     required: 'Email requis',
@@ -177,8 +175,15 @@ export default function LoginPage() {
               )}
             </button>
 
-            <div className="text-center text-[10.5px] text-[#9e9d99] pt-4 inline-flex w-full items-center justify-center gap-1">
-              <span>© {new Date().getFullYear()} Universal Tours</span>
+            <div className="text-center text-[12px] text-[#555450] pt-4">
+              Pas encore de compte ?{' '}
+              <Link to="/signup" className="text-[#052468] font-semibold hover:underline">
+                Créer mon agence — 14j gratuits
+              </Link>
+            </div>
+
+            <div className="text-center text-[10.5px] text-[#9e9d99] pt-3 inline-flex w-full items-center justify-center gap-1">
+              <span>© {new Date().getFullYear()} Itinéo</span>
               <span>·</span>
               <span>Connexion sécurisée</span>
               <Lock size={9} className="text-[#9e9d99]" />
@@ -218,7 +223,7 @@ export default function LoginPage() {
               <span className="w-2 h-2 rounded-full bg-[#27c93f]" />
             </div>
             <div className="flex-1 bg-white border border-black/[0.08] rounded-md px-2.5 py-0.5 text-center font-mono text-[10px] text-[#9e9d99] mx-2">
-              app.universal-tours.com/dashboard
+              app.itineo.com/dashboard
             </div>
           </div>
 
@@ -226,9 +231,7 @@ export default function LoginPage() {
           <div className="grid grid-cols-[60px_1fr] min-h-[320px]">
             {/* Mini sidebar */}
             <div className="bg-[#fafafa] border-r border-black/[0.08] py-3 px-1.5 flex flex-col items-center gap-1.5">
-              <div className="w-7 h-7 rounded-md bg-gradient-to-br from-[#F07A1C] to-[#c84a14] text-white font-bold text-[10px] flex items-center justify-center mb-2">
-                UT
-              </div>
+              <img src={logo} alt="" className="w-7 h-7 mb-2" />
               {/* Active item */}
               <div className="w-[30px] h-[30px] rounded-[7px] bg-[#1a1916] text-white flex items-center justify-center">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" stroke="currentColor"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>

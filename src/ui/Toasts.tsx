@@ -108,7 +108,7 @@ const ToastItem = React.forwardRef<HTMLDivElement, { toast: Toast; onRemove: (id
 
         {/* Texte */}
         <div className="min-w-0 flex-1">
-          <span className={`mb-1 inline-block rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest ${cfg.badgeBg}`}>
+          <span className={`mb-1 inline-block rounded-full px-2 py-0.5 text-[12px] font-bold uppercase tracking-widest ${cfg.badgeBg}`}>
             {cfg.badge}
           </span>
           <p className="text-sm font-semibold leading-snug text-white">

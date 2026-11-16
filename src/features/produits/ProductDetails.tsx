@@ -1,3 +1,4 @@
+import { formatDateLong } from '../../lib/helpers'
 import React from 'react'
 import { Plane, Building2, Car, CalendarDays, CircleDollarSign, PencilLine, CheckCircle2, XCircle, type LucideIcon } from 'lucide-react'
 
@@ -51,8 +52,6 @@ const TYPE_CONFIG: Record<ProductDetailsModel['type'], TypeEntry> = {
   },
 }
 
-const fmt = (d?: string) =>
-  d ? new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' }) : '—'
 
 export const ProductDetails: React.FC<{
   produit: ProductDetailsModel
@@ -146,11 +145,11 @@ export const ProductDetails: React.FC<{
           <div className="space-y-1.5 text-sm">
             <div className="flex justify-between">
               <span className="text-gray-500 dark:text-gray-400">Créé le</span>
-              <span className="font-medium text-gray-900 dark:text-gray-100">{fmt(produit.created_at)}</span>
+              <span className="font-medium text-gray-900 dark:text-gray-100">{formatDateLong(produit.created_at)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-500 dark:text-gray-400">Modifié le</span>
-              <span className="font-medium text-gray-900 dark:text-gray-100">{fmt(produit.updated_at)}</span>
+              <span className="font-medium text-gray-900 dark:text-gray-100">{formatDateLong(produit.updated_at)}</span>
             </div>
           </div>
         </div>
@@ -171,7 +170,7 @@ export const ProductDetails: React.FC<{
       </div>
 
       {/* ── Footer ── */}
-      <div className="flex justify-between text-[11px] text-gray-400 px-1">
+      <div className="flex justify-between text-[12px] text-gray-400 px-1">
         <span>ID #{produit.id}</span>
         {produit.type === 'evenement' && (
           <span className="text-emerald-600 dark:text-emerald-400 font-medium">

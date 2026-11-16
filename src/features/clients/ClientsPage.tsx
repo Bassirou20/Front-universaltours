@@ -46,7 +46,7 @@ function KpiCard({
       <div className="p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <div className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{label}</div>
+            <div className="text-[12px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{label}</div>
             <div className="mt-1.5 text-xl font-bold text-gray-900 dark:text-gray-50">{value}</div>
             {sub && <div className="mt-1 text-xs text-gray-400">{sub}</div>}
           </div>
@@ -256,13 +256,13 @@ export default function ClientsPage() {
       </div>
 
       {/* ── KPI Cards (compact 1-line) ── */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className={`grid grid-cols-1 gap-3 ${debouncedSearch ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
         <div className="flex items-center justify-between gap-3 rounded-xl border border-black/[0.05] dark:border-white/[0.07] bg-white dark:bg-[#151d2e] px-3 py-2 shadow-sm">
           <div className="flex items-center gap-2 min-w-0">
             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-sky-100 dark:bg-sky-500/15">
               <Users size={14} className="text-sky-600 dark:text-sky-400" />
             </div>
-            <div className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide truncate">
+            <div className="text-[12px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide truncate">
               Total clients
             </div>
           </div>
@@ -271,26 +271,28 @@ export default function ClientsPage() {
           </div>
         </div>
 
+        {debouncedSearch && (
         <div className="flex items-center justify-between gap-3 rounded-xl border border-black/[0.05] dark:border-white/[0.07] bg-white dark:bg-[#151d2e] px-3 py-2 shadow-sm">
           <div className="flex items-center gap-2 min-w-0">
             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-100 dark:bg-violet-500/15">
               <Search size={14} className="text-violet-600 dark:text-violet-400" />
             </div>
-            <div className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide truncate">
-              {debouncedSearch ? 'Résultats' : 'Page actuelle'}
+            <div className="text-[12px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide truncate">
+              Résultats
             </div>
           </div>
           <div className="text-sm font-bold text-gray-900 dark:text-gray-100 tabular-nums">
-            {debouncedSearch ? totalFiltered : rows.length}
+            {totalFiltered}
           </div>
         </div>
+        )}
 
         <div className="flex items-center justify-between gap-3 rounded-xl border border-black/[0.05] dark:border-white/[0.07] bg-white dark:bg-[#151d2e] px-3 py-2 shadow-sm">
           <div className="flex items-center gap-2 min-w-0">
             <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-500/15">
               <UserPlus size={14} className="text-emerald-600 dark:text-emerald-400" />
             </div>
-            <div className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide truncate">
+            <div className="text-[12px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide truncate">
               Nouveaux ce mois
             </div>
           </div>
@@ -337,11 +339,11 @@ export default function ClientsPage() {
       <div className="rounded-xl border border-black/[0.05] dark:border-white/[0.07] bg-white dark:bg-[#151d2e] shadow-sm overflow-hidden">
         {/* List header */}
         <div className="hidden sm:grid sm:grid-cols-[minmax(0,2fr)_minmax(0,1.5fr)_72px] md:grid-cols-[minmax(0,1.5fr)_minmax(0,2fr)_minmax(0,1.2fr)_minmax(0,1fr)_72px] items-center gap-3 px-4 py-2 border-b border-black/[0.04] dark:border-white/[0.05] bg-gray-50/80 dark:bg-white/[0.02]">
-          <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider">Client</span>
-          <span className="hidden md:inline text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Email</span>
-          <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Téléphone</span>
-          <span className="hidden md:inline text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Pays</span>
-          <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Actions</span>
+          <span className="text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider">Client</span>
+          <span className="hidden md:inline text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Email</span>
+          <span className="text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Téléphone</span>
+          <span className="hidden md:inline text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Pays</span>
+          <span className="text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Actions</span>
         </div>
 
         {q.isLoading ? (
@@ -398,7 +400,7 @@ export default function ClientsPage() {
                 >
                   {/* Cell 1 : Avatar + nom (+ actions inline sur mobile) */}
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300 text-[10px] font-bold">
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300 text-[12px] font-bold">
                       {initials}
                     </div>
                     <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate flex-1 min-w-0" title={name}>{name}</span>

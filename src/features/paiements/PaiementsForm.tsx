@@ -1,3 +1,4 @@
+import { money } from '../../lib/helpers'
 import React, { useEffect, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
@@ -87,7 +88,6 @@ const STATUT_LABEL: Record<string, string> = {
 }
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
-const money = (n: any) => `${Number(n || 0).toLocaleString('fr-FR')} XOF`
 
 // ─── Progress bar ─────────────────────────────────────────────────────────────
 
@@ -115,7 +115,7 @@ function FactureProgress({
           />
         )}
       </div>
-      <div className="flex items-center justify-between text-[11px] text-gray-500 dark:text-gray-400">
+      <div className="flex items-center justify-between text-[12px] text-gray-500 dark:text-gray-400">
         <div className="flex items-center gap-2">
           <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
           Payé {money(paid)}
@@ -306,7 +306,7 @@ export const PaiementsForm: React.FC<{
               type="button"
               onClick={() => setValue('mode_paiement', m.value as any, { shouldValidate: true })}
               className={[
-                'flex flex-col items-center gap-1.5 rounded-xl border py-1.5 px-1.5 text-[11px] font-semibold transition-all',
+                'flex flex-col items-center gap-1.5 rounded-xl border py-1.5 px-1.5 text-[12px] font-semibold transition-all',
                 currentMode === m.value ? m.activeClass : idleClass,
               ].join(' ')}
             >

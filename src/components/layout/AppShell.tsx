@@ -3,6 +3,9 @@ import { Outlet } from 'react-router-dom'
 import { Sidebar } from '../../ui/Sidebar'
 import { Topbar } from '../../ui/Topbar'
 import { SidebarContext } from '../../store/sidebar'
+import { useAgency } from '../../hooks/useAgency'
+import { ImpersonateBanner } from '../../ui/ImpersonateBanner'
+import { AppNotices } from '../../ui/AppNotices'
 
 // Below this width, sidebar auto-collapses to give content more room
 // 1440 covers most laptops (1366×768, 1440×900) where the 260px sidebar would
@@ -10,6 +13,10 @@ import { SidebarContext } from '../../store/sidebar'
 const AUTO_COLLAPSE_BREAKPOINT = 1440
 
 export const AppShell: React.FC = () => {
+  // Charge les infos de l'agence et applique la couleur primaire en CSS var globale
+  // (le hook gère lui-même l'application du --brand-primary sur :root).
+  useAgency()
+
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   // User preference: null = no override (use auto), true/false = manual override
@@ -77,6 +84,12 @@ export const AppShell: React.FC = () => {
 
         {/* ── Colonne droite : topbar + contenu ── */}
         <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+          {/* Banner d'impersonation (visible uniquement pour super_admin "entré" dans une agence) */}
+          <ImpersonateBanner />
+
+          {/* Un seul bandeau à la fois : essai expiré > essai urgent > email > essai en cours */}
+          <AppNotices />
+
           <Topbar onOpenSidebar={() => setSidebarOpen(true)} />
 
           <main className="flex-1 overflow-y-auto">

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
-import { api } from '../lib/axios'
+import { api, setImpersonatedAgency } from '../lib/axios'
 
 type Role = 'admin' | 'employee' | string
 type User = {
@@ -17,6 +17,13 @@ type AuthCtx = {
   user: User | null
   token: string | null
   login: (email: string, password: string) => Promise<boolean>
+  /**
+   * Établit une session authentifiée sans passer par /login.
+   * Utilisé après l'auto-inscription (signup) : le backend renvoie déjà
+   * un token + user, on les injecte dans l'état React + axios + localStorage,
+   * puis on navigue côté client (pas de window.location.href = reload).
+   */
+  setSession: (token: string, user: User | null) => void
   logout: () => Promise<void>
   refreshMe: () => Promise<User | null>
 }
@@ -32,13 +39,33 @@ function setAxiosAuthHeader(token?: string | null) {
   }
 }
 
+// Lit la session stockée de façon SYNCHRONE (avant le premier rendu).
+// Évite la race condition où l'AuthGuard voit token=null au reload
+// (ex: après signup via window.location.href) et redirige à tort.
+function readStoredAuth(): { token: string | null; user: User | null } {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY)
+    if (!saved) return { token: null, user: null }
+    const parsed = JSON.parse(saved)
+    return { token: parsed?.token ?? null, user: parsed?.user ?? null }
+  } catch {
+    return { token: null, user: null }
+  }
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null)
-  const [token, setToken] = useState<string | null>(null)
+  // Initialisation synchrone depuis localStorage → token dispo dès le 1er rendu
+  const initial = readStoredAuth()
+  const [user, setUser] = useState<User | null>(initial.user)
+  const [token, setToken] = useState<string | null>(initial.token)
+
+  // Pose le header axios immédiatement (avant tout rendu enfant)
+  if (initial.token) setAxiosAuthHeader(initial.token)
 
   const clearClientAuth = () => {
     localStorage.removeItem(STORAGE_KEY)
     localStorage.removeItem('auth_token')
+    setImpersonatedAgency(null)
     setUser(null)
     setToken(null)
     setAxiosAuthHeader(null)
@@ -61,32 +88,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }
 
-  // Au chargement : restaurer token + header, puis récupérer /me
+  // Au chargement : le token est déjà restauré synchroniquement (voir useState ci-dessus).
+  // Ici on rafraîchit juste l'utilisateur depuis l'API (role, actif, email_verified_at, etc.).
   useEffect(() => {
-    const saved = localStorage.getItem(STORAGE_KEY)
-    if (!saved) {
+    if (initial.token) {
+      refreshMe()
+    } else {
       setAxiosAuthHeader(null)
-      return
-    }
-
-    try {
-      const parsed = JSON.parse(saved)
-      const t: string | null = parsed?.token ?? null
-      const u: User | null = parsed?.user ?? null
-
-      setToken(t)
-      setUser(u)
-      setAxiosAuthHeader(t)
-
-      // si on a un token, on rafraîchit l'utilisateur depuis l'API (role, actif, etc.)
-      if (t) {
-        refreshMe()
-      }
-    } catch {
-      clearClientAuth()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Injecte une session déjà obtenue (ex: réponse du signup) dans l'état.
+  // Synchrone : le token est dispo dès le prochain rendu → l'AuthGuard
+  // laisse passer immédiatement, sans rechargement de page.
+  const setSession = (t: string, u: User | null): void => {
+    setToken(t)
+    setUser(u)
+    setAxiosAuthHeader(t)
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ token: t, user: u }))
+  }
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
@@ -137,7 +158,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     window.location.href = '/login'
   }
 
-  const value = useMemo(() => ({ user, token, login, logout, refreshMe }), [user, token])
+  const value = useMemo(() => ({ user, token, login, setSession, logout, refreshMe }), [user, token])
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

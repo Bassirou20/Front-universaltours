@@ -24,7 +24,7 @@ const TYPE_OPTIONS = [
 const inputBase = 'w-full rounded-xl border border-black/[0.08] dark:border-white/[0.09] bg-white dark:bg-[#111827] px-3 py-1.5 text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 focus:outline-none focus:border-sky-400 dark:focus:border-sky-500 focus:ring-2 focus:ring-sky-400/20 transition-all'
 
 const SectionTitle: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <p className="text-[11px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500 mb-3">
+  <p className="text-[12px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-500 mb-3">
     {children}
   </p>
 )

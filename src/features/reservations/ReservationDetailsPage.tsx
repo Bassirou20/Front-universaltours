@@ -19,6 +19,7 @@ import {
 } from 'lucide-react'
 import PenaltyModal from './PenaltyModal'
 import WhatsAppSendModal from '../../ui/WhatsAppSendModal'
+import EvisaDocumentsPanel from './EvisaDocumentsPanel'
 
 /* ─── helpers ──────────────────────────────────────────────────────────────── */
 function cx(...cls: Array<string | false | undefined | null>) {
@@ -313,7 +314,7 @@ function Card({ title, icon, right, children, className }: {
 function Field({ label, value, icon }: { label: string; value: React.ReactNode; icon?: React.ReactNode }) {
   return (
     <div className="rounded-xl bg-gray-50 dark:bg-white/[0.04] border border-black/[0.04] dark:border-white/[0.06] px-4 py-3">
-      <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+      <div className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
         {icon && <span>{icon}</span>}
         {label}
       </div>
@@ -351,6 +352,7 @@ function PayModeIcon({ mode }: { mode: string }) {
   if (m === 'virement') return <Building size={14} />
   if (m === 'carte') return <CreditCard size={14} />
   if (m === 'cheque' || m === 'chèque') return <LandmarkIcon size={14} />
+  if (m === 'avoir') return <PiggyBank size={14} />
   return <CreditCard size={14} />
 }
 
@@ -410,6 +412,27 @@ export default function ReservationDetailsPage() {
   const devise   = String(r?.devise || 'XOF')
   const pay      = useMemo(() => computePay(r), [r])
   const flight   = r?.flight_details ?? r?.flightDetails ?? null
+
+  /* ── Solde d'avoir du client (pour le règlement « Avoir ») ── */
+  const avoirQ = useQuery({
+    queryKey: ['client-solde-avoir', client?.id],
+    queryFn: async () => {
+      const { data } = await api.get(`/clients/${client.id}/solde-avoir`)
+      return Number(data?.solde ?? 0) || 0
+    },
+    enabled: !!client?.id && payFormOpen,
+    staleTime: 10_000,
+  })
+  // Le règlement « par avoir » s'appuie sur le portefeuille du CLIENT : sans
+  // client rattaché à la réservation, l'option n'a aucun sens (le backend
+  // renverrait 422). On masque alors l'option plutôt que d'afficher un solde nul
+  // trompeur.
+  const hasClient    = !!client?.id
+  const soldeAvoir   = avoirQ.data ?? 0
+  const isAvoir      = paymentForm.mode_paiement === 'avoir'
+  // Plafond payable par avoir : le minimum entre le reste à payer et le solde dispo.
+  const avoirMaxFill = Math.max(0, Math.min(Math.round(pay.remaining || 0), Math.floor(soldeAvoir)))
+  const avoirOver    = isAvoir && paymentForm.montant > soldeAvoir + 0.001
 
   const passengerIsClient =
     typeof r?.passenger_is_client === 'boolean' ? r.passenger_is_client
@@ -559,6 +582,8 @@ export default function ReservationDetailsPage() {
       toast.push({ title: 'Paiement enregistré ✓', tone: 'success' })
       setPaymentForm({ montant: 0, mode_paiement: 'especes', reference: '' })
       setPayFormOpen(false)
+      // Le solde d'avoir a pu changer (règlement par avoir) : on l'invalide.
+      qc.invalidateQueries({ queryKey: ['client-solde-avoir', client?.id] })
       await refreshReservation()
     } catch (err: any) {
       toast.push({ title: err?.response?.data?.message || "Impossible d'enregistrer le paiement.", tone: 'error' })
@@ -695,7 +720,7 @@ export default function ReservationDetailsPage() {
                     <div className="text-xl font-extrabold tracking-tight text-gray-900 dark:text-white leading-none">
                       {money(pay.total || r?.montant_total, devise)}
                     </div>
-                    <div className="text-[11px] text-gray-400 dark:text-gray-500 uppercase tracking-wide mt-1">Total réservation</div>
+                    <div className="text-[12px] text-gray-400 dark:text-gray-500 uppercase tracking-wide mt-1">Total réservation</div>
                   </div>
                   <Chip tone={pay.tone === 'green' ? 'green' : pay.tone === 'amber' ? 'amber' : 'gray'}>
                     <TrendingUp size={11} />
@@ -829,7 +854,7 @@ export default function ReservationDetailsPage() {
                         <div className="h-px w-6 bg-current" />
                       </div>
                       {flight?.compagnie && (
-                        <div className="mt-1 text-[10px] text-gray-400 dark:text-gray-500 font-medium">{flight.compagnie}</div>
+                        <div className="mt-1 text-[12px] text-gray-400 dark:text-gray-500 font-medium">{flight.compagnie}</div>
                       )}
                     </div>
                     <div className="flex-1 min-w-0 text-center">
@@ -954,6 +979,11 @@ export default function ReservationDetailsPage() {
                 </Card>
               )}
 
+              {/* Dossier e-visa : pièces justificatives (upload / download / statuts) */}
+              {typeKey === 'evisa' && r?.id && (
+                <EvisaDocumentsPanel reservationId={Number(r.id)} />
+              )}
+
               {/* Produit */}
               {r?.produit && (
                 <Card title="Produit / Service" icon={<Building2 size={15} />} right={r.produit?.id ? <Chip tone="gray">#{r.produit.id}</Chip> : undefined}>
@@ -986,12 +1016,12 @@ export default function ReservationDetailsPage() {
                 >
                   <div className="flex items-center gap-4">
                     <div className="flex-1 rounded-xl bg-gray-50 dark:bg-white/[0.04] border border-black/[0.05] dark:border-white/[0.07] px-4 py-3 text-center">
-                      <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Début</div>
+                      <div className="text-[12px] font-semibold uppercase tracking-wider text-gray-400">Début</div>
                       <div className="mt-1.5 text-sm font-bold text-gray-900 dark:text-gray-100">{safeDate(period.start)}</div>
                     </div>
                     <ArrowRight size={16} className="shrink-0 text-gray-300 dark:text-gray-600" />
                     <div className="flex-1 rounded-xl bg-gray-50 dark:bg-white/[0.04] border border-black/[0.05] dark:border-white/[0.07] px-4 py-3 text-center">
-                      <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Fin</div>
+                      <div className="text-[12px] font-semibold uppercase tracking-wider text-gray-400">Fin</div>
                       <div className="mt-1.5 text-sm font-bold text-gray-900 dark:text-gray-100">{safeDate(period.end)}</div>
                     </div>
                   </div>
@@ -1061,13 +1091,13 @@ export default function ReservationDetailsPage() {
                 <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-2">
                     <div className="rounded-xl bg-gray-50 dark:bg-white/[0.04] border border-black/[0.05] dark:border-white/[0.07] p-3">
-                      <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Total</div>
+                      <div className="text-[12px] font-semibold uppercase tracking-wider text-gray-400">Total</div>
                       <div className="mt-1 text-sm font-bold text-gray-800 dark:text-gray-100 leading-tight">
                         {money(pay.total || r?.montant_total, devise)}
                       </div>
                     </div>
                     <div className="rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-100 dark:border-emerald-500/20 p-3">
-                      <div className="text-[10px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Payé</div>
+                      <div className="text-[12px] font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Payé</div>
                       <div className="mt-1 text-sm font-bold text-emerald-700 dark:text-emerald-300 leading-tight">
                         {money(pay.paid, devise)}
                       </div>
@@ -1079,7 +1109,7 @@ export default function ReservationDetailsPage() {
                       ? 'bg-amber-50 dark:bg-amber-500/10 border-amber-100 dark:border-amber-500/20'
                       : 'bg-gray-50 dark:bg-white/[0.04] border-black/[0.05] dark:border-white/[0.07]'
                   )}>
-                    <div className={cx('text-[10px] font-semibold uppercase tracking-wider',
+                    <div className={cx('text-[12px] font-semibold uppercase tracking-wider',
                       pay.remaining > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-400')}>
                       Reste à payer
                     </div>
@@ -1186,6 +1216,7 @@ export default function ReservationDetailsPage() {
                           <option value="virement">Virement</option>
                           <option value="carte">Carte bancaire</option>
                           <option value="cheque">Chèque</option>
+                          {hasClient && <option value="avoir">Avoir client</option>}
                         </select>
                       </div>
                       <div>
@@ -1194,6 +1225,47 @@ export default function ReservationDetailsPage() {
                           onChange={(e) => setPaymentForm((s) => ({ ...s, reference: e.target.value }))} />
                       </div>
                     </div>
+
+                    {/* Règlement par avoir : solde + plafond */}
+                    {isAvoir && (
+                      <div className={cx(
+                        'rounded-lg border px-3 py-2 text-xs',
+                        soldeAvoir > 0
+                          ? 'border-violet-200 bg-violet-50/70 dark:border-violet-500/30 dark:bg-violet-500/[0.07]'
+                          : 'border-amber-200 bg-amber-50/70 dark:border-amber-500/30 dark:bg-amber-500/[0.07]'
+                      )}>
+                        {avoirQ.isLoading ? (
+                          <span className="text-gray-500 inline-flex items-center gap-1.5">
+                            <Loader2 size={12} className="animate-spin" /> Chargement du solde d'avoir…
+                          </span>
+                        ) : soldeAvoir > 0 ? (
+                          <>
+                            <div className="flex items-center justify-between">
+                              <span className="text-gray-600 dark:text-gray-300 inline-flex items-center gap-1.5">
+                                <PiggyBank size={13} className="text-violet-500" /> Solde d'avoir disponible
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setPaymentForm((s) => ({ ...s, montant: avoirMaxFill }))}
+                                className="font-bold text-violet-700 dark:text-violet-300 hover:underline"
+                                title="Régler le maximum possible par avoir"
+                              >
+                                {money(soldeAvoir, devise)} →
+                              </button>
+                            </div>
+                            {avoirOver && (
+                              <div className="mt-1 text-rose-600 dark:text-rose-400 font-medium">
+                                Le montant dépasse le solde d'avoir disponible.
+                              </div>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-amber-700 dark:text-amber-300 font-medium">
+                            Aucun avoir disponible pour ce client.
+                          </span>
+                        )}
+                      </div>
+                    )}
 
                     {/* Summary avant validation */}
                     {paymentForm.montant > 0 && pay.total > 0 && (
@@ -1221,7 +1293,8 @@ export default function ReservationDetailsPage() {
                       </button>
                       <button type="button"
                         className="btn flex-1 bg-sky-600 hover:bg-sky-700 text-white dark:bg-sky-500 dark:hover:bg-sky-600 inline-flex items-center justify-center gap-1.5 font-semibold"
-                        onClick={addPayment} disabled={busy || paymentForm.montant <= 0}>
+                        onClick={addPayment}
+                        disabled={busy || paymentForm.montant <= 0 || (isAvoir && (soldeAvoir <= 0 || avoirOver))}>
                         {busy ? <Loader2 size={14} className="animate-spin" /> : <CreditCard size={14} />}
                         Enregistrer
                       </button>
@@ -1286,7 +1359,7 @@ export default function ReservationDetailsPage() {
                                 {p.motif}
                               </div>
                             )}
-                            <div className="text-[10.5px] text-gray-400 dark:text-gray-500 mt-1.5 flex items-center gap-2 flex-wrap">
+                            <div className="text-[12px] text-gray-400 dark:text-gray-500 mt-1.5 flex items-center gap-2 flex-wrap">
                               <span className="inline-flex items-center gap-1">
                                 <Clock size={9} />
                                 {safeDate(p.imposed_at || p.created_at)}
@@ -1457,7 +1530,7 @@ export default function ReservationDetailsPage() {
               devise: r.devise,
               statut: r.statut,
             },
-            agencyName: 'Universal Tours',
+            agencyName: 'Itinéo',
           }}
           allowedTemplates={['reservationConfirmed', 'devis', 'paymentReceived', 'custom']}
         />

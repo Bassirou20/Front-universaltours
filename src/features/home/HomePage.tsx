@@ -6,10 +6,75 @@ import {
   ChevronRight, ShieldCheck, FileText, CreditCard, Users,
   CalendarCheck, TrendingUp, Bell, ArrowRight,
   Briefcase, Globe2, Building, UserCheck,
-  HelpCircle, MessageCircle, Lock, Zap, BookOpen, Sparkles,
+  HelpCircle, MessageCircle, Lock, Zap, BookOpen, Sparkles, Check,
 } from 'lucide-react'
 import AccessRequestModal from './AccessRequestModal'
 import { AGENCY, agencyWhatsAppUrl } from '../../lib/agencyConfig'
+import logoMark from '../../assets/brand/itineo-mark.svg'
+
+// ─── Formules tarifaires (cohérentes avec la page Abonnement de l'app) ──────
+const PRICING_PLANS: {
+  name: string
+  price: string
+  period: string
+  tagline: string
+  features: string[]
+  highlighted?: boolean
+}[] = [
+  {
+    name: 'Starter',
+    price: '15 000',
+    period: 'XOF / mois',
+    tagline: 'Pour démarrer en solo ou en petite équipe.',
+    features: [
+      "Jusqu'à 3 utilisateurs",
+      'Clients, réservations & factures',
+      'Devis et factures PDF',
+      'Tableau de bord',
+      'Support par email',
+    ],
+  },
+  {
+    name: 'Standard',
+    price: '30 000',
+    period: 'XOF / mois',
+    tagline: "L'essentiel pour une agence en croissance.",
+    features: [
+      "Jusqu'à 10 utilisateurs",
+      'Tout le plan Starter',
+      'Fournisseurs & dépenses',
+      'Avoirs clients & paiements',
+      'Support prioritaire',
+    ],
+    highlighted: true,
+  },
+  {
+    name: 'Pro',
+    price: '50 000',
+    period: 'XOF / mois',
+    tagline: 'Pour les agences établies et multi-sites.',
+    features: [
+      'Utilisateurs illimités',
+      'Tout le plan Standard',
+      'Export de données avancé',
+      'Branding personnalisé',
+      'Support WhatsApp prioritaire',
+    ],
+  },
+  {
+    name: 'Enterprise',
+    price: 'Sur devis',
+    period: '',
+    tagline: 'Besoins spécifiques, intégrations, volumes.',
+    features: [
+      'Tout le plan Pro',
+      'Accompagnement dédié',
+      'Intégrations sur mesure',
+      'Formation de vos équipes',
+      'SLA & support dédié',
+    ],
+  },
+]
 
 // ─── Hook : reveal-on-scroll via IntersectionObserver ───────────────────────
 function useReveal<T extends HTMLElement = HTMLDivElement>() {
@@ -297,12 +362,15 @@ export default function HomePage() {
       >
         <div className="flex items-center justify-between gap-3 max-w-[1200px] mx-auto">
           <div className="flex items-center gap-2.5 animate-fade-in-down">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#F07A1C] to-[#c84a14] text-white font-bold text-[14px] flex items-center justify-center shadow-[0_4px_12px_rgba(240,122,28,0.25)]">
-              UT
-            </div>
+            <img
+              src={logoMark}
+              alt="Itinéo"
+              className="w-9 h-9 rounded-xl shadow-[0_4px_12px_rgba(5,36,104,0.25)]"
+              draggable={false}
+            />
             <div className="leading-tight">
-              <div className="text-[14px] font-bold text-[#1a1916] tracking-[-0.015em]">Universal Tours</div>
-              <div className="text-[10.5px] text-[#9e9d99] mt-px">Agence de voyage</div>
+              <div className="text-[14px] font-bold text-[#1a1916] tracking-[-0.015em]">Itinéo</div>
+              <div className="text-[10.5px] text-[#9e9d99] mt-px">Logiciel pour agences de voyage</div>
             </div>
           </div>
 
@@ -310,6 +378,7 @@ export default function HomePage() {
             {[
               { href: '#features', label: 'Fonctionnalités' },
               { href: '#audience', label: 'Pour qui ?' },
+              { href: '#pricing',  label: 'Tarifs' },
               { href: '#help',     label: 'Aide' },
             ].map((l) => (
               <a
@@ -332,9 +401,15 @@ export default function HomePage() {
           <div className="flex items-center gap-2 animate-fade-in-down" style={{ animationDelay: '200ms' }}>
             <Link
               to="/login"
-              className="group inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-br from-[#F07A1C] to-[#c84a14] text-white text-[13px] font-semibold shadow-[0_4px_12px_rgba(240,122,28,0.25)] hover:shadow-[0_8px_24px_rgba(240,122,28,0.4)] hover:-translate-y-px transition-all"
+              className="hidden sm:inline-flex items-center gap-1 px-3 py-2 text-[13px] text-[#555450] hover:text-[#1a1916] font-medium transition-colors rounded-md hover:bg-black/[0.04]"
             >
               Se connecter
+            </Link>
+            <Link
+              to="/signup"
+              className="group inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-br from-[#F07A1C] to-[#c84a14] text-white text-[13px] font-semibold shadow-[0_4px_12px_rgba(240,122,28,0.25)] hover:shadow-[0_8px_24px_rgba(240,122,28,0.4)] hover:-translate-y-px transition-all"
+            >
+              Essai gratuit 14j
               <ChevronRight size={12} className="stroke-[2.5] group-hover:translate-x-0.5 transition-transform" />
             </Link>
           </div>
@@ -397,19 +472,18 @@ export default function HomePage() {
               style={{ animationDelay: '300ms' }}
             >
               <Link
-                to="/login"
+                to="/signup"
                 className="group inline-flex items-center gap-2 px-7 py-3.5 rounded-full bg-gradient-to-br from-[#F07A1C] to-[#c84a14] text-white font-semibold text-[14.5px] shadow-[0_10px_30px_rgba(240,122,28,0.35)] hover:shadow-[0_14px_40px_rgba(240,122,28,0.5)] hover:-translate-y-0.5 transition-all"
               >
-                Commencer maintenant
+                Essai gratuit 14 jours
                 <ArrowRight size={15} className="group-hover:translate-x-1 transition-transform" />
               </Link>
-              <button
-                type="button"
-                onClick={() => setAccessOpen(true)}
+              <Link
+                to="/login"
                 className="inline-flex items-center gap-2 px-7 py-3.5 rounded-full bg-white text-[#1a1916] border border-black/[0.14] font-medium text-[14.5px] hover:bg-black/[0.02] hover:border-[#1a1916] hover:-translate-y-0.5 transition-all shadow-[0_4px_12px_rgba(0,0,0,0.04)]"
               >
-                Demander un accès
-              </button>
+                Se connecter
+              </Link>
             </div>
 
             {/* Trust strip */}
@@ -671,7 +745,7 @@ export default function HomePage() {
               Conçue pour <strong className="font-semibold">les professionnels du voyage</strong>
             </h2>
             <p className="text-[15px] text-[#555450] max-w-[580px] mx-auto leading-relaxed">
-              Que vous soyez agent indépendant ou agence avec plusieurs collaborateurs, Universal Tours s'adapte à votre structure.
+              Que vous soyez agent indépendant ou agence avec plusieurs collaborateurs, Itinéo s'adapte à votre structure.
             </p>
           </div>
 
@@ -685,6 +759,91 @@ export default function HomePage() {
             <Audience idx={3} icon={<Globe2 size={22} />} title="Tour-opérateurs"
               desc="Forfaits sur mesure, multi-bénéficiaires, gestion des participants — tout y est." />
           </div>
+        </div>
+      </RevealSection>
+
+      {/* ═══════════════════ TARIFS ═══════════════════ */}
+      <RevealSection id="pricing" className="px-6 sm:px-10 py-20 sm:py-24 bg-white border-t border-black/[0.06]">
+        <div className="max-w-[1120px] mx-auto">
+          <div className="text-center mb-14">
+            <div className="inline-flex items-center gap-1.5 text-[11px] text-[#F07A1C] uppercase tracking-[0.15em] font-bold mb-3">
+              <CreditCard size={11} />
+              Tarifs
+            </div>
+            <h2 className="text-[32px] sm:text-[42px] font-light tracking-[-0.025em] leading-[1.1] text-[#1a1916] max-w-[680px] mx-auto mb-4">
+              Une formule pour <strong className="font-semibold">chaque taille d'agence</strong>
+            </h2>
+            <p className="text-[15px] text-[#555450] max-w-[580px] mx-auto leading-relaxed">
+              Commencez avec 14 jours d'essai gratuit, sans carte bancaire. Changez ou résiliez à tout moment.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+            {PRICING_PLANS.map((plan) => (
+              <div
+                key={plan.name}
+                className={[
+                  'relative flex flex-col rounded-2xl border p-6 bg-white transition-all hover:-translate-y-1',
+                  plan.highlighted
+                    ? 'border-[#F07A1C] shadow-[0_12px_40px_-12px_rgba(240,122,28,0.45)]'
+                    : 'border-black/[0.10] hover:shadow-[0_12px_40px_-16px_rgba(5,36,104,0.25)]',
+                ].join(' ')}
+              >
+                {plan.highlighted && (
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[10px] font-bold uppercase tracking-wide text-white px-3 py-1 rounded-full bg-gradient-to-br from-[#F07A1C] to-[#c84a14] shadow-md">
+                    Le plus choisi
+                  </span>
+                )}
+
+                <h3 className="text-[17px] font-bold text-[#1a1916]">{plan.name}</h3>
+                <p className="text-[12.5px] text-[#9e9d99] mt-1 min-h-[2.5rem] leading-snug">{plan.tagline}</p>
+
+                <div className="mt-4 mb-5">
+                  <span className="text-[28px] font-extrabold text-[#1a1916] tracking-tight">{plan.price}</span>
+                  {plan.period && <span className="text-[12px] text-[#9e9d99] ml-1.5">{plan.period}</span>}
+                </div>
+
+                <ul className="space-y-2.5 flex-1 mb-6">
+                  {plan.features.map((f) => (
+                    <li key={f} className="flex items-start gap-2 text-[13px] text-[#3a3935] leading-snug">
+                      <Check size={14} className="shrink-0 mt-0.5 text-emerald-600 stroke-[2.5]" />
+                      <span>{f}</span>
+                    </li>
+                  ))}
+                </ul>
+
+                {plan.name === 'Enterprise' ? (
+                  <button
+                    type="button"
+                    onClick={() => setAccessOpen(true)}
+                    className="inline-flex items-center justify-center gap-1.5 w-full px-4 py-2.5 rounded-xl border border-black/[0.12] text-[14px] font-semibold text-[#1a1916] hover:bg-black/[0.03] transition-colors"
+                  >
+                    Demander un devis
+                  </button>
+                ) : (
+                  <Link
+                    to="/signup"
+                    className={[
+                      'group inline-flex items-center justify-center gap-1.5 w-full px-4 py-2.5 rounded-xl text-[14px] font-semibold transition-all',
+                      plan.highlighted
+                        ? 'bg-gradient-to-br from-[#F07A1C] to-[#c84a14] text-white shadow-[0_4px_12px_rgba(240,122,28,0.25)] hover:shadow-[0_8px_24px_rgba(240,122,28,0.4)] hover:-translate-y-px'
+                        : 'border border-[#052468]/20 text-[#052468] hover:bg-[#052468]/[0.04]',
+                    ].join(' ')}
+                  >
+                    Démarrer l'essai
+                    <ChevronRight size={13} className="stroke-[2.5] group-hover:translate-x-0.5 transition-transform" />
+                  </Link>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <p className="text-center text-[12.5px] text-[#9e9d99] mt-8">
+            Tous les prix sont en francs CFA (XOF), hors taxes. Une question sur les formules ?{' '}
+            <button type="button" onClick={() => setAccessOpen(true)} className="text-[#052468] underline font-medium">
+              Contactez-nous
+            </button>.
+          </p>
         </div>
       </RevealSection>
 
@@ -705,16 +864,18 @@ export default function HomePage() {
           </div>
 
           <div className="space-y-3 mb-10">
-            <Faq idx={0} icon={<Zap size={16} />} question="Comment obtenir un compte ?"
-              answer="Cliquez sur « Demander un accès » : remplissez le formulaire (nom, email, agence). Notre équipe vous recontacte sous 24h ouvrées pour valider et vous fournir vos identifiants." />
-            <Faq idx={1} icon={<BookOpen size={16} />} question="Quels types de réservations puis-je gérer ?"
+            <Faq idx={0} icon={<Zap size={16} />} question="Comment créer mon compte agence ?"
+              answer="Cliquez sur « Essai gratuit 14 jours », remplissez le formulaire (nom de l'agence, votre email, mot de passe) et c'est immédiat : votre espace est créé en quelques secondes, sans carte bancaire ni validation manuelle. Vous accédez tout de suite à votre tableau de bord." />
+            <Faq idx={1} icon={<CreditCard size={16} />} question="L'essai est-il vraiment gratuit ?"
+              answer="Oui. 14 jours d'essai complet, sans carte bancaire et sans engagement. Vous testez toutes les fonctionnalités. À la fin de l'essai, vous choisissez de continuer avec un abonnement ou non — aucune facturation automatique surprise." />
+            <Faq idx={2} icon={<BookOpen size={16} />} question="Quels types de réservations puis-je gérer ?"
               answer="Sept types : billets d'avion, hôtels, locations de voiture, événements, forfaits sur mesure, assurance voyage et e-visa. Chaque type a ses champs spécifiques et son flux de validation." />
-            <Faq idx={2} icon={<CreditCard size={16} />} question="Quels modes de paiement sont supportés ?"
+            <Faq idx={3} icon={<CreditCard size={16} />} question="Quels modes de paiement sont supportés ?"
               answer="Espèces, Wave, Orange Money, virement bancaire et carte. La facture suit automatiquement le statut (impayée → partielle → payée) selon les paiements enregistrés." />
-            <Faq idx={3} icon={<Lock size={16} />} question="Mes données sont-elles sécurisées ?"
-              answer="Authentification via tokens Sanctum, mots de passe hachés (bcrypt), HTTPS obligatoire, journal d'activité de toutes les actions sensibles. Vos données restent hébergées sur nos serveurs uniquement." />
-            <Faq idx={4} icon={<Users size={16} />} question="Combien d'utilisateurs puis-je créer ?"
-              answer="Aucune limite côté technique. Vous gérez vos collaborateurs depuis la section « Utilisateurs » : ajout, désactivation, changement de rôle (admin / employé), réinitialisation du mot de passe." />
+            <Faq idx={4} icon={<Lock size={16} />} question="Mes données sont-elles isolées des autres agences ?"
+              answer="Totalement. Chaque agence dispose de son espace cloisonné : vos clients, réservations et factures ne sont jamais visibles par une autre agence. Authentification par tokens sécurisés, mots de passe chiffrés (bcrypt), HTTPS et journal d'activité de toutes les actions sensibles." />
+            <Faq idx={5} icon={<Users size={16} />} question="Combien d'utilisateurs puis-je créer ?"
+              answer="Aucune limite technique. Vous gérez votre équipe depuis la section « Utilisateurs » : invitez vos collaborateurs, attribuez des rôles (propriétaire, administrateur, agent), désactivez un compte ou réinitialisez un mot de passe en un clic." />
           </div>
 
           <div className="rounded-2xl border border-black/[0.08] bg-gradient-to-br from-[#fafaf9] via-white to-[#fafaf9] p-7 text-center">
@@ -752,27 +913,35 @@ export default function HomePage() {
 
         <div className="max-w-[1120px] mx-auto relative">
           <h2 className="text-[32px] sm:text-[44px] font-light tracking-[-0.025em] leading-[1.1] text-white max-w-[640px] mx-auto mb-4">
-            Prêt à <strong className="font-semibold">simplifier votre quotidien</strong> ?
+            Prêt à <strong className="font-semibold">simplifier la gestion de votre agence</strong> ?
           </h2>
           <p className="text-[15px] text-white/80 max-w-[520px] mx-auto mb-9 leading-relaxed">
-            Connectez-vous dès maintenant à votre espace agent ou demandez un accès à votre administrateur.
+            Créez votre espace en moins de 2 minutes. 14 jours d'essai gratuit, sans carte bancaire.
           </p>
-          <Link
-            to="/login"
-            className="group inline-flex items-center gap-2 px-8 py-4 rounded-xl bg-gradient-to-br from-[#F07A1C] to-[#c84a14] text-white font-semibold text-[15px] shadow-[0_12px_36px_rgba(240,122,28,0.45)] hover:shadow-[0_16px_50px_rgba(240,122,28,0.6)] hover:-translate-y-0.5 transition-all"
-          >
-            Commencer maintenant
-            <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
-          </Link>
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <Link
+              to="/signup"
+              className="group inline-flex items-center gap-2 px-8 py-4 rounded-xl bg-gradient-to-br from-[#F07A1C] to-[#c84a14] text-white font-semibold text-[15px] shadow-[0_12px_36px_rgba(240,122,28,0.45)] hover:shadow-[0_16px_50px_rgba(240,122,28,0.6)] hover:-translate-y-0.5 transition-all"
+            >
+              Démarrer l'essai gratuit
+              <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+            </Link>
+            <Link
+              to="/login"
+              className="inline-flex items-center gap-2 px-8 py-4 rounded-xl bg-white/10 text-white border border-white/25 font-medium text-[15px] hover:bg-white/15 hover:-translate-y-0.5 transition-all backdrop-blur-sm"
+            >
+              J'ai déjà un compte
+            </Link>
+          </div>
         </div>
       </RevealSection>
 
       {/* ═══════════════════ FOOTER ═══════════════════ */}
       <footer className="px-6 sm:px-10 py-10 bg-white border-t border-black/[0.08] text-center text-[12px] text-[#9e9d99]">
         <div className="space-x-3 mb-3">
-          <a href="#" className="text-[#555450] hover:text-[#1a1916] font-medium">Mentions légales</a>
+          <Link to="/cgu" className="text-[#555450] hover:text-[#1a1916] font-medium">Conditions d'utilisation</Link>
           <span>·</span>
-          <a href="#" className="text-[#555450] hover:text-[#1a1916] font-medium">Confidentialité</a>
+          <Link to="/confidentialite" className="text-[#555450] hover:text-[#1a1916] font-medium">Confidentialité</Link>
           <span>·</span>
           <a href="#help" className="text-[#555450] hover:text-[#1a1916] font-medium">Aide</a>
           <span>·</span>
@@ -780,7 +949,7 @@ export default function HomePage() {
         </div>
         <div className="inline-flex items-center gap-1.5">
           <ShieldCheck size={12} />
-          © {new Date().getFullYear()} Universal Tours · Tous droits réservés
+          © {new Date().getFullYear()} Itinéo · Tous droits réservés
         </div>
       </footer>
 
@@ -811,7 +980,7 @@ export default function HomePage() {
                   En ligne · Réponse rapide
                 </div>
                 <div className="text-[10.5px] text-[#555450] mt-1 leading-snug">
-                  Discutons de votre projet de voyage !
+                  Une question sur la plateforme ? Écrivez-nous.
                 </div>
               </div>
             </div>
@@ -822,10 +991,10 @@ export default function HomePage() {
 
         {/* Bouton principal */}
         <a
-          href={agencyWhatsAppUrl(`Bonjour ${AGENCY.name}, j'aimerais avoir plus d'informations sur vos services.`)}
+          href={agencyWhatsAppUrl(`Bonjour, je gère une agence de voyage et j'aimerais en savoir plus sur la plateforme Itinéo.`)}
           target="_blank"
           rel="noopener noreferrer"
-          title={`Discuter sur WhatsApp · ${AGENCY.phone}`}
+          title={`Contacter l'équipe Itinéo · ${AGENCY.phone}`}
           className="relative block"
         >
           {/* Anneau pulsant (extérieur) */}

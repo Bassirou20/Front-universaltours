@@ -1,38 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react'
 import {
-  Menu, LayoutGrid, Users, Plane, FolderGit2, Receipt, Wallet, Briefcase, PiggyBank,
-  ChevronRight, ChevronDown, LogOut, User as UserIcon, Mail, ShieldCheck,
+  Menu, ChevronRight, ChevronDown, LogOut, User as UserIcon, Mail, ShieldCheck,
 } from 'lucide-react'
-import { useLocation, Link, useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
+import { useRouteMeta } from '../lib/routeMeta'
 import { ThemeToggle } from './ThemeToggle'
 import { NotificationsBell } from './NotificationsBell'
 import { useAuth } from '../store/auth'
-
-// ─── Route config ─────────────────────────────────────────────────────────────
-
-type RouteInfo = { label: string; icon: React.ReactNode; parent?: string }
-
-const ROUTES: Record<string, RouteInfo> = {
-  '/dashboard':    { label: 'Dashboard',     icon: <LayoutGrid size={14} /> },
-  '/clients':      { label: 'Clients',       icon: <Users size={14} />,     parent: 'Opérations' },
-  '/produits':     { label: 'Services',      icon: <Plane size={14} />,     parent: 'Opérations' },
-  '/forfaits':     { label: 'Forfaits',      icon: <FolderGit2 size={14} />,parent: 'Opérations' },
-  '/reservations': { label: 'Réservations',  icon: <Receipt size={14} />,   parent: 'Opérations' },
-  '/factures':     { label: 'Factures',      icon: <Wallet size={14} />,    parent: 'Finance' },
-  '/paiements':    { label: 'Paiements',     icon: <Briefcase size={14} />, parent: 'Finance' },
-  '/avoirs':       { label: 'Avoirs clients',icon: <PiggyBank size={14} />, parent: 'Finance' },
-  '/depenses':     { label: 'Dépenses',      icon: <Receipt size={14} />,   parent: 'Finance' },
-  '/users':        { label: 'Utilisateurs',  icon: <Users size={14} />,     parent: 'Administration' },
-}
-
-function useRouteInfo(): RouteInfo | null {
-  const { pathname } = useLocation()
-  if (ROUTES[pathname]) return ROUTES[pathname]
-  const match = Object.keys(ROUTES)
-    .filter((k) => k !== '/' && pathname.startsWith(k))
-    .sort((a, b) => b.length - a.length)[0]
-  return match ? ROUTES[match] : null
-}
+import { useRole } from '../hooks/useRole'
 
 // ─── User Menu Dropdown ───────────────────────────────────────────────────────
 
@@ -61,9 +36,17 @@ function UserMenu() {
   const ini = (a + b).toUpperCase() || (user?.email ?? 'UT').slice(0, 2).toUpperCase()
 
   const fullName = [user?.prenom, user?.nom].filter(Boolean).join(' ').trim() || user?.email || 'Compte'
-  const roleRaw = String(user?.role || '').toLowerCase()
-  const isAdmin = roleRaw === 'admin'
-  const roleLabel = isAdmin ? 'Administrateur' : roleRaw === 'employee' ? 'Employé' : (user?.role || '—')
+  const { role: roleRaw, isAdmin } = useRole()
+  const roleLabel = (() => {
+    switch (roleRaw) {
+      case 'super_admin': return 'Super-Admin'
+      case 'owner':       return 'Propriétaire'
+      case 'admin':       return 'Administrateur'
+      case 'agent':       return 'Agent'
+      case 'employee':    return 'Employé' // legacy
+      default:            return user?.role || '—'
+    }
+  })()
 
   const handleLogout = async () => {
     setOpen(false)
@@ -80,7 +63,7 @@ function UserMenu() {
         aria-haspopup="menu"
         aria-expanded={open}
       >
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-[var(--ut-navy)] to-[var(--ut-sky)] text-white text-[11px] font-bold shadow-sm">
+        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-[var(--ut-navy)] to-[var(--ut-sky)] text-white text-[12px] font-bold shadow-sm">
           {ini}
         </div>
         <div className="hidden md:flex items-center gap-1.5 min-w-0">
@@ -90,7 +73,7 @@ function UserMenu() {
             </div>
             <div className="flex items-center gap-1 mt-0.5">
               <span className={`h-1 w-1 rounded-full ${isAdmin ? 'bg-violet-500' : 'bg-emerald-500'}`} />
-              <span className="text-[10px] text-gray-400 dark:text-gray-500 leading-none">{roleLabel}</span>
+              <span className="text-[12px] text-gray-400 dark:text-gray-500 leading-none">{roleLabel}</span>
             </div>
           </div>
           <ChevronDown size={13} className={`text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
@@ -114,14 +97,14 @@ function UserMenu() {
                   {fullName}
                 </div>
                 {user?.email && (
-                  <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate leading-tight mt-0.5 flex items-center gap-1">
+                  <div className="text-[12px] text-gray-500 dark:text-gray-400 truncate leading-tight mt-0.5 flex items-center gap-1">
                     <Mail size={10} className="shrink-0" />
                     <span className="truncate">{user.email}</span>
                   </div>
                 )}
               </div>
             </div>
-            <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#0d1321]">
+            <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[12px] font-semibold border border-black/[0.06] dark:border-white/[0.08] bg-white dark:bg-[#0d1321]">
               <ShieldCheck size={10} className={isAdmin ? 'text-violet-500' : 'text-emerald-500'} />
               <span className={isAdmin ? 'text-violet-700 dark:text-violet-300' : 'text-emerald-700 dark:text-emerald-300'}>
                 {roleLabel}
@@ -161,7 +144,7 @@ function UserMenu() {
 // ─── Topbar ───────────────────────────────────────────────────────────────────
 
 export const Topbar: React.FC<{ onOpenSidebar?: () => void }> = ({ onOpenSidebar }) => {
-  const route = useRouteInfo()
+  const route = useRouteMeta()
 
   return (
     <header className="sticky top-0 z-30 bg-white dark:bg-[#0d1321] border-b border-black/[0.06] dark:border-white/[0.07]">
@@ -192,14 +175,14 @@ export const Topbar: React.FC<{ onOpenSidebar?: () => void }> = ({ onOpenSidebar
 
               {/* Current page pill */}
               <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/[0.04] dark:bg-white/[0.06] min-w-0">
-                <span className="text-gray-500 dark:text-gray-400 shrink-0">{route.icon}</span>
+                {route.icon && <span className="text-gray-500 dark:text-gray-400 shrink-0">{route.icon}</span>}
                 <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">
                   {route.label}
                 </span>
               </div>
             </>
           ) : (
-            <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">Universal Tours</span>
+            <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">Itinéo</span>
           )}
         </div>
 
@@ -208,7 +191,7 @@ export const Topbar: React.FC<{ onOpenSidebar?: () => void }> = ({ onOpenSidebar
 
           {/* Date courante — masqué sur mobile */}
           <div className="hidden lg:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-black/[0.03] dark:bg-white/[0.04] border border-black/[0.05] dark:border-white/[0.06]">
-            <span className="text-[11px] font-medium text-gray-500 dark:text-gray-500 tabular-nums">
+            <span className="text-[12px] font-medium text-gray-500 dark:text-gray-500 tabular-nums">
               {new Date().toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })}
             </span>
           </div>

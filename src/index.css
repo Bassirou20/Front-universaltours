@@ -3,13 +3,17 @@
 @tailwind utilities;
 
 /* -----------------------------
-   Universal Tours Brand Tokens
+   Itinéo Brand Tokens
 ------------------------------ */
 :root{
   --ut-navy: #052468;
   --ut-sky:  #3CC5F6;
   --ut-cyan: #04BBE8;
   --ut-orange:#F07A1C;
+
+  /* Couleur de marque de l'agence courante — appliquée dynamiquement par useAgency().
+     Par défaut = navy Itinéo. Override par JS quand l'utilisateur est connecté. */
+  --brand-primary: #052468;
 
   /* Neutres */
   --ut-bg: #F8FAFC;
@@ -139,7 +143,7 @@ body {
 }
 
 /* =========================
-   Universal Tours Sidebar (PRO)
+   Itinéo Sidebar (PRO)
    ========================= */
 
 .ut-sidebar{

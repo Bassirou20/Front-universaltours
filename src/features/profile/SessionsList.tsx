@@ -92,7 +92,7 @@ export default function SessionsList() {
           <ShieldAlert size={14} className="text-amber-500 shrink-0" />
           <div className="min-w-0">
             <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">Sessions actives</div>
-            <div className="text-[10.5px] text-gray-400 dark:text-gray-500">
+            <div className="text-[12px] text-gray-400 dark:text-gray-500">
               Appareils connectés à votre compte
             </div>
           </div>
@@ -146,13 +146,13 @@ export default function SessionsList() {
                     {s.device}
                   </span>
                   {s.is_current && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[12px] font-semibold bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">
                       <CheckCircle2 size={10} />
                       Cette session
                     </span>
                   )}
                 </div>
-                <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 flex items-center gap-3 flex-wrap">
+                <div className="text-[12px] text-gray-500 dark:text-gray-400 mt-0.5 flex items-center gap-3 flex-wrap">
                   {s.ip_address && (
                     <span className="inline-flex items-center gap-1">
                       <MapPin size={9} />
@@ -165,7 +165,7 @@ export default function SessionsList() {
                   </span>
                 </div>
                 {s.user_agent && (
-                  <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 truncate" title={s.user_agent}>
+                  <div className="text-[12px] text-gray-400 dark:text-gray-500 mt-1 truncate" title={s.user_agent}>
                     {s.user_agent}
                   </div>
                 )}
@@ -177,7 +177,7 @@ export default function SessionsList() {
                   type="button"
                   onClick={() => setConfirmRevoke({ id: s.id, device: s.device })}
                   disabled={mRevoke.isPending}
-                  className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition disabled:opacity-40"
+                  className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[12px] font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition disabled:opacity-40"
                   title="Révoquer cette session"
                 >
                   <Trash2 size={11} />

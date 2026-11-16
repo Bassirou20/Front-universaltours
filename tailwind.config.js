@@ -9,6 +9,9 @@ export default {
         panel:   "#0f172a",
         surface: "#0b1220",
       },
+      // La base est à 14px (cf index.css) : sans ce réglage, text-xs vaudrait 10,5px.
+      // On fixe le plus petit texte de l'application à 12px.
+      fontSize: { xs: ['12px', { lineHeight: '16px' }] },
       boxShadow: { soft: "0 6px 24px -8px rgba(0,0,0,.25)" },
       fontFamily: {
         sans: ['"Plus Jakarta Sans"', 'ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],

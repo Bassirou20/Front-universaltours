@@ -1,4 +1,5 @@
 // src/features/produits/ProduitsPage.tsx
+import { LoadError } from '../../ui/LoadError'
 import React, { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '../../lib/axios'
@@ -9,7 +10,7 @@ import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { Pagination } from '../../ui/Pagination'
 import { FiltersBar } from '../../ui/FiltersBar'
 import { useToast } from '../../ui/Toasts'
-import { useAuth } from '../../store/auth'
+import { useRole } from '../../hooks/useRole'
 import {
   Eye,
   Pencil,
@@ -78,8 +79,7 @@ const TYPE_CONFIG: Record<
 export default function ProduitsPage() {
   const qc = useQueryClient()
   const toast = useToast()
-  const { user } = useAuth()
-  const isAdmin = (user?.role ?? '').toLowerCase() === 'admin'
+  const { isAdmin } = useRole()
 
   // pagination locale
   const [page, setPage] = useState(1)
@@ -276,7 +276,9 @@ export default function ProduitsPage() {
       </FiltersBar>
 
       {/* Content */}
-      {qAll.isLoading ? (
+      {qAll.isError ? (
+        <LoadError what="les services" onRetry={() => qAll.refetch()} />
+      ) : qAll.isLoading ? (
         <SkeletonCards count={6} />
       ) : pageItems.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 gap-4">

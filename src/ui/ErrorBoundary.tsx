@@ -27,11 +27,16 @@ export class ErrorBoundary extends React.Component<Props, State> {
         </div>
         <div>
           <p className="text-base font-semibold text-gray-900 dark:text-white">
-            Une erreur inattendue s'est produite
+            Cette page n'a pas pu s'afficher
           </p>
-          <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            {this.state.error.message || 'Erreur inconnue'}
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+            Vos données ne sont pas perdues. Réessayez ; si le problème persiste,
+            contactez le support en indiquant le détail ci-dessous.
           </p>
+          <details className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+            <summary className="cursor-pointer select-none">Détail technique</summary>
+            <code className="mt-1 block break-words">{this.state.error.message || 'Erreur inconnue'}</code>
+          </details>
         </div>
         <button
           onClick={this.reset}

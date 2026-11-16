@@ -8,7 +8,7 @@ import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { Pagination } from '../../ui/Pagination'
 import { FiltersBar } from '../../ui/FiltersBar'
 import { useToast } from '../../ui/Toasts'
-import { useAuth } from '../../store/auth'
+import { useRole } from '../../hooks/useRole'
 import { Badge } from '../../ui/Badge'
 import { ActionsMenu } from '../../ui/ActionsMenu'
 import {
@@ -93,8 +93,7 @@ const TYPE_CONFIG: Record<
 export default function ForfaitsPage() {
   const qc = useQueryClient()
   const toast = useToast()
-  const { user } = useAuth()
-  const isAdmin = String(user?.role ?? '').toLowerCase() === 'admin'
+  const { isAdmin } = useRole()
 
   // UI state
   const [page, setPage] = useState(1)

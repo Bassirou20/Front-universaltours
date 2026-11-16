@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import React, { useEffect, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
@@ -6,8 +6,9 @@ import {
   BarChart, Bar, Cell,
   PieChart, Pie,
 } from 'recharts'
-import { api } from '../../lib/axios'
-import { Link } from 'react-router-dom'
+import { api, getImpersonatedAgency } from '../../lib/axios'
+import { Link, useNavigate } from 'react-router-dom'
+import { useAuth } from '../../store/auth'
 import {
   CalendarCheck, TrendingUp, AlertCircle, Users,
   ArrowUpRight, ArrowDownRight, AlertTriangle,
@@ -15,6 +16,7 @@ import {
   FileText, CreditCard, Package, UserPlus,
   Sparkles, PiggyBank,
 } from 'lucide-react'
+import { OnboardingChecklist } from './OnboardingChecklist'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -108,7 +110,7 @@ const TYPE_COLORS: Record<string, string> = {
 function StatutBadge({ statut, map }: { statut?: string | null; map: typeof STATUT_RESERVATION }) {
   const cfg = map[statut ?? ''] ?? { label: statut || '—', cls: 'bg-gray-100 text-gray-600 dark:bg-white/10 dark:text-gray-300' }
   return (
-    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold whitespace-nowrap ${cfg.cls}`}>
+    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[12px] font-semibold whitespace-nowrap ${cfg.cls}`}>
       {cfg.label}
     </span>
   )
@@ -180,14 +182,14 @@ function KpiCard({ label, value, sub, icon, iconBg, accent, sparkData, sparkColo
       <div className="p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <div className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{label}</div>
+            <div className="text-[12px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{label}</div>
             <div className="mt-2 text-[1.7rem] font-bold leading-none text-gray-900 dark:text-gray-50 truncate">
               {value}
             </div>
             <div className="mt-2 flex items-center gap-2 flex-wrap">
               <span className="text-xs text-gray-400 dark:text-gray-500">{sub}</span>
               {trend && (
-                <span className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                <span className={`inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[12px] font-bold ${
                   trend.positive
                     ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
                     : 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300'
@@ -288,7 +290,7 @@ function HeroBanner({ caMonth, r7, clientsTotal, followCount, loading }: HeroBan
           {stats.map((s) => (
             <div key={s.label}>
               <div className={`text-lg font-bold leading-none ${loading ? 'opacity-0' : s.color}`}>{s.value}</div>
-              <div className="text-[11px] text-gray-500 mt-0.5">{s.label}</div>
+              <div className="text-[12px] text-gray-500 mt-0.5">{s.label}</div>
             </div>
           ))}
         </div>
@@ -300,6 +302,18 @@ function HeroBanner({ caMonth, r7, clientsTotal, followCount, loading }: HeroBan
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function Dashboard() {
+  const { user } = useAuth()
+  const navigate = useNavigate()
+
+  // ── Super_admin sans agence sélectionnée → redirect vers la page Plateforme ──
+  // Évite d'afficher des données mélangées de toutes les agences sur le dashboard.
+  // Si le super_admin a "Entré" dans une agence (X-Agency-Id), on le laisse voir le dashboard.
+  useEffect(() => {
+    if (user?.role === 'super_admin' && !getImpersonatedAgency()) {
+      navigate('/super-admin/dashboard', { replace: true })
+    }
+  }, [user, navigate])
+
   const q = useQuery({
     queryKey: ['dashboard-v1'],
     queryFn: async () => {
@@ -307,6 +321,8 @@ export default function Dashboard() {
       return data
     },
     staleTime: 30_000,
+    // Désactiver la requête pour super_admin sans tenant (évite un fetch inutile avant redirect)
+    enabled: !(user?.role === 'super_admin' && !getImpersonatedAgency()),
   })
 
   const d = q.data
@@ -370,6 +386,14 @@ export default function Dashboard() {
           </Link>
         </div>
       </div>
+
+      {/* ── Onboarding « Premiers pas » (nouvelle agence) ──────────────────── */}
+      {!loading && (
+        <OnboardingChecklist
+          clientsTotal={kpis.clientsTotal}
+          hasReservation={lastRes.length > 0 || kpis.r7 > 0}
+        />
+      )}
 
       {/* ── Alert overdue ──────────────────────────────────────────────────── */}
       {!loading && overdueCount > 0 && (
@@ -507,7 +531,7 @@ export default function Dashboard() {
             </div>
             <div className="text-right">
               <div className="text-xl font-bold text-sky-600 dark:text-sky-400">{fmt(r7Total)}</div>
-              <div className="text-[10px] text-gray-400 uppercase tracking-wide">total semaine</div>
+              <div className="text-[12px] text-gray-400 uppercase tracking-wide">total semaine</div>
             </div>
           </div>
 
@@ -549,7 +573,7 @@ export default function Dashboard() {
             </div>
             <div className="text-right">
               <div className="text-xl font-bold text-emerald-600 dark:text-emerald-400">{moneyShort(caTotal)}</div>
-              <div className="text-[10px] text-gray-400 uppercase tracking-wide">XOF total</div>
+              <div className="text-[12px] text-gray-400 uppercase tracking-wide">XOF total</div>
             </div>
           </div>
 
@@ -655,7 +679,7 @@ export default function Dashboard() {
                       <div className="h-2 w-2 rounded-full shrink-0" style={{ background: TYPE_COLORS[item.type] ?? '#94a3b8' }} />
                       <span className="text-xs text-gray-600 dark:text-gray-400 flex-1 truncate">{item.label}</span>
                       <span className="text-xs font-semibold text-gray-900 dark:text-gray-100">{item.value}</span>
-                      <span className="text-[10px] text-gray-400 w-8 text-right">{pct}%</span>
+                      <span className="text-[12px] text-gray-400 w-8 text-right">{pct}%</span>
                     </div>
                   )
                 })}
@@ -698,7 +722,7 @@ export default function Dashboard() {
               const pct = maxCA > 0 ? Math.round(((c.ca_total ?? 0) / maxCA) * 100) : 0
               return (
                 <div key={c.id} className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50/80 dark:hover:bg-white/[0.025] transition-colors">
-                  <div className="h-8 w-8 shrink-0 rounded-xl bg-violet-50 dark:bg-violet-500/10 flex items-center justify-center text-[11px] font-bold text-violet-700 dark:text-violet-300 border border-violet-100 dark:border-violet-500/20">
+                  <div className="h-8 w-8 shrink-0 rounded-xl bg-violet-50 dark:bg-violet-500/10 flex items-center justify-center text-[12px] font-bold text-violet-700 dark:text-violet-300 border border-violet-100 dark:border-violet-500/20">
                     {ini}
                   </div>
                   <div className="min-w-0 flex-1">
@@ -712,7 +736,7 @@ export default function Dashboard() {
                   </div>
                   <div className="text-right shrink-0">
                     <div className="text-sm font-bold text-gray-900 dark:text-gray-100">{moneyShort(c.ca_total ?? 0)}</div>
-                    <div className="text-[10px] text-gray-400">{c.nb_reservations} rés.</div>
+                    <div className="text-[12px] text-gray-400">{c.nb_reservations} rés.</div>
                   </div>
                 </div>
               )
@@ -763,7 +787,7 @@ export default function Dashboard() {
                 const ini = initials(r.client?.prenom, r.client?.nom)
                 return (
                   <div key={r.id} className="flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50/80 dark:hover:bg-white/[0.025] transition-colors">
-                    <div className="h-9 w-9 shrink-0 rounded-xl bg-sky-50 dark:bg-sky-500/10 flex items-center justify-center text-[11px] font-bold text-sky-700 dark:text-sky-300 border border-sky-100 dark:border-sky-500/20">
+                    <div className="h-9 w-9 shrink-0 rounded-xl bg-sky-50 dark:bg-sky-500/10 flex items-center justify-center text-[12px] font-bold text-sky-700 dark:text-sky-300 border border-sky-100 dark:border-sky-500/20">
                       {ini}
                     </div>
                     <div className="min-w-0 flex-1">
@@ -831,7 +855,7 @@ export default function Dashboard() {
                 const overdue = (days ?? 0) > 30
                 return (
                   <div key={f.id} className={`flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50/80 dark:hover:bg-white/[0.025] transition-colors ${overdue ? 'bg-red-50/30 dark:bg-red-500/[0.04]' : ''}`}>
-                    <div className={`h-9 w-9 shrink-0 rounded-xl flex items-center justify-center text-[11px] font-bold border ${
+                    <div className={`h-9 w-9 shrink-0 rounded-xl flex items-center justify-center text-[12px] font-bold border ${
                       overdue
                         ? 'bg-red-50 dark:bg-red-500/10 text-red-700 dark:text-red-300 border-red-100 dark:border-red-500/20'
                         : 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-100 dark:border-amber-500/20'

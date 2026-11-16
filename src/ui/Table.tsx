@@ -21,7 +21,7 @@ export const Th: React.FC<React.ThHTMLAttributes<HTMLTableCellElement>> = ({
   ...rest
 }) => (
   <th
-    className={`px-3 py-2 text-left text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide ${className}`}
+    className={`px-3 py-2 text-left text-[12px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide ${className}`}
     {...rest}
   >
     {children}

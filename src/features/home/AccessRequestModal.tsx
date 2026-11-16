@@ -312,13 +312,13 @@ function Field({
 }) {
   return (
     <div>
-      <label className="block text-[10.5px] font-semibold text-[#6b6a66] uppercase tracking-[0.04em] mb-1">
+      <label className="block text-[12px] font-semibold text-[#6b6a66] uppercase tracking-[0.04em] mb-1">
         {label}
         {required && <span className="text-red-500 ml-0.5">*</span>}
       </label>
       {children}
-      {hint && !error && <div className="text-[10.5px] text-[#9e9d99] mt-1">{hint}</div>}
-      {error && <div className="text-[10.5px] text-red-600 mt-1">{error}</div>}
+      {hint && !error && <div className="text-[12px] text-[#9e9d99] mt-1">{hint}</div>}
+      {error && <div className="text-[12px] text-red-600 mt-1">{error}</div>}
     </div>
   )
 }

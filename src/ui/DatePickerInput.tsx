@@ -84,7 +84,7 @@ export function DatePickerInput({
               button_previous: 'flex h-7 w-7 items-center justify-center rounded-lg hover:bg-black/[0.06] dark:hover:bg-white/[0.08] text-gray-500 transition-colors',
               button_next: 'flex h-7 w-7 items-center justify-center rounded-lg hover:bg-black/[0.06] dark:hover:bg-white/[0.08] text-gray-500 transition-colors',
               weekdays: 'flex mb-1',
-              weekday: 'w-9 text-center text-[11px] font-medium text-gray-400 dark:text-gray-500',
+              weekday: 'w-9 text-center text-[12px] font-medium text-gray-400 dark:text-gray-500',
               weeks: 'space-y-0.5',
               week: 'flex',
               day: 'w-9 h-9 flex items-center justify-center',

@@ -55,7 +55,7 @@ const inputBase = (hasError?: boolean) => cx(
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-2 pb-2 border-b border-black/[0.05] dark:border-white/[0.07]">
-      <span className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+      <span className="text-[12px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
         {children}
       </span>
     </div>
@@ -209,7 +209,7 @@ function ReservationSearch({
                         )}
                       </div>
                       {r.statut && (
-                        <span className="shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 dark:bg-white/[0.07] text-gray-500 dark:text-gray-400">
+                        <span className="shrink-0 text-[12px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 dark:bg-white/[0.07] text-gray-500 dark:text-gray-400">
                           {r.statut}
                         </span>
                       )}

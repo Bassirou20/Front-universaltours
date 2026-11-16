@@ -1,3 +1,4 @@
+import { money } from '../../lib/helpers'
 import React, { useMemo, useState } from 'react'
 import { Badge } from '../../ui/Badge'
 import {
@@ -60,7 +61,6 @@ const STATUT_CONFIG: Record<string, {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const money = (n: any) => `${Number(n || 0).toLocaleString('fr-FR')} XOF`
 
 function safeDate(d: any) {
   if (!d) return '—'
@@ -118,7 +118,7 @@ function PaymentProgress({ paid, total }: { paid: number; total: number }) {
           style={{ width: `${pct}%` }}
         />
       </div>
-      <div className="flex items-center justify-between text-[11px] text-gray-400">
+      <div className="flex items-center justify-between text-[12px] text-gray-400">
         <span>Payé {money(paid)}</span>
         {!done && <span>Reste estimé {money(Math.max(0, total - paid))}</span>}
         {done  && <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold"><CheckCircle2 size={11} /> Soldé</span>}
@@ -191,12 +191,12 @@ export const PaiementDetails: React.FC<{ paiement: PaiementModel }> = ({ paiemen
           {/* KPI mini-grid */}
           <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="rounded-xl bg-black/[0.03] dark:bg-white/[0.06] p-3">
-              <div className="text-[11px] text-gray-500 dark:text-gray-400 font-medium uppercase tracking-wide">Montant</div>
+              <div className="text-[12px] text-gray-500 dark:text-gray-400 font-medium uppercase tracking-wide">Montant</div>
               <div className="mt-1 text-xl font-bold text-gray-900 dark:text-white">{money(paiement.montant)}</div>
             </div>
 
             <div className="rounded-xl bg-black/[0.03] dark:bg-white/[0.06] p-3">
-              <div className="text-[11px] text-gray-500 dark:text-gray-400 font-medium uppercase tracking-wide">Référence</div>
+              <div className="text-[12px] text-gray-500 dark:text-gray-400 font-medium uppercase tracking-wide">Référence</div>
               <div className="mt-1 flex items-center justify-between gap-2">
                 <span className="font-semibold break-all text-sm">{paiement.reference || '—'}</span>
                 {paiement.reference && (
@@ -213,7 +213,7 @@ export const PaiementDetails: React.FC<{ paiement: PaiementModel }> = ({ paiemen
             </div>
 
             <div className="rounded-xl bg-black/[0.03] dark:bg-white/[0.06] p-3">
-              <div className="text-[11px] text-gray-500 dark:text-gray-400 font-medium uppercase tracking-wide">Total facture</div>
+              <div className="text-[12px] text-gray-500 dark:text-gray-400 font-medium uppercase tracking-wide">Total facture</div>
               <div className="mt-1 text-xl font-bold text-gray-900 dark:text-white">{factureTotal > 0 ? money(factureTotal) : '—'}</div>
             </div>
           </div>

@@ -1,3 +1,4 @@
+import { LoadError } from '../../ui/LoadError'
 import React, { useState } from 'react'
 import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { api } from '../../lib/axios'
@@ -172,12 +173,12 @@ function TimelineItem({ log, isLast }: { log: ActivityLog; isLast: boolean }) {
             {/* Header row */}
             <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
               <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">{userName(log)}</span>
-              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${cfg.badge}`}>
+              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[12px] font-medium ${cfg.badge}`}>
                 <Icon size={10} />
                 {cfg.label}
               </span>
               {modelLabel && (
-                <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-black/[0.04] dark:bg-white/[0.06] text-gray-500 dark:text-gray-400">
+                <span className="px-2 py-0.5 rounded-full text-[12px] font-medium bg-black/[0.04] dark:bg-white/[0.06] text-gray-500 dark:text-gray-400">
                   {modelLabel}
                 </span>
               )}
@@ -188,13 +189,13 @@ function TimelineItem({ log, isLast }: { log: ActivityLog; isLast: boolean }) {
             </p>
             {/* IP */}
             {log.ip_address && (
-              <span className="text-[11px] text-gray-400 dark:text-gray-600">{log.ip_address}</span>
+              <span className="text-[12px] text-gray-400 dark:text-gray-600">{log.ip_address}</span>
             )}
             {/* Changes toggle */}
             {hasChanges && (
               <button
                 onClick={() => setExpanded(v => !v)}
-                className="mt-1.5 flex items-center gap-1 text-[11px] text-sky-600 dark:text-sky-400 hover:underline"
+                className="mt-1.5 flex items-center gap-1 text-[12px] text-sky-600 dark:text-sky-400 hover:underline"
               >
                 <ChevronDown size={12} className={`transition-transform ${expanded ? 'rotate-180' : ''}`} />
                 {expanded ? 'Masquer les modifications' : `Voir les modifications (${Object.keys(log.changes!).length} champ${Object.keys(log.changes!).length > 1 ? 's' : ''})`}
@@ -206,7 +207,7 @@ function TimelineItem({ log, isLast }: { log: ActivityLog; isLast: boolean }) {
           {/* Timestamp */}
           <time
             title={fullDate(log.created_at)}
-            className="shrink-0 text-[11px] text-gray-400 dark:text-gray-500 whitespace-nowrap pt-0.5"
+            className="shrink-0 text-[12px] text-gray-400 dark:text-gray-500 whitespace-nowrap pt-0.5"
           >
             {relativeTime(log.created_at)}
           </time>
@@ -235,7 +236,7 @@ export default function ActivitesPage() {
     ...(dateTo && { date_to: dateTo }),
   }
 
-  const { data, isLoading, isFetching } = useQuery({
+  const { data, isLoading, isFetching, isError, refetch } = useQuery({
     queryKey: ['activity-logs', params],
     queryFn: () => api.get('/activity-logs', { params }).then(r => r.data),
     placeholderData: keepPreviousData,
@@ -327,7 +328,9 @@ export default function ActivitesPage() {
 
       {/* ── Timeline ── */}
       <div className="rounded-2xl border border-black/[0.07] dark:border-white/[0.08] bg-white dark:bg-[#1c2535] shadow-sm">
-        {isLoading ? (
+        {isError ? (
+          <LoadError what="le journal d'activité" onRetry={() => refetch()} />
+        ) : isLoading ? (
           <div className="p-4 space-y-3">
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="flex items-start gap-3">

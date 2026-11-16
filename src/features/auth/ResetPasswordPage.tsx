@@ -5,10 +5,11 @@ import { z } from 'zod'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { Lock, Eye, EyeOff, ArrowLeft, CheckCircle2, Loader2 } from 'lucide-react'
 import { api } from '../../lib/axios'
-import logo from '../../assets/brand/logounivtours.webp'
+import { PasswordStrength } from '../../ui/PasswordStrength'
+import logo from '../../assets/brand/itineo-mark.svg'
 
 const schema = z.object({
-  password: z.string().min(6, 'Minimum 6 caractères'),
+  password: z.string().min(8, 'Minimum 8 caractères'),
   password_confirmation: z.string(),
 }).refine(d => d.password === d.password_confirmation, {
   message: 'Les mots de passe ne correspondent pas',
@@ -27,9 +28,10 @@ export default function ResetPasswordPage() {
   const token = searchParams.get('token') ?? ''
   const email = searchParams.get('email') ?? ''
 
-  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormVals>({
+  const { register, handleSubmit, watch, formState: { errors, isSubmitting } } = useForm<FormVals>({
     resolver: zodResolver(schema),
   })
+  const pwd = watch('password') ?? ''
 
   const onSubmit = async (vals: FormVals) => {
     setServerError('')
@@ -55,7 +57,7 @@ export default function ResetPasswordPage() {
     <div className="min-h-screen flex items-center justify-center bg-[var(--ut-bg)] px-4">
       <div className="w-full max-w-md">
         <div className="flex justify-center mb-8">
-          <img src={logo} alt="Universal Tours" className="h-12 object-contain" />
+          <img src={logo} alt="Itinéo" className="h-12 object-contain" />
         </div>
 
         <div className="card p-8">
@@ -66,7 +68,7 @@ export default function ResetPasswordPage() {
                   Nouveau mot de passe
                 </h1>
                 <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  Choisissez un mot de passe sécurisé d'au moins 6 caractères.
+                  Choisissez un mot de passe sécurisé d'au moins 8 caractères.
                 </p>
               </div>
 
@@ -93,6 +95,7 @@ export default function ResetPasswordPage() {
                   {errors.password && (
                     <p className="mt-1 text-xs text-red-500">{errors.password.message}</p>
                   )}
+                  <PasswordStrength password={pwd} />
                 </div>
 
                 {/* Confirmation */}

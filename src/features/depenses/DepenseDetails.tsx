@@ -135,7 +135,7 @@ function InfoCell({ label, value, icon }: { label: string; value: React.ReactNod
     <div className="rounded-2xl border border-black/[0.05] dark:border-white/[0.07] bg-white dark:bg-[#151d2e] p-4">
       <div className="flex items-center gap-1.5 mb-1.5">
         {icon && <span className="text-gray-400">{icon}</span>}
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+        <span className="text-[12px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
           {label}
         </span>
       </div>
@@ -178,7 +178,7 @@ export default function DepenseDetails({
             </div>
             <span
               className={cx(
-                'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold mt-1.5',
+                'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-semibold mt-1.5',
                 statut.badge,
               )}
             >
@@ -226,7 +226,7 @@ export default function DepenseDetails({
         <div className="rounded-2xl border border-black/[0.05] dark:border-white/[0.07] bg-white dark:bg-[#151d2e] p-4">
           <div className="flex items-center gap-1.5 mb-2">
             <StickyNote size={14} className="text-gray-400" />
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+            <span className="text-[12px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
               Notes
             </span>
           </div>

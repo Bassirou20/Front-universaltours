@@ -87,7 +87,7 @@ export const NotificationsBell: React.FC = () => {
       >
         <Bell size={16} />
         {unreadCount > 0 && (
-          <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] px-1 rounded-full bg-[var(--ut-orange)] text-white text-[9px] font-bold leading-none flex items-center justify-center">
+          <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-[16px] px-1 rounded-full bg-[var(--ut-orange)] text-white text-[12px] font-bold leading-none flex items-center justify-center">
             {displayCount}
           </span>
         )}
@@ -104,7 +104,7 @@ export const NotificationsBell: React.FC = () => {
               <Bell size={14} className="text-gray-500 dark:text-gray-400 shrink-0" />
               <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">Notifications</span>
               {unreadCount > 0 && (
-                <span className="text-[10px] font-semibold bg-[var(--ut-orange)]/10 text-[var(--ut-orange)] px-1.5 py-0.5 rounded-full">
+                <span className="text-[12px] font-semibold bg-[var(--ut-orange)]/10 text-[var(--ut-orange)] px-1.5 py-0.5 rounded-full">
                   {unreadCount} non-lue{unreadCount > 1 ? 's' : ''}
                 </span>
               )}
@@ -113,7 +113,7 @@ export const NotificationsBell: React.FC = () => {
               <button
                 onClick={() => markAllRead.mutate()}
                 disabled={markAllRead.isPending}
-                className="inline-flex items-center gap-1 text-[11px] font-medium text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors disabled:opacity-40"
+                className="inline-flex items-center gap-1 text-[12px] font-medium text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors disabled:opacity-40"
                 title="Tout marquer comme lu"
               >
                 <CheckCheck size={12} />
@@ -168,12 +168,12 @@ export const NotificationsBell: React.FC = () => {
                         )}
                       </div>
                       {n.body && (
-                        <div className="text-[11.5px] text-gray-500 dark:text-gray-400 mt-0.5 truncate">
+                        <div className="text-[12px] text-gray-500 dark:text-gray-400 mt-0.5 truncate">
                           {n.body}
                         </div>
                       )}
                       <div className="flex items-center justify-between gap-2 mt-1">
-                        <span className="text-[10px] text-gray-400 dark:text-gray-500">{timeAgo(n.created_at)}</span>
+                        <span className="text-[12px] text-gray-400 dark:text-gray-500">{timeAgo(n.created_at)}</span>
                         <button
                           onClick={(e) => { e.stopPropagation(); remove.mutate(n.id) }}
                           className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-rose-500 transition-all"

@@ -11,6 +11,8 @@ import { Pagination } from '../../ui/Pagination'
 import { FiltersBar } from '../../ui/FiltersBar'
 import { useToast } from '../../ui/Toasts'
 import { useAuth } from '../../store/auth'
+import { useRole } from '../../hooks/useRole'
+import { useAgency } from '../../hooks/useAgency'
 import { Badge } from '../../ui/Badge'
 import { ActionsMenu } from '../../ui/ActionsMenu'
 import { Eye, Pencil, Trash2, Plus, Search, CheckCircle2, XCircle, Users, Shield, Loader2, KeyRound, Copy, Clock, Download, CheckSquare, Square, X, FileSpreadsheet } from 'lucide-react'
@@ -71,14 +73,21 @@ export default function UsersPage() {
   const toast = useToast()
   const navigate = useNavigate()
   const { user: me, refreshMe } = useAuth()
-  const isAdmin = String(me?.role || '').toLowerCase() === 'admin'
+  const { agency } = useAgency()
+  // Multi-tenancy : owner/admin/super_admin ont accès à la gestion des users
+  const { isAdmin } = useRole()
+
+  // Quota de sièges de la formule (gating « accès selon la formule »). Le
+  // backend reste l'autorité (403 user_limit_reached) ; ici on prévient juste
+  // l'utilisateur AVANT d'ouvrir le formulaire pour éviter une saisie inutile.
+  const planLimits = agency?.plan_limits
+  const seatLimitReached = planLimits ? planLimits.can_add_user === false : false
+  const userLimit = planLimits?.max_users ?? null
 
   // ✅ Interdire complètement l'accès aux non-admin
   useEffect(() => {
     if (me && !isAdmin) navigate('/dashboard', { replace: true })
   }, [me, isAdmin, navigate])
-
-  if (me && !isAdmin) return null
 
   const [page, setPage] = useState(1)
   const perPage = 10
@@ -331,6 +340,18 @@ export default function UsersPage() {
   }
 
   const openCreate = () => {
+    // Garde-fou formule : quota de sièges atteint → on explique au lieu d'ouvrir.
+    if (seatLimitReached) {
+      toast.push({
+        tone: 'warning',
+        title: "Limite d'utilisateurs atteinte",
+        description:
+          `Votre formule est limitée à ${userLimit} utilisateur(s) actif(s). ` +
+          'Désactivez un compte existant ou passez à une formule supérieure pour en ajouter.',
+        duration: 6000,
+      })
+      return
+    }
     setEditing(null)
     setFormOpen(true)
   }
@@ -349,7 +370,8 @@ export default function UsersPage() {
       prenom: u.prenom ?? '',
       nom: u.nom ?? '',
       email: u.email ?? '',
-      role: (u.role as any) ?? 'employee',
+      // Normalise le rôle legacy "employee" vers "agent" pour le formulaire.
+      role: ((u.role === 'employee' ? 'agent' : u.role) as any) ?? 'agent',
       password: '',
     }
   }
@@ -364,6 +386,10 @@ export default function UsersPage() {
       </Badge>
     </div>
   )
+
+  // Garde placée APRÈS tous les hooks : un return anticipé avant des hooks
+  // fait planter React si le rôle change pendant que la page est ouverte.
+  if (me && !isAdmin) return null
 
   return (
     <div className="space-y-4">
@@ -394,8 +420,18 @@ export default function UsersPage() {
           </button>
           <button
             type="button"
-            className="inline-flex whitespace-nowrap items-center gap-1.5 rounded-lg bg-[var(--ut-orange)] px-3 py-1.5 text-sm font-semibold text-white hover:brightness-95 transition shadow-sm"
+            className={[
+              'inline-flex whitespace-nowrap items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold text-white transition shadow-sm',
+              seatLimitReached
+                ? 'bg-[var(--ut-orange)]/60 cursor-not-allowed'
+                : 'bg-[var(--ut-orange)] hover:brightness-95',
+            ].join(' ')}
             onClick={openCreate}
+            title={
+              seatLimitReached && userLimit !== null
+                ? `Limite de ${userLimit} utilisateur(s) atteinte pour votre formule`
+                : undefined
+            }
           >
             <Plus size={15} /> Nouvel utilisateur
           </button>
@@ -503,10 +539,10 @@ export default function UsersPage() {
               <Square size={15} />
             )}
           </button>
-          <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider">Utilisateur</span>
-          <span className="hidden md:inline text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Rôle</span>
-          <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Statut</span>
-          <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Actions</span>
+          <span className="text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider">Utilisateur</span>
+          <span className="hidden md:inline text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Rôle</span>
+          <span className="text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Statut</span>
+          <span className="text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Actions</span>
         </div>
 
         {qUsers.isLoading ? (
@@ -602,18 +638,18 @@ export default function UsersPage() {
 
                   {/* Cell 1 : Avatar + nom + email + dernière connexion */}
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="h-8 w-8 shrink-0 rounded-full bg-purple-100 dark:bg-purple-500/15 text-purple-700 dark:text-purple-300 flex items-center justify-center text-[10px] font-bold">
+                    <div className="h-8 w-8 shrink-0 rounded-full bg-purple-100 dark:bg-purple-500/15 text-purple-700 dark:text-purple-300 flex items-center justify-center text-[12px] font-bold">
                       {userInitials}
                     </div>
                     <div className="min-w-0 flex-1 overflow-hidden">
                       <div className="flex items-baseline gap-1.5">
                         <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate" title={fullName}>{fullName}</span>
-                        <span className="text-[11px] text-gray-400 dark:text-gray-500 truncate hidden lg:inline" title={u.email ?? undefined}>
+                        <span className="text-[12px] text-gray-400 dark:text-gray-500 truncate hidden lg:inline" title={u.email ?? undefined}>
                           · {u.email || '—'}
                         </span>
                       </div>
                       {(u as any).last_login_at && (
-                        <div className="hidden sm:flex items-center gap-1 text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">
+                        <div className="hidden sm:flex items-center gap-1 text-[12px] text-gray-400 dark:text-gray-500 mt-0.5">
                           <Clock size={9} />
                           {relativeLogin((u as any).last_login_at)}
                         </div>
@@ -640,12 +676,12 @@ export default function UsersPage() {
                     <Badge tone={roleTone(u.role) as any}>{u.role || '—'}</Badge>
                     <Badge tone={isActive ? 'green' : 'red'}>{isActive ? 'Actif' : 'Inactif'}</Badge>
                     {(u as any).last_login_at && (
-                      <span className="text-[10px] text-gray-400 inline-flex items-center gap-1">
+                      <span className="text-[12px] text-gray-400 inline-flex items-center gap-1">
                         <Clock size={9} />
                         {relativeLogin((u as any).last_login_at)}
                       </span>
                     )}
-                    {u.email && <span className="text-[10px] text-gray-400 truncate max-w-[180px]">{u.email}</span>}
+                    {u.email && <span className="text-[12px] text-gray-400 truncate max-w-[180px]">{u.email}</span>}
                   </div>
 
                   {/* Cell 4 : Actions (sm+) */}

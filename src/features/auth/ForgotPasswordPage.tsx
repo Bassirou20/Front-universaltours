@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { Link } from 'react-router-dom'
 import { Mail, ArrowLeft, CheckCircle2, Loader2 } from 'lucide-react'
 import { api } from '../../lib/axios'
-import logo from '../../assets/brand/logounivtours.webp'
+import logo from '../../assets/brand/itineo-mark.svg'
 
 const schema = z.object({
   email: z.string().email('Email invalide'),
@@ -37,7 +37,7 @@ export default function ForgotPasswordPage() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="flex justify-center mb-8">
-          <img src={logo} alt="Universal Tours" className="h-12 object-contain" />
+          <img src={logo} alt="Itinéo" className="h-12 object-contain" />
         </div>
 
         <div className="card p-8">

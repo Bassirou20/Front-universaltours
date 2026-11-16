@@ -1,15 +1,15 @@
 // src/lib/agencyConfig.ts
-// ── Coordonnées et identité de l'agence ─────────────────────────────────────
-// Centralisé ici pour pouvoir migrer vers une page Settings administrable plus tard.
+// ── Identité de la plateforme Itinéo (éditeur du SaaS) ──────────────────────
+// Coordonnées affichées sur la landing, les pages légales et l'abonnement.
 
 export const AGENCY = {
-  name: 'Universal Tours',
-  tagline: 'Agence de voyage',
-  email: 'contact@universal-tours.com',
+  name: 'Itinéo',
+  tagline: 'La plateforme de gestion des agences de voyage',
+  email: 'contact@itineo.com',
   phone: '+221 77 579 96 01',
   whatsapp: '+221775799601', // format E.164 sans espaces (pour wa.me)
   address: 'Dakar, Sénégal',
-  website: 'https://universal-tours.com',
+  website: 'https://itineo.com',
   // Numéros administratifs (à compléter au besoin)
   ninea: '',
   rccm: '',

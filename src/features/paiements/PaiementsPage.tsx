@@ -2,14 +2,14 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams, Link } from 'react-router-dom'
 import { api } from '../../lib/axios'
-import { useDebouncedValue, fetchAllPaged } from '../../lib/helpers'
+import { useDebouncedValue, fetchAllPaged, money } from '../../lib/helpers'
 import Modal from '../../ui/Modal'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import { T, Th, Td } from '../../ui/Table'
 import { Pagination } from '../../ui/Pagination'
 import { FiltersBar } from '../../ui/FiltersBar'
 import { useToast } from '../../ui/Toasts'
-import { useAuth } from '../../store/auth'
+import { useRole } from '../../hooks/useRole'
 import { ActionsMenu } from '../../ui/ActionsMenu'
 import { SkeletonTable } from '../../ui/Skeleton'
 import PaiementsForm, { type PaiementInput, type FactureOption } from './PaiementsForm'
@@ -53,7 +53,6 @@ const STATUT_CONFIG: Record<string, { label: string; icon: React.ReactNode; cls:
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const money = (n: any) => `${Number(n || 0).toLocaleString('fr-FR')} XOF`
 
 const fmtDate = (d: any) => {
   const s = String(d || '').slice(0, 10)
@@ -101,7 +100,7 @@ function KpiInline({ label, value, icon, color }: { label: string; value: string
         <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${color}`}>
           {icon}
         </div>
-        <div className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide truncate">
+        <div className="text-[12px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide truncate">
           {label}
         </div>
       </div>
@@ -122,7 +121,7 @@ function KpiCard({ label, value, sub, icon, accent, iconBg, to }: {
       <div className="p-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <div className="text-[11px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{label}</div>
+            <div className="text-[12px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{label}</div>
             <div className="mt-1.5 text-xl font-bold text-gray-900 dark:text-gray-50 truncate">{value}</div>
             {sub && <div className="mt-1 text-xs text-gray-400">{sub}</div>}
           </div>
@@ -183,8 +182,7 @@ async function fetchPaiementsSmart(): Promise<PaiementModel[]> {
 export default function PaiementsPage() {
   const qc    = useQueryClient()
   const toast = useToast()
-  const { user } = useAuth()
-  const isAdmin = (user?.role ?? '').toLowerCase() === 'admin'
+  const { isAdmin } = useRole()
   const [sp] = useSearchParams()
 
   const [page, setPage] = useState(1)
@@ -565,12 +563,12 @@ export default function PaiementsPage() {
       <div className="rounded-xl border border-black/[0.05] dark:border-white/[0.07] bg-white dark:bg-[#151d2e] shadow-sm overflow-hidden">
         {/* List header */}
         <div className="hidden sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,1fr)_72px] md:grid-cols-[100px_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_72px] items-center gap-3 px-4 py-2 border-b border-black/[0.04] dark:border-white/[0.05] bg-gray-50/80 dark:bg-white/[0.02]">
-          <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider">Date</span>
-          <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Facture</span>
-          <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Montant</span>
-          <span className="hidden md:inline text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Mode</span>
-          <span className="hidden md:inline text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Statut</span>
-          <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Actions</span>
+          <span className="text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider">Date</span>
+          <span className="text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Facture</span>
+          <span className="text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Montant</span>
+          <span className="hidden md:inline text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Mode</span>
+          <span className="hidden md:inline text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Statut</span>
+          <span className="text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Actions</span>
         </div>
 
         {qPaiements.isLoading ? (
@@ -641,7 +639,7 @@ export default function PaiementsPage() {
 
                   {/* Cell 2 : Facture (sm+) */}
                   <div className="hidden sm:flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
-                    <span className="inline-flex items-center rounded-lg bg-sky-50 dark:bg-sky-500/10 px-2 py-0.5 text-[11px] font-semibold text-sky-700 dark:text-sky-300 font-mono truncate max-w-full">
+                    <span className="inline-flex items-center rounded-lg bg-sky-50 dark:bg-sky-500/10 px-2 py-0.5 text-[12px] font-semibold text-sky-700 dark:text-sky-300 font-mono truncate max-w-full">
                       {factureLabel}
                     </span>
                   </div>
@@ -654,7 +652,7 @@ export default function PaiementsPage() {
                         : 'text-gray-400'
                     }`}>
                       {Number(p.montant || 0).toLocaleString('fr-FR')}
-                      <span className="ml-1 text-[10px] font-normal text-gray-400">XOF</span>
+                      <span className="ml-1 text-[12px] font-normal text-gray-400">XOF</span>
                     </span>
                   </div>
 
@@ -671,7 +669,7 @@ export default function PaiementsPage() {
                   {/* Mobile summary (xs only) */}
                   <div className="flex sm:hidden flex-wrap items-center justify-between gap-2">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="inline-flex items-center rounded-lg bg-sky-50 dark:bg-sky-500/10 px-2 py-0.5 text-[10px] font-semibold text-sky-700 dark:text-sky-300 font-mono">
+                      <span className="inline-flex items-center rounded-lg bg-sky-50 dark:bg-sky-500/10 px-2 py-0.5 text-[12px] font-semibold text-sky-700 dark:text-sky-300 font-mono">
                         {factureLabel}
                       </span>
                       <ModeBadge mode={p.mode_paiement} />
@@ -682,7 +680,7 @@ export default function PaiementsPage() {
                         : statut === 'en_attente' ? 'text-amber-600 dark:text-amber-400'
                         : 'text-gray-400'
                     }`}>
-                      {Number(p.montant || 0).toLocaleString('fr-FR')} <span className="text-[10px] font-normal text-gray-400">XOF</span>
+                      {Number(p.montant || 0).toLocaleString('fr-FR')} <span className="text-[12px] font-normal text-gray-400">XOF</span>
                     </span>
                   </div>
 

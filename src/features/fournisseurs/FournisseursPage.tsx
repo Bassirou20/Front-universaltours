@@ -223,11 +223,11 @@ export default function FournisseursPage() {
       <div className="rounded-xl border border-black/[0.05] dark:border-white/[0.07] bg-white dark:bg-[#151d2e] shadow-sm overflow-hidden">
         {/* List header */}
         <div className="hidden sm:grid sm:grid-cols-[minmax(0,2fr)_minmax(0,1.5fr)_72px] md:grid-cols-[minmax(0,1.5fr)_minmax(0,1.8fr)_minmax(0,1.2fr)_100px_72px] items-center gap-3 px-4 py-2 border-b border-black/[0.04] dark:border-white/[0.05] bg-gray-50/80 dark:bg-white/[0.02]">
-          <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider">Fournisseur</span>
-          <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Contact</span>
-          <span className="hidden md:inline text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Site web</span>
-          <span className="hidden md:inline text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Ajouté</span>
-          <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Actions</span>
+          <span className="text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider">Fournisseur</span>
+          <span className="text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Contact</span>
+          <span className="hidden md:inline text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Site web</span>
+          <span className="hidden md:inline text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Ajouté</span>
+          <span className="text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Actions</span>
         </div>
 
         {qList.isLoading ? (
@@ -277,7 +277,7 @@ export default function FournisseursPage() {
                 >
                   {/* Cell 1 : Avatar + nom */}
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="h-7 w-7 shrink-0 rounded-full bg-violet-100 dark:bg-violet-500/15 text-violet-700 dark:text-violet-300 flex items-center justify-center text-[10px] font-bold">
+                    <div className="h-7 w-7 shrink-0 rounded-full bg-violet-100 dark:bg-violet-500/15 text-violet-700 dark:text-violet-300 flex items-center justify-center text-[12px] font-bold">
                       {initials(f.nom)}
                     </div>
                     <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate flex-1 min-w-0" title={f.nom}>{f.nom}</span>

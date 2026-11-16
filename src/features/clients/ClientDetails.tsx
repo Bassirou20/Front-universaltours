@@ -78,7 +78,7 @@ function TypeBadge({ type }: { type?: string }) {
   const cfg = TYPE_CONFIG[type ?? '']
   if (!cfg) return <span className="text-xs text-gray-400">—</span>
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${cfg.color} ${cfg.bg}`}>
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12px] font-semibold ${cfg.color} ${cfg.bg}`}>
       {cfg.icon} {cfg.label}
     </span>
   )
@@ -89,7 +89,7 @@ function StatutBadge({ statut }: { statut?: string }) {
   const cfg = STATUT_CONFIG[key]
   if (!cfg) return statut ? <span className="text-xs text-gray-500">{statut}</span> : null
   return (
-    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${cfg.cls}`}>
+    <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12px] font-semibold ${cfg.cls}`}>
       {cfg.icon} {cfg.label}
     </span>
   )
@@ -106,7 +106,7 @@ function InfoTile({ icon, label, value, right }: { icon: React.ReactNode; label:
             {icon}
           </div>
           <div className="min-w-0">
-            <div className="text-[10px] uppercase tracking-widest text-gray-400 dark:text-gray-500 font-semibold">{label}</div>
+            <div className="text-[12px] uppercase tracking-widest text-gray-400 dark:text-gray-500 font-semibold">{label}</div>
             <div className="mt-1 text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{value ?? '—'}</div>
           </div>
         </div>
@@ -123,7 +123,7 @@ function StatCard({ label, value, accent, icon }: { label: string; value: React.
     <div className={`rounded-xl border p-3 ${accent}`}>
       <div className="flex items-center justify-between gap-2">
         <div>
-          <div className="text-[10px] uppercase tracking-widest font-semibold opacity-70">{label}</div>
+          <div className="text-[12px] uppercase tracking-widest font-semibold opacity-70">{label}</div>
           <div className="mt-0.5 text-base font-bold">{value}</div>
         </div>
         <div className="opacity-60">{icon}</div>
@@ -382,7 +382,7 @@ export default function ClientDetails({ client, onClose, onEdit }: Props) {
                   { label: 'ID',         val: `#${client?.id ?? '—'}` },
                 ].map(({ label, val }) => (
                   <div key={label} className="rounded-xl bg-black/[0.03] dark:bg-white/[0.06] p-3">
-                    <div className="text-[10px] text-gray-500 dark:text-gray-400 uppercase tracking-wide font-semibold">{label}</div>
+                    <div className="text-[12px] text-gray-500 dark:text-gray-400 uppercase tracking-wide font-semibold">{label}</div>
                     <div className="mt-1 font-semibold text-sm">{val}</div>
                   </div>
                 ))}
@@ -529,7 +529,7 @@ export default function ClientDetails({ client, onClose, onEdit }: Props) {
                                   style={{ width: `${payPct}%` }}
                                 />
                               </div>
-                              <div className="flex items-center gap-3 text-[10px] text-gray-400">
+                              <div className="flex items-center gap-3 text-[12px] text-gray-400">
                                 <span className="text-emerald-600 dark:text-emerald-400 font-medium">Payé {money(totalPaye)}</span>
                                 {reste > 0 && <span>Reste {money(reste)}</span>}
                                 {payPct >= 99.9 && <span className="text-emerald-500 font-semibold">Soldé ✓</span>}
@@ -546,7 +546,7 @@ export default function ClientDetails({ client, onClose, onEdit }: Props) {
                           <div className="flex items-center gap-1.5 justify-end">
                             <Link
                               to={`/reservations?id=${r.id}`}
-                              className="inline-flex items-center gap-1 text-[11px] text-sky-600 dark:text-sky-400 hover:underline font-medium"
+                              className="inline-flex items-center gap-1 text-[12px] text-sky-600 dark:text-sky-400 hover:underline font-medium"
                               onClick={onClose}
                             >
                               Voir <ChevronRight size={11} />
@@ -554,7 +554,7 @@ export default function ClientDetails({ client, onClose, onEdit }: Props) {
                             {firstFactId && (
                               <Link
                                 to={`/factures?id=${firstFactId}`}
-                                className="inline-flex items-center gap-1 text-[11px] text-violet-600 dark:text-violet-400 hover:underline font-medium"
+                                className="inline-flex items-center gap-1 text-[12px] text-violet-600 dark:text-violet-400 hover:underline font-medium"
                                 onClick={onClose}
                               >
                                 Facture <ChevronRight size={11} />

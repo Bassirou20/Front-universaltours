@@ -1,4 +1,5 @@
 // src/features/reservations/ReservationsForm.tsx
+import { money } from '../../lib/helpers'
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -134,9 +135,6 @@ function cx(...cls: Array<string | false | undefined | null>) {
   return cls.filter(Boolean).join(' ')
 }
 
-function money(n: any, devise = 'XOF') {
-  return `${Number(n || 0).toLocaleString()} ${devise}`
-}
 
 // ─── Type metadata with richer colors ───────────────────────────────────────
 const TYPE_META: Record<
@@ -213,7 +211,7 @@ function clientInitials(c: any): string {
 function ClientAvatar({ client, active = false, size = 8 }: { client: any; active?: boolean; size?: number }) {
   const seed = String(client?.id || '') + String(client?.nom || '') + String(client?.prenom || '')
   const color = clientAvatarColor(seed)
-  const sizeCls = size === 10 ? 'w-10 h-10 text-sm' : size === 9 ? 'w-9 h-9 text-xs' : 'w-8 h-8 text-[11px]'
+  const sizeCls = size === 10 ? 'w-10 h-10 text-sm' : size === 9 ? 'w-9 h-9 text-xs' : 'w-8 h-8 text-[12px]'
   return (
     <div className={cx(
       'rounded-full flex items-center justify-center shrink-0 text-white font-bold',
@@ -244,7 +242,7 @@ function Stepper({
       {/* Header : Étape badge + titre + sous-titre */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2.5 min-w-0">
-          <span className="text-[11px] font-semibold text-sky-700 dark:text-sky-300 bg-sky-100 dark:bg-sky-500/15 px-2 py-0.5 rounded-full whitespace-nowrap">
+          <span className="text-[12px] font-semibold text-sky-700 dark:text-sky-300 bg-sky-100 dark:bg-sky-500/15 px-2 py-0.5 rounded-full whitespace-nowrap">
             Étape {current + 1} / {steps.length}
           </span>
           <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
@@ -288,7 +286,7 @@ function Stepper({
             >
               <span
                 className={cx(
-                  'w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0',
+                  'w-5 h-5 rounded-full flex items-center justify-center text-[12px] font-bold shrink-0',
                   active
                     ? 'bg-white/20 dark:bg-gray-900/15 text-white dark:text-gray-900'
                     : done
@@ -298,7 +296,7 @@ function Stepper({
               >
                 {done ? <CheckCircle2 size={11} /> : i + 1}
               </span>
-              <span className="text-[11px] font-medium truncate">{s.title}</span>
+              <span className="text-[12px] font-medium truncate">{s.title}</span>
             </button>
           )
         })}
@@ -458,7 +456,7 @@ function SummarySidebar({
 
         {/* Client */}
         <div className="space-y-1">
-          <div className="text-[10px] uppercase tracking-wide font-semibold text-gray-400">Client</div>
+          <div className="text-[12px] uppercase tracking-wide font-semibold text-gray-400">Client</div>
           <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
             {summary.clientLabel || <span className="text-gray-400 italic">Non sélectionné</span>}
           </div>
@@ -467,7 +465,7 @@ function SummarySidebar({
         {/* Details */}
         {summary.details && summary.details !== '—' && (
           <div className="space-y-1">
-            <div className="text-[10px] uppercase tracking-wide font-semibold text-gray-400">Détails</div>
+            <div className="text-[12px] uppercase tracking-wide font-semibold text-gray-400">Détails</div>
             <div className="text-sm text-gray-700 dark:text-gray-300 truncate">{summary.details}</div>
           </div>
         )}
@@ -677,6 +675,10 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
   const isEdit = Boolean((defaultValues as any)?.id)
   const [form, setForm] = useState<ReservationInput>(() => normalizeReservationToForm(defaultValues))
   const [step, setStep] = useState(0)
+  // N'affiche l'avertissement d'étape qu'après une première interaction sur cette étape
+  // (évite un message d'erreur dès l'ouverture du formulaire).
+  const [stepTouched, setStepTouched] = useState(false)
+  useEffect(() => { setStepTouched(false) }, [step])
   const [beneficiaryDraft, setBeneficiaryDraft] = useState<BeneficiaryInput>({ nom: '', prenom: '' })
   const qc = useQueryClient()
 
@@ -1294,7 +1296,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                     )}>
                       {label}
                     </div>
-                    <div className="text-[10.5px] text-gray-400 dark:text-gray-500 mt-0.5 truncate">
+                    <div className="text-[12px] text-gray-400 dark:text-gray-500 mt-0.5 truncate">
                       {hint}
                     </div>
                   </div>
@@ -1395,11 +1397,11 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                       >
                         {/* Header dropdown */}
                         <div className="px-3 py-2 border-b border-black/[0.05] dark:border-white/[0.06] flex items-center justify-between">
-                          <span className="text-[10.5px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                          <span className="text-[12px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                             {clientQuery ? `${filteredClients.length} résultat${filteredClients.length > 1 ? 's' : ''}` : 'Clients récents'}
                           </span>
                           {filteredClients.length > 0 && (
-                            <span className="text-[9.5px] text-gray-400 hidden sm:inline">
+                            <span className="text-[12px] text-gray-400 hidden sm:inline">
                               ↑↓ Naviguer · ⏎ Choisir
                             </span>
                           )}
@@ -1440,7 +1442,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
                                     <div className="text-[13px] font-semibold text-gray-900 dark:text-gray-100 truncate">
                                       {fullName}
                                     </div>
-                                    <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate">
+                                    <div className="text-[12px] text-gray-500 dark:text-gray-400 truncate">
                                       {c?.telephone || '—'}{c?.email ? ` · ${c.email}` : ''}
                                     </div>
                                   </div>
@@ -2041,7 +2043,11 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
   // RENDER
   // ══════════════════════════════════════════════════════════════════════════
   return (
-    <div className="space-y-0 min-w-0">
+    <div
+      className="space-y-0 min-w-0"
+      onChangeCapture={() => setStepTouched(true)}
+      onClickCapture={() => setStepTouched(true)}
+    >
       {/* Stepper */}
       <Stepper
         steps={steps}
@@ -2051,7 +2057,7 @@ export function ReservationsForm({ defaultValues, submitting, onCancel, onSubmit
       />
 
       {/* Warning banner */}
-      {stepError && (
+      {stepError && stepTouched && (
         <div className="flex items-center gap-2.5 rounded-xl border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 text-amber-800 dark:text-amber-300 px-4 py-3 text-sm mb-4">
           <AlertCircle size={15} className="shrink-0" />
           {stepError}

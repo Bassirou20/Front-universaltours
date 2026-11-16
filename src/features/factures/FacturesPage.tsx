@@ -152,7 +152,7 @@ function KpiMini({ label, value, icon, color }: { label: string; value: string; 
         <div className={cx('flex h-7 w-7 shrink-0 items-center justify-center rounded-lg', color)}>
           {icon}
         </div>
-        <div className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide truncate">
+        <div className="text-[12px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide truncate">
           {label}
         </div>
       </div>
@@ -467,7 +467,7 @@ export default function FacturesPage() {
 
           {/* Date range inline */}
           <div className="flex items-center gap-2">
-            <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider hidden md:inline">Du</span>
+            <span className="text-[12px] font-semibold text-gray-400 uppercase tracking-wider hidden md:inline">Du</span>
             <DatePickerInput
               label=""
               value={dateFrom}
@@ -490,11 +490,11 @@ export default function FacturesPage() {
 
         {/* List header */}
         <div className="hidden sm:grid grid-cols-[2.2fr_1fr_1.4fr_0.9fr_auto] items-center gap-3 px-4 py-2 border-b border-black/[0.04] dark:border-white/[0.05] bg-gray-50/80 dark:bg-white/[0.02] border-l-[3px] border-l-transparent">
-          <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider">Client · Facture</span>
-          <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Date</span>
-          <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Montant</span>
-          <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Statut</span>
-          <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Actions</span>
+          <span className="text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider">Client · Facture</span>
+          <span className="text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Date</span>
+          <span className="text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Montant</span>
+          <span className="text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Statut</span>
+          <span className="text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Actions</span>
         </div>
 
         {qList.isLoading ? (
@@ -565,14 +565,14 @@ export default function FacturesPage() {
                 >
                   {/* Cell 1 : avatar + client · numéro (1 line) */}
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="h-7 w-7 shrink-0 rounded-full bg-sky-100 dark:bg-sky-500/15 flex items-center justify-center text-[10px] font-bold text-sky-700 dark:text-sky-300">
+                    <div className="h-7 w-7 shrink-0 rounded-full bg-sky-100 dark:bg-sky-500/15 flex items-center justify-center text-[12px] font-bold text-sky-700 dark:text-sky-300">
                       {ini}
                     </div>
                     <div className="min-w-0 flex items-baseline gap-1.5">
                       <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
                         {clientName || (f.reservation?.reference ? `Res. ${f.reservation.reference}` : `Facture #${f.id}`)}
                       </span>
-                      <span className="text-[11px] text-gray-400 dark:text-gray-500 truncate hidden md:inline shrink-0">
+                      <span className="text-[12px] text-gray-400 dark:text-gray-500 truncate hidden md:inline shrink-0">
                         · {f.numero || `#${f.id}`}
                       </span>
                     </div>
@@ -586,7 +586,7 @@ export default function FacturesPage() {
                   {/* Cell 3 : Montant + mini progress inline */}
                   <div className="hidden sm:flex items-center justify-center gap-2 min-w-0">
                     <div className="text-sm font-bold text-gray-900 dark:text-gray-100 tabular-nums shrink-0">
-                      {montant.toLocaleString('fr-FR')}<span className="text-[10px] font-normal text-gray-400 ml-1">XOF</span>
+                      {montant.toLocaleString('fr-FR')}<span className="text-[12px] font-normal text-gray-400 ml-1">XOF</span>
                     </div>
                     <div className="h-1 w-10 rounded-full bg-black/[0.06] dark:bg-white/[0.08] overflow-hidden shrink-0">
                       <div
@@ -594,12 +594,12 @@ export default function FacturesPage() {
                         style={{ width: `${p.pct}%` }}
                       />
                     </div>
-                    <span className="text-[10px] text-gray-400 tabular-nums shrink-0">{p.pct}%</span>
+                    <span className="text-[12px] text-gray-400 tabular-nums shrink-0">{p.pct}%</span>
                   </div>
 
                   {/* Cell 4 : Statut */}
                   <div className="hidden sm:flex items-center justify-center">
-                    <span className={cx('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap', st.badge)}>
+                    <span className={cx('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12px] font-semibold whitespace-nowrap', st.badge)}>
                       <span className={cx('h-1 w-1 rounded-full shrink-0', st.dot)} />
                       {statutLabel(f.statut)}
                     </span>
@@ -607,7 +607,7 @@ export default function FacturesPage() {
 
                   {/* Mobile summary */}
                   <div className="flex sm:hidden flex-wrap items-center gap-2 mt-1">
-                    <span className={cx('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold', st.badge)}>
+                    <span className={cx('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12px] font-semibold', st.badge)}>
                       <span className={cx('h-1.5 w-1.5 rounded-full', st.dot)} />
                       {statutLabel(f.statut)}
                     </span>
@@ -675,7 +675,7 @@ export default function FacturesPage() {
                   </div>
                   <div className="text-right">
                     <div className="text-xl font-extrabold text-white">{Number(pay?.total ?? 0).toLocaleString('fr-FR')} XOF</div>
-                    <span className={cx('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold mt-1', getStatut(facture.statut).badge)}>
+                    <span className={cx('inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-semibold mt-1', getStatut(facture.statut).badge)}>
                       <span className={cx('h-1.5 w-1.5 rounded-full', getStatut(facture.statut).dot)} />
                       {statutLabel(facture.statut)}
                     </span>
@@ -694,7 +694,7 @@ export default function FacturesPage() {
                       style={{ width: `${pay?.pct ?? 0}%` }}
                     />
                   </div>
-                  <div className="text-[11px] text-gray-500 text-right">{pay?.pct ?? 0}% regle</div>
+                  <div className="text-[12px] text-gray-500 text-right">{pay?.pct ?? 0}% regle</div>
                 </div>
               </div>
 
@@ -860,7 +860,7 @@ export default function FacturesPage() {
                 remaining,
                 date_echeance: f.date_echeance ?? null,
               },
-              agencyName: 'Universal Tours',
+              agencyName: 'Itinéo',
             }}
           />
         )

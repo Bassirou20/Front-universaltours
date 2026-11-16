@@ -9,7 +9,7 @@ import { Modal } from '../../ui/Modal'
 import { Pagination } from '../../ui/Pagination'
 import { useToast } from '../../ui/Toasts'
 import { ActionsMenu } from '../../ui/ActionsMenu'
-import { useAuth } from '../../store/auth'
+import { useRole } from '../../hooks/useRole'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import {
   Plus, Search, Eye, Pencil, Trash2, CheckCircle2, XCircle, X,
@@ -190,8 +190,7 @@ export default function ReservationsPage() {
   const toast = useToast()
   const navigate = useNavigate()
   const [sp] = useSearchParams()
-  const { user } = useAuth()
-  const isAdmin = String(user?.role || '').toLowerCase() === 'admin'
+  const { isAdmin } = useRole()
 
   const [page, setPage] = useState(1)
   const perPage = 10
@@ -662,11 +661,11 @@ export default function ReservationsPage() {
       <div className="rounded-xl border border-black/[0.05] dark:border-white/[0.07] bg-white dark:bg-[#151d2e] shadow-sm overflow-hidden">
         {/* List header — visible sm+, colonnes apparaissent progressivement */}
         <div className="hidden sm:grid sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_72px] md:grid-cols-[minmax(0,2.2fr)_100px_minmax(0,1.4fr)_minmax(0,1fr)_72px] items-center gap-3 px-4 py-2 border-b border-black/[0.04] dark:border-white/[0.05] bg-gray-50/80 dark:bg-white/[0.02]">
-          <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider">Client · Référence</span>
-          <span className="hidden md:inline text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Date</span>
-          <span className="hidden md:inline text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Total · Paiement</span>
-          <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Statut</span>
-          <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Actions</span>
+          <span className="text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider">Client · Référence</span>
+          <span className="hidden md:inline text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Date</span>
+          <span className="hidden md:inline text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Total · Paiement</span>
+          <span className="text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Statut</span>
+          <span className="text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Actions</span>
         </div>
 
         {q.isLoading ? (
@@ -759,7 +758,7 @@ export default function ReservationsPage() {
                     </div>
                     <div className="min-w-0 flex-1 flex items-baseline gap-1.5 overflow-hidden">
                       <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate" title={clientName}>{clientName}</span>
-                      <span className="text-[11px] text-gray-400 dark:text-gray-500 truncate hidden lg:inline min-w-0" title={r.reference || `#${r.id}`}>
+                      <span className="text-[12px] text-gray-400 dark:text-gray-500 truncate hidden lg:inline min-w-0" title={r.reference || `#${r.id}`}>
                         · {r.reference || `#${r.id}`}
                       </span>
                     </div>
@@ -777,14 +776,14 @@ export default function ReservationsPage() {
                   {/* Cell 3 : Montant + mini progress (progress visible lg+) */}
                   <div className="hidden md:flex items-center justify-center gap-2 min-w-0">
                     <div className="text-sm font-bold text-gray-900 dark:text-gray-100 tabular-nums shrink-0">
-                      {totalDisplay.toLocaleString('fr-FR')}<span className="text-[10px] font-normal text-gray-400 ml-1">XOF</span>
+                      {totalDisplay.toLocaleString('fr-FR')}<span className="text-[12px] font-normal text-gray-400 ml-1">XOF</span>
                     </div>
                     {pay.total > 0 && (
                       <div className="hidden lg:flex items-center gap-2 shrink-0">
                         <div className="h-1 w-10 rounded-full bg-black/[0.06] dark:bg-white/[0.08] overflow-hidden">
                           <div className={`h-full rounded-full ${payTone}`} style={{ width: `${pay.percent}%` }} />
                         </div>
-                        <span className="text-[10px] text-gray-400 tabular-nums">{pay.percent}%</span>
+                        <span className="text-[12px] text-gray-400 tabular-nums">{pay.percent}%</span>
                       </div>
                     )}
                   </div>
@@ -797,18 +796,18 @@ export default function ReservationsPage() {
                   {/* Mobile summary (xs only) — type, statut, date, montant alignés */}
                   <div className="flex sm:hidden flex-wrap items-center justify-between gap-2 pl-9">
                     <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap ${tMeta.bg} ${tMeta.text}`}>
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[12px] font-semibold whitespace-nowrap ${tMeta.bg} ${tMeta.text}`}>
                         {tMeta.icon}<span>{tMeta.label}</span>
                       </span>
                       <StatusBadge statut={r.statut} />
                       {r.created_at && (
-                        <span className="text-[10px] text-gray-400 tabular-nums">
+                        <span className="text-[12px] text-gray-400 tabular-nums">
                           {new Date(r.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}
                         </span>
                       )}
                     </div>
                     <span className="text-sm font-bold text-gray-900 dark:text-gray-100 tabular-nums shrink-0">
-                      {totalDisplay.toLocaleString('fr-FR')} <span className="text-[10px] font-normal text-gray-400">XOF</span>
+                      {totalDisplay.toLocaleString('fr-FR')} <span className="text-[12px] font-normal text-gray-400">XOF</span>
                     </span>
                   </div>
 

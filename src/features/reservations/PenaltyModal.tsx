@@ -178,7 +178,7 @@ export default function PenaltyModal({ open, onClose, reservation, withCancel = 
               <div className="text-[16px] font-bold tracking-[-0.01em]">
                 {withCancel ? 'Annuler avec pénalité' : 'Appliquer une pénalité'}
               </div>
-              <div className="text-[11.5px] text-gray-500 dark:text-gray-400 mt-0.5">
+              <div className="text-[12px] text-gray-500 dark:text-gray-400 mt-0.5">
                 Réservation <span className="font-mono">{reservation.reference || `#${reservation.id}`}</span> · {clientFullName}
               </div>
             </div>
@@ -198,7 +198,7 @@ export default function PenaltyModal({ open, onClose, reservation, withCancel = 
           {(['Motif', 'Montant', 'Traitement'] as const).map((label, i) => (
             <div key={label} className="flex-1 flex items-center gap-1.5">
               <div className={[
-                'shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold transition',
+                'shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[12px] font-bold transition',
                 i < step
                   ? 'bg-emerald-500 text-white'
                   : i === step
@@ -208,7 +208,7 @@ export default function PenaltyModal({ open, onClose, reservation, withCancel = 
                 {i < step ? <CheckCircle2 size={12} /> : i + 1}
               </div>
               <span className={[
-                'text-[10.5px] font-medium truncate',
+                'text-[12px] font-medium truncate',
                 i === step ? 'text-gray-900 dark:text-gray-100' : 'text-gray-400 dark:text-gray-500',
               ].join(' ')}>{label}</span>
               {i < 2 && <div className="flex-1 h-px bg-gray-200 dark:bg-white/10" />}
@@ -253,7 +253,7 @@ export default function PenaltyModal({ open, onClose, reservation, withCancel = 
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="text-[13px] font-semibold">{opt.label}</div>
-                      <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">{opt.hint}</div>
+                      <div className="text-[12px] text-gray-500 dark:text-gray-400 mt-0.5">{opt.hint}</div>
                     </div>
                     {active && <CheckCircle2 size={14} className="shrink-0 text-[var(--ut-orange)]" />}
                   </button>
@@ -283,7 +283,7 @@ export default function PenaltyModal({ open, onClose, reservation, withCancel = 
 
               {/* Suggestions % */}
               <div>
-                <label className="block text-[10.5px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1.5">
+                <label className="block text-[12px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1.5">
                   Suggestions
                 </label>
                 <div className="flex flex-wrap gap-1.5">
@@ -303,7 +303,7 @@ export default function PenaltyModal({ open, onClose, reservation, withCancel = 
                         ].join(' ')}
                       >
                         <span className="font-bold">{p}%</span>
-                        <span className="text-[10.5px] opacity-75 tabular-nums">{money(v, currency)}</span>
+                        <span className="text-[12px] opacity-75 tabular-nums">{money(v, currency)}</span>
                       </button>
                     )
                   })}
@@ -312,7 +312,7 @@ export default function PenaltyModal({ open, onClose, reservation, withCancel = 
 
               {/* Montant custom */}
               <div>
-                <label className="block text-[10.5px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1.5">
+                <label className="block text-[12px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1.5">
                   Montant exact
                 </label>
                 <div className="relative">
@@ -325,7 +325,7 @@ export default function PenaltyModal({ open, onClose, reservation, withCancel = 
                     className="w-full pl-3 pr-16 py-2.5 border border-black/[0.14] dark:border-white/15 rounded-lg bg-white dark:bg-white/[0.03] text-[14px] font-semibold tabular-nums outline-none transition focus:border-[var(--ut-orange)] focus:ring-[3px] focus:ring-[var(--ut-orange)]/15"
                     placeholder="0"
                   />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-semibold text-gray-400">
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[12px] font-semibold text-gray-400">
                     {currency}
                   </span>
                 </div>
@@ -333,7 +333,7 @@ export default function PenaltyModal({ open, onClose, reservation, withCancel = 
 
               {/* Motif */}
               <div>
-                <label className="block text-[10.5px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1.5">
+                <label className="block text-[12px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1.5">
                   Motif (optionnel)
                 </label>
                 <textarea
@@ -406,7 +406,7 @@ export default function PenaltyModal({ open, onClose, reservation, withCancel = 
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="text-[13px] font-semibold">{opt.label}</div>
-                      <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">{opt.hint}</div>
+                      <div className="text-[12px] text-gray-500 dark:text-gray-400 mt-0.5">{opt.hint}</div>
                     </div>
                     {active && <CheckCircle2 size={14} className="shrink-0 text-[var(--ut-orange)]" />}
                   </button>
@@ -415,7 +415,7 @@ export default function PenaltyModal({ open, onClose, reservation, withCancel = 
 
               {/* Récap visuel du résultat */}
               <div className="mt-3 rounded-lg border border-black/[0.08] dark:border-white/[0.10] bg-gray-50/60 dark:bg-white/[0.03] p-3">
-                <div className="text-[10.5px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
+                <div className="text-[12px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
                   Aperçu : {preview.title}
                 </div>
                 <div className="space-y-1">

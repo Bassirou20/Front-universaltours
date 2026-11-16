@@ -4,10 +4,13 @@ import {
   LayoutGrid, Users, Package, Layers, CalendarCheck,
   FileText, CreditCard, PiggyBank, Activity,
   ChevronsLeft, ChevronsRight, TrendingDown, ShieldCheck,
-  HelpCircle, Settings,
+  HelpCircle, Settings, Building, ShieldAlert, BarChart3, Globe, Megaphone, Stamp, Truck,
 } from 'lucide-react'
-import { useAuth } from '../store/auth'
-import logo from '../assets/brand/logounivtours.webp'
+import { useRole } from '../hooks/useRole'
+import { useAgency } from '../hooks/useAgency'
+import { getImpersonatedAgency } from '../lib/axios'
+import { agencyWhatsAppUrl } from '../lib/agencyConfig'
+import logoDefault from '../assets/brand/itineo-mark.svg'
 
 type Item = {
   to: string
@@ -85,17 +88,58 @@ export const Sidebar: React.FC<{
   collapsed?: boolean
   onToggleCollapse?: () => void
 }> = ({ onNavigate, collapsed = false, onToggleCollapse }) => {
-  const { user } = useAuth()
+  const { agency, hasModule } = useAgency()
   const location = useLocation()
 
-  const roleRaw = String(user?.role || '').toLowerCase()
-  const isAdmin = roleRaw === 'admin'
+  // Module premium « Fournisseurs & dépenses » (formule Standard+). On masque
+  // les liens correspondants quand la formule ne l'inclut pas — le backend
+  // bloque de toute façon ces routes (middleware plan:suppliers_expenses).
+  const canSuppliersExpenses = hasModule('suppliers_expenses')
 
-  // TODO: brancher sur l'API pour des compteurs réels
-  const hasReservationsActivity = true  // remplace par > 0 selon API
-  const hasFacturesActivity = true       // remplace par > 0 selon API
+  // Logo : utilise celui de l'agence si défini, sinon le logo par défaut Itinéo
+  // En mode "Plateforme" (super_admin sans agence), on affiche un branding spécial.
+  const logoSrc = agency?.logo_url || logoDefault
+  const agencyName = agency?.name || 'Itinéo'
+  const agencyTagline = agency ? (agency.email_contact || 'Agence de voyage') : 'Agence de voyage'
+
+  // Multi-tenancy : les rôles "admin" d'agence sont maintenant owner/admin/super_admin
+  // (le rôle "agent" remplace l'ancien "employee")
+  const { isAdmin, isSuperAdmin } = useRole()
+
+  // Quand le super_admin est "Entré" dans une agence (mode impersonate),
+  // on lui affiche la sidebar normale (de cette agence).
+  // Sinon, on lui affiche une sidebar PLATEFORME dédiée.
+  const isPlatformView = isSuperAdmin && !getImpersonatedAgency()
 
   const groups: Group[] = useMemo(() => {
+    // ─── Sidebar PLATEFORME (super_admin sans agence sélectionnée) ───
+    if (isPlatformView) {
+      return [
+        {
+          title: 'Plateforme',
+          items: [
+            { to: '/super-admin/dashboard',  label: 'Vue d\'ensemble',     icon: <BarChart3 size={14} /> },
+            { to: '/super-admin/agencies',   label: 'Toutes les agences',  icon: <Building size={14} /> },
+            { to: '/super-admin/revenue',    label: 'Revenu & abonnements', icon: <CreditCard size={14} /> },
+            { to: '/super-admin/announcements', label: 'Annonces',         icon: <Megaphone size={14} /> },
+          ],
+        },
+        {
+          title: 'Surveillance',
+          items: [
+            { to: '/super-admin/activity',   label: 'Logs cross-agences',  icon: <Activity size={14} /> },
+          ],
+        },
+        {
+          title: 'Compte',
+          items: [
+            { to: '/profile',                label: 'Mon profil',          icon: <ShieldAlert size={14} /> },
+          ],
+        },
+      ]
+    }
+
+    // ─── Sidebar AGENCE classique (tous rôles d'agence + super_admin en impersonate) ───
     const base: Group[] = [
       {
         title: "Vue d'ensemble",
@@ -109,16 +153,23 @@ export const Sidebar: React.FC<{
           { to: '/clients',      label: 'Clients',      icon: <Users size={14} /> },
           { to: '/produits',     label: 'Services',     icon: <Package size={14} /> },
           { to: '/forfaits',     label: 'Forfaits',     icon: <Layers size={14} /> },
-          { to: '/reservations', label: 'Réservations', icon: <CalendarCheck size={14} />, hasActivity: hasReservationsActivity },
+          { to: '/reservations', label: 'Réservations', icon: <CalendarCheck size={14} /> },
+          { to: '/evisa-dossiers', label: 'Dossiers e-visa', icon: <Stamp size={14} /> },
         ],
       },
       {
         title: 'Finance',
         items: [
-          { to: '/factures',  label: 'Factures',       icon: <FileText size={14} />, hasActivity: hasFacturesActivity },
+          { to: '/factures',  label: 'Factures',       icon: <FileText size={14} /> },
           { to: '/paiements', label: 'Paiements',      icon: <CreditCard size={14} /> },
           { to: '/avoirs',    label: 'Avoirs clients', icon: <PiggyBank size={14} /> },
-          { to: '/depenses',  label: 'Dépenses',       icon: <TrendingDown size={14} /> },
+          // Dépenses & fournisseurs : module premium, masqué hors formule Standard+.
+          ...(canSuppliersExpenses
+            ? [
+                { to: '/depenses',     label: 'Dépenses',     icon: <TrendingDown size={14} /> },
+                { to: '/fournisseurs', label: 'Fournisseurs', icon: <Truck size={14} /> },
+              ]
+            : []),
         ],
       },
     ]
@@ -127,14 +178,16 @@ export const Sidebar: React.FC<{
       base.push({
         title: 'Administration',
         items: [
-          { to: '/users',     label: 'Utilisateurs',        icon: <ShieldCheck size={14} /> },
-          { to: '/activites', label: "Journal d'activité",  icon: <Activity size={14} /> },
+          { to: '/users',           label: 'Utilisateurs',          icon: <ShieldCheck size={14} /> },
+          { to: '/activites',       label: "Journal d'activité",    icon: <Activity size={14} /> },
+          { to: '/agency/abonnement', label: 'Abonnement',          icon: <CreditCard size={14} /> },
+          { to: '/agency/settings', label: "Paramètres de l'agence", icon: <Settings size={14} /> },
         ],
       })
     }
 
     return base
-  }, [isAdmin, hasReservationsActivity, hasFacturesActivity])
+  }, [isAdmin, isPlatformView, canSuppliersExpenses])
 
   const isActive = (to: string) =>
     location.pathname === to || (to !== '/' && location.pathname.startsWith(to + '/'))
@@ -142,25 +195,48 @@ export const Sidebar: React.FC<{
   return (
     <aside className="ut-sidebar">
 
-      {/* ── Header (brand) ── */}
+      {/* ── Header (brand de l'agence courante OU badge "Plateforme" pour super_admin) ── */}
       <div className="ut-side-header">
-        {collapsed ? (
+        {isPlatformView ? (
+          /* Mode plateforme : badge dédié super-admin */
+          collapsed ? (
+            <div className="flex w-full justify-center">
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-red-600 to-rose-600 text-white flex items-center justify-center">
+                <ShieldAlert size={14} />
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 min-w-0 flex-1">
+              <div className="w-8 h-8 shrink-0 rounded-lg bg-gradient-to-br from-red-600 to-rose-600 text-white flex items-center justify-center shadow-sm">
+                <ShieldAlert size={16} />
+              </div>
+              <div className="min-w-0 leading-tight">
+                <div className="text-[12.5px] font-bold text-gray-900 dark:text-gray-100 truncate tracking-tight">
+                  Super-Admin
+                </div>
+                <div className="text-[12px] text-gray-400 dark:text-gray-500 truncate">
+                  Pilotage plateforme
+                </div>
+              </div>
+            </div>
+          )
+        ) : collapsed ? (
           <div className="flex w-full justify-center">
             <div className="ut-side-logo">
-              <img src={logo} alt="UT" className="h-6 w-auto object-contain" draggable={false} />
+              <img src={logoSrc} alt={agency?.ref_prefix || 'UT'} className="h-6 w-auto object-contain" draggable={false} />
             </div>
           </div>
         ) : (
           <div className="flex items-center gap-2 min-w-0 flex-1">
             <div className="ut-side-logo">
-              <img src={logo} alt="Universal Tours" className="h-6 w-auto object-contain" draggable={false} />
+              <img src={logoSrc} alt={agencyName} className="h-6 w-auto object-contain" draggable={false} />
             </div>
             <div className="min-w-0 leading-tight">
               <div className="text-[12.5px] font-bold text-gray-900 dark:text-gray-100 truncate tracking-tight">
-                Universal Tours
+                {agencyName}
               </div>
-              <div className="text-[9.5px] text-gray-400 dark:text-gray-500 truncate">
-                Agence de voyage
+              <div className="text-[12px] text-gray-400 dark:text-gray-500 truncate">
+                {agencyTagline}
               </div>
             </div>
           </div>
@@ -180,7 +256,7 @@ export const Sidebar: React.FC<{
             {/* Titre de groupe — plus visible que Workspace, gris foncé semibold */}
             {!collapsed && (
               <div className="px-4 pt-1.5 pb-1">
-                <span className="text-[11px] font-semibold text-gray-600 dark:text-gray-400 tracking-[0.01em]">
+                <span className="text-[12px] font-semibold text-gray-600 dark:text-gray-400 tracking-[0.01em]">
                   {g.title}
                 </span>
               </div>
@@ -201,7 +277,7 @@ export const Sidebar: React.FC<{
         ))}
       </nav>
 
-      {/* ── Footer : statut système + version + aide + settings ── */}
+      {/* ── Footer : aide + préférences + réduction du menu ── */}
       <div className="ut-side-footer">
         {collapsed ? (
           /* Mode réduit : juste le toggle */
@@ -216,29 +292,19 @@ export const Sidebar: React.FC<{
           )
         ) : (
           <div className="space-y-1.5">
-            {/* Ligne 1 : statut + version */}
-            <div className="flex items-center justify-between gap-2 px-1 text-[10.5px] text-gray-400 dark:text-gray-500">
-              <span className="inline-flex items-center gap-1.5 font-medium">
-                <span className="relative inline-flex h-[6px] w-[6px]">
-                  <span className="absolute inset-0 rounded-full bg-emerald-500 animate-ping opacity-60" />
-                  <span className="relative inline-flex h-full w-full rounded-full bg-emerald-500" />
-                </span>
-                Tous systèmes ok
-              </span>
-              <span className="tabular-nums">v1.0.0</span>
-            </div>
-
-            {/* Ligne 2 : aide + settings + collapse */}
+            {/* Aide + préférences + réduction du menu */}
             <div className="flex items-center justify-between gap-2 px-1">
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  className="inline-flex items-center gap-1 text-[10.5px] text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
-                  title="Aide & support"
+                <a
+                  href={agencyWhatsAppUrl("Bonjour, j'ai besoin d'aide sur Itinéo.")}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-[12px] text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
+                  title="Contacter le support Itinéo sur WhatsApp"
                 >
                   <HelpCircle size={11} />
                   <span>Aide</span>
-                </button>
+                </a>
                 <NavLink
                   to="/profile"
                   onClick={onNavigate}
@@ -253,7 +319,7 @@ export const Sidebar: React.FC<{
                 <button
                   onClick={onToggleCollapse}
                   title="Réduire le menu"
-                  className="inline-flex items-center gap-1 text-[10.5px] text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
+                  className="inline-flex items-center gap-1 text-[12px] text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
                 >
                   <ChevronsLeft size={11} />
                   <span>Réduire</span>

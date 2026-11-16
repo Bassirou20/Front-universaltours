@@ -1,10 +1,11 @@
+import { LoadError } from '../../ui/LoadError'
 import React, { useMemo, useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { api } from '../../lib/axios'
-import { useDebouncedValue, normalizePaged, money } from '../../lib/helpers'
+import { useDebouncedValue, normalizePaged, money, fetchAllPaged } from '../../lib/helpers'
 import { useToast } from '../../ui/Toasts'
 import { ConfirmDialog } from '../../ui/ConfirmDialog'
 import Modal from '../../ui/Modal'
@@ -12,10 +13,12 @@ import { Pagination } from '../../ui/Pagination'
 import { T, Th, Td } from '../../ui/Table'
 import { Badge } from '../../ui/Badge'
 import { useAuth } from '../../store/auth'
+import { useRole } from '../../hooks/useRole'
 import { FiltersBar } from '../../ui/FiltersBar'
 import {
   Wallet, Trash2, ArrowDownToLine, ArrowUpFromLine,
   Search, Loader2, TrendingUp, ChevronDown, X as XIcon, User,
+  FileText, AlertTriangle, WandSparkles, Download, History,
 } from 'lucide-react'
 import { SkeletonTable } from '../../ui/Skeleton'
 
@@ -39,6 +42,14 @@ type Avoir = {
 }
 
 type ClientOption = { id: number; nom?: string | null; prenom?: string | null; email?: string | null }
+
+type FactureOption = {
+  id: number
+  numero?: string | null
+  montant_total?: number | string | null
+  statut?: string | null
+  paiements?: { montant?: number | string | null }[]
+}
 
 // ─── Schemas ─────────────────────────────────────────────────────────────────
 
@@ -268,13 +279,279 @@ function SoldeDisplay({ clientId }: { clientId: number }) {
   )
 }
 
+function factureRestant(f: FactureOption): number {
+  const total = Number(f.montant_total ?? 0)
+  const paid = (f.paiements ?? []).reduce((s, p) => s + Number(p.montant ?? 0), 0)
+  return Math.max(0, total - paid)
+}
+
+/**
+ * Sélecteur de facture recherchable, restreint au client choisi.
+ *
+ * Remplace l'ancien champ « ID de facture » brut : l'utilisateur ne devine plus
+ * un identifiant interne, il choisit une facture par son numéro et voit le
+ * montant restant dû. Tant qu'aucun client n'est sélectionné, le champ invite à
+ * en choisir un (les factures sont scopées par `client_id`).
+ */
+function FactureSelect({
+  clientId,
+  value,
+  onChange,
+}: {
+  clientId: number
+  value: string | number
+  onChange: (v: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [search, setSearch] = useState('')
+  const debounced = useDebouncedValue(search, 300)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const q = useQuery({
+    queryKey: ['factures-light', clientId, debounced],
+    queryFn: async () => {
+      const { data } = await api.get('/factures', {
+        params: { client_id: clientId, search: debounced || undefined, per_page: 25 },
+      })
+      return data
+    },
+    enabled: clientId > 0,
+    staleTime: 30_000,
+  })
+
+  const factures: FactureOption[] = useMemo(() => normalizePaged(q.data).items as FactureOption[], [q.data])
+  const selected = factures.find((f) => String(f.id) === String(value)) ?? null
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const disabled = !clientId
+
+  const handleOpen = () => {
+    if (disabled) return
+    setOpen(true)
+    setSearch('')
+    setTimeout(() => inputRef.current?.focus(), 50)
+  }
+
+  const handleSelect = (f: FactureOption) => {
+    onChange(String(f.id))
+    setOpen(false)
+    setSearch('')
+  }
+
+  const handleClear = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    onChange('')
+    setSearch('')
+  }
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        onClick={handleOpen}
+        disabled={disabled}
+        className={`input w-full flex items-center gap-2 text-left pr-8 ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
+      >
+        {selected ? (
+          <>
+            <FileText size={15} className="text-sky-500 shrink-0" />
+            <span className="min-w-0 flex-1 truncate font-medium">{selected.numero || `Facture #${selected.id}`}</span>
+            <span className="hidden sm:block text-xs text-gray-400 shrink-0">Reste {money(factureRestant(selected))}</span>
+          </>
+        ) : value ? (
+          <>
+            <FileText size={15} className="text-sky-500 shrink-0" />
+            <span className="min-w-0 flex-1 truncate font-medium">Facture #{value}</span>
+          </>
+        ) : (
+          <>
+            <FileText size={15} className="text-gray-400 shrink-0" />
+            <span className="text-gray-400 flex-1">
+              {disabled ? 'Sélectionnez d’abord un client' : 'Lier une facture (optionnel)…'}
+            </span>
+          </>
+        )}
+
+        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center gap-1">
+          {value && !disabled && (
+            <span
+              role="button"
+              className="p-0.5 rounded hover:bg-black/10 dark:hover:bg-white/10 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+              onMouseDown={handleClear}
+            >
+              <XIcon size={13} />
+            </span>
+          )}
+          <ChevronDown size={14} className={`text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+        </span>
+      </button>
+
+      {open && (
+        <div className="absolute z-50 mt-1 w-full rounded-2xl border border-black/10 dark:border-white/10 bg-white dark:bg-[#1c2333] shadow-2xl overflow-hidden">
+          <div className="p-2 border-b border-black/5 dark:border-white/10">
+            <div className="relative">
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                ref={inputRef}
+                className="w-full rounded-lg border border-black/10 dark:border-white/10 bg-gray-50 dark:bg-white/5 pl-8 pr-3 py-1.5 text-sm outline-none focus:border-sky-400 dark:focus:border-sky-500"
+                placeholder="Rechercher une facture (n°)…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="max-h-56 overflow-y-auto">
+            {q.isLoading ? (
+              <div className="flex items-center justify-center gap-2 py-4 text-sm text-gray-500">
+                <Loader2 size={14} className="animate-spin" /> Chargement…
+              </div>
+            ) : factures.length === 0 ? (
+              <div className="py-4 text-center text-sm text-gray-500">Aucune facture pour ce client</div>
+            ) : (
+              factures.map((f) => {
+                const isActive = String(f.id) === String(value)
+                return (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => handleSelect(f)}
+                    className={`w-full flex items-center gap-3 px-3 py-1.5 text-left hover:bg-sky-50 dark:hover:bg-sky-500/10 transition-colors ${
+                      isActive ? 'bg-sky-50 dark:bg-sky-500/10' : ''
+                    }`}
+                  >
+                    <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300">
+                      <FileText size={14} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className={`text-sm font-medium truncate ${isActive ? 'text-sky-700 dark:text-sky-300' : ''}`}>
+                        {f.numero || `Facture #${f.id}`}
+                      </div>
+                      <div className="text-xs text-gray-400 truncate">
+                        Total {money(Number(f.montant_total ?? 0))} · Reste {money(factureRestant(f))}
+                      </div>
+                    </div>
+                    {isActive && <span className="shrink-0 h-2 w-2 rounded-full bg-sky-500" />}
+                  </button>
+                )
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Modal d'historique complet du portefeuille d'un client.
+ *
+ * S'appuie sur l'endpoint existant `GET /clients/{id}/avoirs` (solde courant +
+ * mouvements paginés) — aucun nouvel appel backend à construire. On affiche
+ * l'évolution du `solde_apres` ligne par ligne, du plus récent au plus ancien.
+ */
+function ClientHistoryModal({
+  clientId,
+  label,
+  onClose,
+}: {
+  clientId: number
+  label: string
+  onClose: () => void
+}) {
+  const [page, setPage] = useState(1)
+  const q = useQuery({
+    queryKey: ['avoir-history', clientId, page],
+    queryFn: async () => {
+      const { data } = await api.get(`/clients/${clientId}/avoirs`, { params: { page } })
+      return data
+    },
+    enabled: clientId > 0,
+    placeholderData: keepPreviousData,
+  })
+
+  const solde = Number(q.data?.solde ?? 0)
+  const paged = normalizePaged(q.data?.avoirs)
+  const items = paged.items as Avoir[]
+
+  return (
+    <Modal open={clientId > 0} onClose={onClose} title={`Historique — ${label}`} widthClass="max-w-2xl">
+      <div className="space-y-3">
+        <div className={`rounded-xl px-3 py-2.5 text-sm font-semibold flex items-center justify-between ${
+          solde > 0
+            ? 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
+            : 'bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-400'
+        }`}>
+          <span>Solde disponible</span>
+          <span className="tabular-nums">{money(solde)}</span>
+        </div>
+
+        {q.isLoading ? (
+          <div className="flex items-center justify-center gap-2 py-8 text-sm text-gray-500">
+            <Loader2 size={16} className="animate-spin" /> Chargement de l'historique…
+          </div>
+        ) : items.length === 0 ? (
+          <div className="py-8 text-center text-sm text-gray-500">Aucun mouvement pour ce client</div>
+        ) : (
+          <div className="rounded-xl border border-black/[0.05] dark:border-white/[0.07] overflow-hidden divide-y divide-black/[0.04] dark:divide-white/[0.04] max-h-[55vh] overflow-y-auto">
+            {items.map((a) => {
+              const isDepot = a.type === 'depot'
+              return (
+                <div key={a.id} className="flex items-center gap-3 px-3 py-2">
+                  <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                    isDepot ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400'
+                            : 'bg-amber-100 text-amber-600 dark:bg-amber-500/15 dark:text-amber-400'
+                  }`}>
+                    {isDepot ? <ArrowDownToLine size={14} /> : <ArrowUpFromLine size={14} />}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                        {isDepot ? 'Dépôt' : 'Utilisation'}
+                      </span>
+                      {a.facture?.numero && (
+                        <span className="text-[12px] text-sky-600 dark:text-sky-400 truncate">· {a.facture.numero}</span>
+                      )}
+                    </div>
+                    <div className="text-[12px] text-gray-400 truncate">
+                      {safeDate(a.date_avoir || a.created_at)}{a.reference ? ` · ${a.reference}` : ''}
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className={`text-sm font-bold tabular-nums ${isDepot ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+                      {isDepot ? '+' : '−'}{money(a.montant)}
+                    </div>
+                    <div className="text-[12px] text-gray-400 tabular-nums">Solde {money(a.solde_apres)}</div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {paged.lastPage > 1 && (
+          <Pagination page={page} lastPage={paged.lastPage} total={paged.total} perPage={20} onPage={setPage} />
+        )}
+      </div>
+    </Modal>
+  )
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function AvoirsPage() {
   const qc = useQueryClient()
   const toast = useToast()
   const { user } = useAuth()
-  const isAdmin = String(user?.role ?? '').toLowerCase() === 'admin'
+  const { isAdmin } = useRole()
 
   // ── filters ──
   const [page, setPage] = useState(1)
@@ -286,6 +563,8 @@ export default function AvoirsPage() {
   const [depotOpen, setDepotOpen] = useState(false)
   const [utilisationOpen, setUtilisationOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id?: number }>({ open: false })
+  const [historyClient, setHistoryClient] = useState<{ id: number; label: string } | null>(null)
+  const [exporting, setExporting] = useState(false)
 
   // ── selected client for solde display ──
   const [depotClientId, setDepotClientId] = useState(0)
@@ -312,15 +591,17 @@ export default function AvoirsPage() {
   const paged = useMemo(() => normalizePaged(q.data), [q.data])
   const rows = paged.items as Avoir[]
 
-  // Solde global (somme dépôts - utilisations depuis stats)
+  // KPI : agrégats calculés côté serveur (SUM/GROUP BY), plus de per_page=9999.
   const stats = useQuery({
     queryKey: ['avoirs-stats'],
     queryFn: async () => {
-      const { data } = await api.get('/avoirs', { params: { per_page: 9999 } })
-      const all: Avoir[] = normalizePaged(data).items as Avoir[]
-      const totalDepots = all.filter(a => a.type === 'depot').reduce((s, a) => s + Number(a.montant), 0)
-      const totalUtil = all.filter(a => a.type === 'utilisation').reduce((s, a) => s + Number(a.montant), 0)
-      return { totalDepots, totalUtil, soldeGlobal: totalDepots - totalUtil }
+      const { data } = await api.get('/avoirs/stats')
+      return {
+        totalDepots: Number(data?.total_depots ?? 0),
+        totalUtil: Number(data?.total_utilisations ?? 0),
+        soldeGlobal: Number(data?.solde_global ?? 0),
+        nbClients: Number(data?.nb_clients ?? 0),
+      }
     },
     staleTime: 30_000,
   })
@@ -332,6 +613,8 @@ export default function AvoirsPage() {
       api.post('/avoirs', { ...vals, type: 'depot', facture_id: undefined }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['avoirs'] })
+      qc.invalidateQueries({ queryKey: ['avoirs-stats'] })
+      qc.invalidateQueries({ queryKey: ['avoir-solde'] })
       setDepotOpen(false)
       depotForm.reset()
       setDepotClientId(0)
@@ -351,6 +634,8 @@ export default function AvoirsPage() {
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['avoirs'] })
+      qc.invalidateQueries({ queryKey: ['avoirs-stats'] })
+      qc.invalidateQueries({ queryKey: ['avoir-solde'] })
       setUtilisationOpen(false)
       utilForm.reset()
       setUtilClientId(0)
@@ -366,6 +651,8 @@ export default function AvoirsPage() {
     mutationFn: (id: number) => api.delete(`/avoirs/${id}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['avoirs'] })
+      qc.invalidateQueries({ queryKey: ['avoirs-stats'] })
+      qc.invalidateQueries({ queryKey: ['avoir-solde'] })
       toast.push({ title: 'Avoir supprimé', tone: 'success' })
     },
     onError: (e: any) => {
@@ -380,6 +667,84 @@ export default function AvoirsPage() {
 
   const onDepotSubmit = (vals: DepotInput) => mDepot.mutate(vals)
   const onUtilSubmit  = (vals: UtilisationInput) => mUtilisation.mutate(vals)
+
+  // ─── Garde-fous "Utiliser un avoir" : plafond = solde disponible ──────────
+  // Même queryKey que <SoldeDisplay/> → React Query dédupe l'appel réseau.
+  const utilSoldeQ = useQuery({
+    queryKey: ['avoir-solde', utilClientId],
+    queryFn: async () => {
+      const { data } = await api.get(`/clients/${utilClientId}/solde-avoir`)
+      return data
+    },
+    enabled: utilClientId > 0,
+  })
+  const utilSolde       = Number(utilSoldeQ.data?.solde ?? 0)
+  const utilMontant     = Number(utilForm.watch('montant')) || 0
+  const utilOverBalance = utilClientId > 0 && utilMontant > utilSolde + 1e-9
+  const utilSoldeApres  = Math.max(0, utilSolde - utilMontant)
+  const utilCanSubmit   = utilClientId > 0 && utilMontant > 0 && !utilOverBalance && !mUtilisation.isPending
+
+  const fillUtilMax = () =>
+    utilForm.setValue('montant', utilSolde as any, { shouldValidate: true, shouldDirty: true })
+
+  // ─── Finitions "Nouveau dépôt" : aperçu du solde projeté ──────────────────
+  const depotSoldeQ = useQuery({
+    queryKey: ['avoir-solde', depotClientId],
+    queryFn: async () => {
+      const { data } = await api.get(`/clients/${depotClientId}/solde-avoir`)
+      return data
+    },
+    enabled: depotClientId > 0,
+  })
+  const depotSolde      = Number(depotSoldeQ.data?.solde ?? 0)
+  const depotMontant    = Number(depotForm.watch('montant')) || 0
+  const depotSoldeApres = depotSolde + depotMontant
+
+  // ─── Export CSV des mouvements (respecte les filtres recherche + type) ─────
+  const handleExport = async () => {
+    setExporting(true)
+    try {
+      const all = await fetchAllPaged<Avoir>('/avoirs', {
+        search: debouncedSearch || undefined,
+        type: filterType || undefined,
+      })
+      if (all.length === 0) {
+        toast.push({ title: 'Aucun mouvement à exporter', tone: 'info' })
+        return
+      }
+      // Échappement CSV (séparateur ; pour Excel FR) + BOM UTF-8 pour les accents.
+      const esc = (v: unknown) => {
+        const s = String(v ?? '')
+        return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+      }
+      const header = ['Date', 'Client', 'Email', 'Type', 'Montant', 'Solde après', 'Référence', 'Facture', 'Notes']
+      const lines = all.map((a) =>
+        [
+          a.date_avoir || a.created_at?.slice(0, 10) || '',
+          clientLabel(a.client),
+          a.client?.email || '',
+          a.type === 'depot' ? 'Dépôt' : 'Utilisation',
+          Number(a.montant),
+          Number(a.solde_apres),
+          a.reference || '',
+          a.facture?.numero || a.facture_id || '',
+          a.notes || '',
+        ].map(esc).join(';'),
+      )
+      const csv = String.fromCharCode(0xFEFF) + [header.join(';'), ...lines].join('\r\n')
+      const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }))
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `avoirs-${new Date().toISOString().slice(0, 10)}.csv`
+      link.click()
+      URL.revokeObjectURL(url)
+      toast.push({ title: `${all.length} mouvement(s) exporté(s)`, tone: 'success' })
+    } catch {
+      toast.push({ title: "Échec de l'export", tone: 'error' })
+    } finally {
+      setExporting(false)
+    }
+  }
 
   // ─── UI ──────────────────────────────────────────────────────────────────
 
@@ -400,6 +765,14 @@ export default function AvoirsPage() {
         </div>
 
         <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          <button
+            className="inline-flex whitespace-nowrap items-center gap-1.5 rounded-lg border border-black/10 dark:border-white/10 bg-white dark:bg-white/5 text-gray-600 dark:text-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-white/10 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={handleExport}
+            disabled={exporting}
+            title="Exporter les mouvements filtrés en CSV"
+          >
+            {exporting ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />} Exporter
+          </button>
           <button
             className="inline-flex whitespace-nowrap items-center gap-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 text-sm font-semibold shadow-sm transition"
             onClick={() => { setDepotOpen(true); depotForm.reset(); setDepotClientId(0) }}
@@ -423,7 +796,7 @@ export default function AvoirsPage() {
               <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-100 dark:bg-emerald-500/15">
                 <ArrowDownToLine size={14} className="text-emerald-600 dark:text-emerald-400" />
               </div>
-              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide truncate">Total dépôts</div>
+              <div className="text-[12px] font-semibold text-gray-400 uppercase tracking-wide truncate">Total dépôts</div>
             </div>
             <div className="text-sm font-bold text-emerald-600 dark:text-emerald-400 tabular-nums truncate">{money(stats.data.totalDepots)}</div>
           </div>
@@ -433,7 +806,7 @@ export default function AvoirsPage() {
               <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-amber-100 dark:bg-amber-500/15">
                 <ArrowUpFromLine size={14} className="text-amber-600 dark:text-amber-400" />
               </div>
-              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide truncate">Utilisations</div>
+              <div className="text-[12px] font-semibold text-gray-400 uppercase tracking-wide truncate">Utilisations</div>
             </div>
             <div className="text-sm font-bold text-amber-600 dark:text-amber-400 tabular-nums truncate">{money(stats.data.totalUtil)}</div>
           </div>
@@ -443,7 +816,7 @@ export default function AvoirsPage() {
               <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-sky-100 dark:bg-sky-500/15">
                 <TrendingUp size={14} className="text-sky-600 dark:text-sky-400" />
               </div>
-              <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide truncate">Solde global</div>
+              <div className="text-[12px] font-semibold text-gray-400 uppercase tracking-wide truncate">Solde global</div>
             </div>
             <div className={`text-sm font-bold tabular-nums truncate ${stats.data.soldeGlobal >= 0 ? 'text-sky-600 dark:text-sky-400' : 'text-red-600 dark:text-red-400'}`}>{money(stats.data.soldeGlobal)}</div>
           </div>
@@ -494,15 +867,17 @@ export default function AvoirsPage() {
       <div className="rounded-xl border border-black/[0.05] dark:border-white/[0.07] bg-white dark:bg-[#151d2e] shadow-sm overflow-hidden">
         {/* List header */}
         <div className="hidden sm:grid sm:grid-cols-[minmax(0,1.8fr)_minmax(0,1fr)_minmax(0,1fr)_72px] md:grid-cols-[minmax(0,1.8fr)_100px_minmax(0,1fr)_minmax(0,1fr)_100px_72px] items-center gap-3 px-4 py-2 border-b border-black/[0.04] dark:border-white/[0.05] bg-gray-50/80 dark:bg-white/[0.02]">
-          <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider">Client</span>
-          <span className="hidden md:inline text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Type</span>
-          <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Montant</span>
-          <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Solde</span>
-          <span className="hidden md:inline text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Date</span>
-          <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Actions</span>
+          <span className="text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider">Client</span>
+          <span className="hidden md:inline text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Type</span>
+          <span className="text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Montant</span>
+          <span className="text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Solde</span>
+          <span className="hidden md:inline text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Date</span>
+          <span className="text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Actions</span>
         </div>
 
-        {q.isLoading ? (
+        {q.isError ? (
+          <LoadError what="les avoirs" onRetry={() => q.refetch()} />
+        ) : q.isLoading ? (
           <div className="divide-y divide-black/[0.04] dark:divide-white/[0.04]">
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="flex items-center gap-3 px-4 py-2.5">
@@ -544,20 +919,30 @@ export default function AvoirsPage() {
                   key={a.id}
                   className="group flex flex-col sm:grid sm:grid-cols-[minmax(0,1.8fr)_minmax(0,1fr)_minmax(0,1fr)_72px] md:grid-cols-[minmax(0,1.8fr)_100px_minmax(0,1fr)_minmax(0,1fr)_100px_72px] sm:items-center gap-1 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-2 hover:bg-gray-50/80 dark:hover:bg-white/[0.025] transition-colors"
                 >
-                  {/* Cell 1 : Client */}
+                  {/* Cell 1 : Client (clic → historique du portefeuille) */}
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
-                      isDepot ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
-                              : 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
-                    }`}>
-                      {ini}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate" title={clientLabel(a.client)}>{clientLabel(a.client)}</div>
-                      {a.client?.email && (
-                        <div className="text-[11px] text-gray-400 dark:text-gray-500 truncate hidden lg:block">{a.client.email}</div>
-                      )}
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setHistoryClient({ id: a.client?.id ?? a.client_id, label: clientLabel(a.client) })}
+                      className="group/client flex items-center gap-2.5 min-w-0 flex-1 text-left"
+                      title="Voir l'historique du client"
+                    >
+                      <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[12px] font-bold ${
+                        isDepot ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
+                                : 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
+                      }`}>
+                        {ini}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1 text-sm font-semibold text-gray-900 dark:text-gray-100 truncate transition-colors group-hover/client:text-sky-600 dark:group-hover/client:text-sky-400" title={clientLabel(a.client)}>
+                          <span className="truncate">{clientLabel(a.client)}</span>
+                          <History size={12} className="shrink-0 opacity-0 group-hover/client:opacity-100 transition-opacity" />
+                        </div>
+                        {a.client?.email && (
+                          <div className="text-[12px] text-gray-400 dark:text-gray-500 truncate hidden lg:block">{a.client.email}</div>
+                        )}
+                      </div>
+                    </button>
                     {/* Actions mobile */}
                     {isAdmin && (
                       <button
@@ -605,7 +990,7 @@ export default function AvoirsPage() {
                       ) : (
                         <Badge tone="amber"><ArrowUpFromLine size={11} className="mr-1" /> Utilisation</Badge>
                       )}
-                      <span className="text-[10px] text-gray-400 tabular-nums">{safeDate(a.date_avoir || a.created_at)}</span>
+                      <span className="text-[12px] text-gray-400 tabular-nums">{safeDate(a.date_avoir || a.created_at)}</span>
                     </div>
                     <span className={`text-sm font-bold tabular-nums shrink-0 ${isDepot ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
                       {isDepot ? '+' : '−'}{money(a.montant)}
@@ -671,6 +1056,12 @@ export default function AvoirsPage() {
             {depotForm.formState.errors.montant && (
               <p className="text-xs text-red-500 mt-1">{depotForm.formState.errors.montant.message}</p>
             )}
+            {depotClientId > 0 && depotMontant > 0 && (
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {money(depotMontant)} · Solde après ce dépôt :{' '}
+                <span className="font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">{money(depotSoldeApres)}</span>
+              </p>
+            )}
           </div>
 
           <div>
@@ -720,7 +1111,11 @@ export default function AvoirsPage() {
               render={({ field }) => (
                 <ClientSelect
                   value={field.value ?? ''}
-                  onChange={(v) => { field.onChange(v); setUtilClientId(Number(v)) }}
+                  onChange={(v) => {
+                    field.onChange(v)
+                    setUtilClientId(Number(v))
+                    utilForm.setValue('facture_id', '' as any) // facture liée à 1 seul client
+                  }}
                   error={utilForm.formState.errors.client_id?.message}
                 />
               )}
@@ -730,10 +1125,21 @@ export default function AvoirsPage() {
           {utilClientId > 0 && <SoldeDisplay clientId={utilClientId} />}
 
           <div>
-            <label className="label">Montant à utiliser (XOF)</label>
+            <div className="flex items-center justify-between">
+              <label className="label">Montant à utiliser (XOF)</label>
+              {utilClientId > 0 && utilSolde > 0 && (
+                <button
+                  type="button"
+                  onClick={fillUtilMax}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-sky-600 dark:text-sky-400 hover:underline"
+                >
+                  <WandSparkles size={12} /> Utiliser tout le solde
+                </button>
+              )}
+            </div>
             <input
               type="number"
-              className="input"
+              className={`input ${utilOverBalance ? 'border-red-400 dark:border-red-500' : ''}`}
               placeholder="ex: 150000"
               min={1}
               {...utilForm.register('montant')}
@@ -741,15 +1147,30 @@ export default function AvoirsPage() {
             {utilForm.formState.errors.montant && (
               <p className="text-xs text-red-500 mt-1">{utilForm.formState.errors.montant.message}</p>
             )}
+            {utilOverBalance ? (
+              <p className="mt-1 flex items-center gap-1 text-xs text-red-500">
+                <AlertTriangle size={12} />
+                Montant supérieur au solde disponible ({money(utilSolde)}).
+              </p>
+            ) : utilClientId > 0 && utilMontant > 0 ? (
+              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Solde après utilisation : <span className="font-semibold tabular-nums">{money(utilSoldeApres)}</span>
+              </p>
+            ) : null}
           </div>
 
           <div>
-            <label className="label">N° Facture liée (optionnel)</label>
-            <input
-              type="number"
-              className="input"
-              placeholder="ID de la facture"
-              {...utilForm.register('facture_id')}
+            <label className="label">Facture liée (optionnel)</label>
+            <Controller
+              name="facture_id"
+              control={utilForm.control}
+              render={({ field }) => (
+                <FactureSelect
+                  clientId={utilClientId}
+                  value={field.value ?? ''}
+                  onChange={(v) => field.onChange(v)}
+                />
+              )}
             />
           </div>
 
@@ -774,8 +1195,8 @@ export default function AvoirsPage() {
             </button>
             <button
               type="submit"
-              disabled={mUtilisation.isPending}
-              className="btn bg-amber-500 hover:bg-amber-600 text-white inline-flex items-center gap-2"
+              disabled={!utilCanSubmit}
+              className="btn bg-amber-500 hover:bg-amber-600 text-white inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {mUtilisation.isPending && <Loader2 size={14} className="animate-spin" />}
               Confirmer l'utilisation
@@ -795,6 +1216,15 @@ export default function AvoirsPage() {
           setConfirmDelete({ open: false })
         }}
       />
+
+      {/* ── Historique du portefeuille client ────────────────────────────────── */}
+      {historyClient && (
+        <ClientHistoryModal
+          clientId={historyClient.id}
+          label={historyClient.label}
+          onClose={() => setHistoryClient(null)}
+        />
+      )}
     </div>
   )
 }

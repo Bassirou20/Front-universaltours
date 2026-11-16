@@ -90,7 +90,7 @@ export default function WhatsAppSendModal({
             </div>
             <div className="min-w-0">
               <div className="text-[15px] font-bold tracking-[-0.01em]">Envoyer un message WhatsApp</div>
-              <div className="text-[11.5px] text-gray-500 dark:text-gray-400 mt-0.5 truncate">
+              <div className="text-[12px] text-gray-500 dark:text-gray-400 mt-0.5 truncate">
                 À : <strong>{clientName}</strong> · <span className="font-mono">{phone || '—'}</span>
               </div>
             </div>
@@ -115,7 +115,7 @@ export default function WhatsAppSendModal({
 
           {/* Sélecteur de template */}
           <div>
-            <label className="block text-[10.5px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1.5">
+            <label className="block text-[12px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1.5">
               Modèle de message
             </label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
@@ -136,7 +136,7 @@ export default function WhatsAppSendModal({
                     <span className="text-base">{opt.emoji}</span>
                     <div className="min-w-0 flex-1">
                       <div className="text-[12.5px] font-semibold truncate">{opt.label}</div>
-                      <div className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{opt.hint}</div>
+                      <div className="text-[12px] text-gray-500 dark:text-gray-400 truncate">{opt.hint}</div>
                     </div>
                     {active && <CheckCircle2 size={13} className="shrink-0 text-emerald-500" />}
                   </button>
@@ -147,7 +147,7 @@ export default function WhatsAppSendModal({
 
           {/* Aperçu/édition du message */}
           <div>
-            <label className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1.5">
+            <label className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1.5">
               <Edit3 size={11} />
               Message (modifiable)
             </label>
@@ -158,7 +158,7 @@ export default function WhatsAppSendModal({
               className="w-full px-3 py-2.5 border border-black/[0.14] dark:border-white/15 rounded-lg bg-white dark:bg-white/[0.03] text-[12.5px] outline-none transition focus:border-emerald-500 focus:ring-[3px] focus:ring-emerald-500/15 resize-y font-mono leading-relaxed"
               placeholder="Écrivez votre message ici…"
             />
-            <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-1">
+            <div className="text-[12px] text-gray-400 dark:text-gray-500 mt-1">
               Astuce : utilisez *texte* pour mettre en gras, _texte_ pour italique. {message.length} caractères.
             </div>
           </div>

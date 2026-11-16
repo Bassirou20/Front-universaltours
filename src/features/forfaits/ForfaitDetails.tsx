@@ -1,3 +1,4 @@
+import { formatDateLong } from '../../lib/helpers'
 import React from 'react'
 import {
   User, Users, Home, CircleDollarSign, CalendarDays,
@@ -54,8 +55,6 @@ const TYPE_CONFIG: Record<ForfaitModel['type'], TypeEntry> = {
 const money = (n?: number | null) =>
   n != null ? `${Number(n).toLocaleString()} XOF` : '—'
 
-const fmt = (d?: string) =>
-  d ? new Date(d).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' }) : '—'
 
 export const ForfaitDetails: React.FC<{
   forfait?: ForfaitModel | null
@@ -172,11 +171,11 @@ export const ForfaitDetails: React.FC<{
           <div className="space-y-1 text-xs text-gray-500 dark:text-gray-400">
             <div className="flex justify-between gap-2">
               <span>Créé</span>
-              <span className="text-gray-700 dark:text-gray-300">{fmt(forfait.created_at)}</span>
+              <span className="text-gray-700 dark:text-gray-300">{formatDateLong(forfait.created_at)}</span>
             </div>
             <div className="flex justify-between gap-2">
               <span>Modifié</span>
-              <span className="text-gray-700 dark:text-gray-300">{fmt(forfait.updated_at)}</span>
+              <span className="text-gray-700 dark:text-gray-300">{formatDateLong(forfait.updated_at)}</span>
             </div>
           </div>
         </div>
@@ -197,7 +196,7 @@ export const ForfaitDetails: React.FC<{
       </div>
 
       {/* ── Footer ── */}
-      <div className="flex justify-between text-[11px] text-gray-400 px-1">
+      <div className="flex justify-between text-[12px] text-gray-400 px-1">
         <span>ID #{forfait.id}</span>
         <span>Événement #{forfait.event_id}</span>
       </div>

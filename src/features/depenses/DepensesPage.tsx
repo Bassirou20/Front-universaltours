@@ -1,3 +1,4 @@
+import { LoadError } from '../../ui/LoadError'
 import React, { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -54,7 +55,7 @@ function KpiMini({ label, value, icon, color }: { label: string; value: string; 
         {icon}
       </div>
       <div className="min-w-0">
-        <div className="text-[11px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide">{label}</div>
+        <div className="text-[12px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide">{label}</div>
         <div className="text-sm font-bold text-gray-900 dark:text-gray-100 truncate">{value}</div>
       </div>
     </div>
@@ -372,14 +373,16 @@ export default function DepensesPage() {
 
       <div className="rounded-xl border border-black/[0.05] dark:border-white/[0.07] bg-white dark:bg-[#151d2e] shadow-sm overflow-hidden">
         <div className="hidden sm:grid sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_72px] md:grid-cols-[minmax(0,2fr)_100px_minmax(0,1fr)_minmax(0,1fr)_72px] items-center gap-3 px-4 py-2 border-b border-black/[0.04] dark:border-white/[0.05] bg-gray-50/80 dark:bg-white/[0.02] border-l-[3px] border-l-transparent">
-          <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider">Dépense</span>
-          <span className="hidden md:inline text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Date</span>
-          <span className="hidden md:inline text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Montant</span>
-          <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Statut</span>
-          <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Actions</span>
+          <span className="text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider">Dépense</span>
+          <span className="hidden md:inline text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Date</span>
+          <span className="hidden md:inline text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Montant</span>
+          <span className="text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Statut</span>
+          <span className="text-[12px] font-semibold text-gray-400 dark:text-gray-600 uppercase tracking-wider text-center">Actions</span>
         </div>
 
-        {qDepenses.isLoading ? (
+        {qDepenses.isError ? (
+          <LoadError what="les dépenses" onRetry={() => qDepenses.refetch()} />
+        ) : qDepenses.isLoading ? (
           <div>
             {Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} />)}
           </div>
@@ -444,7 +447,7 @@ export default function DepensesPage() {
                       <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate" title={d.libelle}>
                         {d.libelle}
                       </div>
-                      <div className="text-[11px] text-gray-400 dark:text-gray-500 truncate">
+                      <div className="text-[12px] text-gray-400 dark:text-gray-500 truncate">
                         {d.fournisseur_nom ? d.fournisseur_nom : d.reference ? `Réf: ${d.reference}` : cat.label}
                       </div>
                     </div>
@@ -464,12 +467,12 @@ export default function DepensesPage() {
                     <span className="text-sm font-bold text-gray-900 dark:text-gray-100 tabular-nums">
                       {Number(d.montant || 0).toLocaleString('fr-FR')}
                     </span>
-                    <span className="text-[10px] font-normal text-gray-400">XOF</span>
+                    <span className="text-[12px] font-normal text-gray-400">XOF</span>
                   </div>
 
                   {/* Cell 4 : Statut (sm+) */}
                   <div className="hidden sm:flex items-center justify-center">
-                    <span className={cx('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap', statutBadge)}>
+                    <span className={cx('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12px] font-semibold whitespace-nowrap', statutBadge)}>
                       <span className={cx('h-1 w-1 rounded-full shrink-0', statutDot)} />
                       {statutLabel}
                     </span>
@@ -478,14 +481,14 @@ export default function DepensesPage() {
                   {/* Mobile summary (xs only) */}
                   <div className="flex sm:hidden flex-wrap items-center justify-between gap-2 pl-9">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className={cx('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold', statutBadge)}>
+                      <span className={cx('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12px] font-semibold', statutBadge)}>
                         <span className={cx('h-1 w-1 rounded-full', statutDot)} />
                         {statutLabel}
                       </span>
-                      <span className="text-[10px] text-gray-400 tabular-nums">{safeDate(d.date_depense)}</span>
+                      <span className="text-[12px] text-gray-400 tabular-nums">{safeDate(d.date_depense)}</span>
                     </div>
                     <span className="text-sm font-bold text-gray-900 dark:text-gray-100 tabular-nums shrink-0">
-                      {Number(d.montant || 0).toLocaleString('fr-FR')} <span className="text-[10px] font-normal text-gray-400">XOF</span>
+                      {Number(d.montant || 0).toLocaleString('fr-FR')} <span className="text-[12px] font-normal text-gray-400">XOF</span>
                     </span>
                   </div>
 

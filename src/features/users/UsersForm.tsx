@@ -11,7 +11,7 @@ const schema = z.object({
   prenom: z.string().optional().nullable(),
   nom: z.string().min(1, 'Nom requis').max(150),
   email: z.string().email('Email invalide'),
-  role: z.enum(['admin', 'employee'], { required_error: 'Rôle requis' }),
+  role: z.enum(['admin', 'agent'], { required_error: 'Rôle requis' }),
   password: z.string().optional(),
 })
 
@@ -50,7 +50,7 @@ function Field({
 }) {
   return (
     <div>
-      <label className="block text-[11px] font-semibold text-gray-600 dark:text-gray-400 mb-1.5">
+      <label className="block text-[12px] font-semibold text-gray-600 dark:text-gray-400 mb-1.5">
         {label}
         {required && <span className="text-rose-500 ml-0.5">*</span>}
       </label>
@@ -62,9 +62,9 @@ function Field({
         )}
         {children}
       </div>
-      {hint && !error && <div className="text-[10.5px] text-gray-400 dark:text-gray-500 mt-1">{hint}</div>}
+      {hint && !error && <div className="text-[12px] text-gray-400 dark:text-gray-500 mt-1">{hint}</div>}
       {error && (
-        <div className="text-[10.5px] text-rose-600 dark:text-rose-400 mt-1 inline-flex items-center gap-1">
+        <div className="text-[12px] text-rose-600 dark:text-rose-400 mt-1 inline-flex items-center gap-1">
           <AlertCircle size={11} />
           {error}
         </div>
@@ -104,7 +104,7 @@ export default function UsersForm({
   const { register, handleSubmit, formState: { errors }, watch, setValue } = useForm<UserInput>({
     resolver: zodResolver(schema),
     defaultValues: {
-      role: 'employee',
+      role: 'agent',
       ...defaultValues,
     },
   })
@@ -128,7 +128,7 @@ export default function UsersForm({
 
       {/* Identité */}
       <div className="rounded-xl border border-black/[0.07] dark:border-white/[0.08] bg-gray-50/40 dark:bg-white/[0.02] p-4 space-y-3">
-        <div className="flex items-center gap-2 text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+        <div className="flex items-center gap-2 text-[12px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
           <UserIcon size={12} />
           Identité
         </div>
@@ -141,20 +141,20 @@ export default function UsersForm({
           </Field>
         </div>
         <Field label="Email" icon={<Mail size={14} />} required error={errors.email?.message?.toString()}>
-          <input className={inputCls} type="email" {...register('email')} placeholder="prenom@universal-tours.com" />
+          <input className={inputCls} type="email" {...register('email')} placeholder="prenom@itineo.com" />
         </Field>
       </div>
 
       {/* Rôle */}
       <div className="rounded-xl border border-black/[0.07] dark:border-white/[0.08] bg-gray-50/40 dark:bg-white/[0.02] p-4 space-y-3">
-        <div className="flex items-center gap-2 text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+        <div className="flex items-center gap-2 text-[12px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
           <Shield size={12} />
           Rôle & permissions
         </div>
         <div className="grid grid-cols-2 gap-2">
           {([
             {
-              value: 'employee',
+              value: 'agent',
               label: 'Agent',
               hint: 'Gère ses propres réservations',
               tone: 'sky',
@@ -194,7 +194,7 @@ export default function UsersForm({
                   ].join(' ')}>
                     {opt.label}
                   </div>
-                  <div className="text-[10.5px] text-gray-400 dark:text-gray-500 mt-0.5">
+                  <div className="text-[12px] text-gray-400 dark:text-gray-500 mt-0.5">
                     {opt.hint}
                   </div>
                 </div>
@@ -204,7 +204,7 @@ export default function UsersForm({
           })}
         </div>
         {errors.role && (
-          <div className="text-[10.5px] text-rose-600 dark:text-rose-400 inline-flex items-center gap-1">
+          <div className="text-[12px] text-rose-600 dark:text-rose-400 inline-flex items-center gap-1">
             <AlertCircle size={11} />
             {errors.role.message?.toString()}
           </div>
@@ -214,14 +214,14 @@ export default function UsersForm({
       {/* Mot de passe */}
       <div className="rounded-xl border border-black/[0.07] dark:border-white/[0.08] bg-gray-50/40 dark:bg-white/[0.02] p-4 space-y-3">
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+          <div className="flex items-center gap-2 text-[12px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
             <Lock size={12} />
-            Mot de passe {isEditMode && <span className="text-[10px] normal-case font-normal text-gray-400">(facultatif en édition)</span>}
+            Mot de passe {isEditMode && <span className="text-[12px] normal-case font-normal text-gray-400">(facultatif en édition)</span>}
           </div>
           <button
             type="button"
             onClick={handleGenerate}
-            className="inline-flex items-center gap-1 text-[10.5px] font-medium text-[var(--ut-orange)] hover:underline"
+            className="inline-flex items-center gap-1 text-[12px] font-medium text-[var(--ut-orange)] hover:underline"
             title="Génère un mot de passe sécurisé et le copie dans le presse-papier"
           >
             <RefreshCw size={11} />
@@ -257,7 +257,7 @@ export default function UsersForm({
         {/* Indicateur de force */}
         {passwordVal.length > 0 && (
           <div className="space-y-1.5">
-            <div className="flex items-center justify-between text-[10.5px]">
+            <div className="flex items-center justify-between text-[12px]">
               <span className="text-gray-500 dark:text-gray-400">Force du mot de passe</span>
               <span className={'font-semibold ' + strength.color}>{strength.label}</span>
             </div>
@@ -311,7 +311,7 @@ function PasswordChecklist({ pw }: { pw: string }) {
   return (
     <div className="grid grid-cols-2 gap-1 mt-1.5">
       {rules.map((r, i) => (
-        <div key={i} className="inline-flex items-center gap-1.5 text-[10px]">
+        <div key={i} className="inline-flex items-center gap-1.5 text-[12px]">
           {r.ok ? (
             <CheckCircle2 size={10} className="text-emerald-500" />
           ) : (

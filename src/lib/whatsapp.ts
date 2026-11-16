@@ -121,7 +121,7 @@ export const templates = {
 
   /** Confirmation de paiement reçu */
   paymentReceived: (ctx: WhatsAppContext & { montantRecu?: number }): string => {
-    const ag = ctx.agencyName || 'Universal Tours'
+    const ag = ctx.agencyName || 'Itinéo'
     const ref = ctx.reservation?.reference || ctx.facture?.numero || '—'
     const recu = Number((ctx as any).montantRecu || 0)
     const cur = ctx.reservation?.devise || ctx.facture?.devise || 'XOF'

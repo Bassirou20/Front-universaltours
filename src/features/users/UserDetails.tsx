@@ -116,13 +116,13 @@ function KpiCard({
         {icon}
       </div>
       <div className="min-w-0 flex-1">
-        <div className="text-[10px] text-gray-400 dark:text-gray-500 uppercase tracking-wider font-semibold">
+        <div className="text-[12px] text-gray-400 dark:text-gray-500 uppercase tracking-wider font-semibold">
           {label}
         </div>
         <div className="text-base font-bold text-gray-900 dark:text-gray-100 mt-0.5 truncate">
           {value}
         </div>
-        {hint && <div className="text-[10.5px] text-gray-400 dark:text-gray-500 mt-0.5 truncate">{hint}</div>}
+        {hint && <div className="text-[12px] text-gray-400 dark:text-gray-500 mt-0.5 truncate">{hint}</div>}
       </div>
     </div>
   )
@@ -288,11 +288,11 @@ export default function UserDetails({ user }: { user?: UserModel | null }) {
                       {actionLabel(a.action)}
                     </div>
                     {a.description && (
-                      <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate">
+                      <div className="text-[12px] text-gray-500 dark:text-gray-400 truncate">
                         {a.description}
                       </div>
                     )}
-                    <div className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">
+                    <div className="text-[12px] text-gray-400 dark:text-gray-500 mt-0.5">
                       {relativeTime(a.created_at)}
                     </div>
                   </div>

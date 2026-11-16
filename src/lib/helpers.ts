@@ -53,7 +53,17 @@ export const normalizeList = (input: any): any[] => {
 // ─── Currency formatter ───────────────────────────────────────────────────────
 
 export const money = (n: unknown, devise = 'XOF') =>
-  `${Number(n || 0).toLocaleString()} ${devise}`
+  `${Number(n || 0).toLocaleString('fr-FR')} ${devise}`
+
+// ─── Date formatters ──────────────────────────────────────────────────────────
+
+/** « 05 janv. 26 » — pour les tableaux denses. */
+export const formatDateShort = (iso?: string | null) =>
+  iso ? new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'
+
+/** « 05 janvier 2026 » — pour les fiches détail. */
+export const formatDateLong = (iso?: string | null) =>
+  iso ? new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' }) : '—'
 
 // ─── Class merger ─────────────────────────────────────────────────────────────
 

@@ -1,4 +1,5 @@
 // src/features/notifications/NotificationsPage.tsx
+import { LoadError } from '../../ui/LoadError'
 import React, { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query'
@@ -232,7 +233,9 @@ export default function NotificationsPage() {
 
       {/* ── Liste ── */}
       <div className="rounded-2xl border border-black/[0.07] dark:border-white/[0.08] bg-white dark:bg-panel overflow-hidden">
-        {q.isLoading ? (
+        {q.isError ? (
+          <LoadError what="les notifications" onRetry={() => q.refetch()} />
+        ) : q.isLoading ? (
           <ul className="divide-y divide-black/[0.05] dark:divide-white/[0.07]">
             {Array.from({ length: 6 }).map((_, i) => (
               <li key={i} className="flex items-start gap-3 px-4 py-3.5">
@@ -299,14 +302,14 @@ export default function NotificationsPage() {
                       )}
                     </div>
                     <div className="flex items-center justify-between gap-2 mt-1.5">
-                      <span className="text-[10.5px] text-gray-400 dark:text-gray-500">
+                      <span className="text-[12px] text-gray-400 dark:text-gray-500">
                         {timeAgo(n.created_at)} <span className="hidden sm:inline">· {dateLabel(n.created_at)}</span>
                       </span>
                       <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition">
                         {isUnread && (
                           <button
                             onClick={(e) => { e.stopPropagation(); mMarkRead.mutate(n.id) }}
-                            className="text-[10.5px] text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
+                            className="text-[12px] text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
                             title="Marquer comme lue"
                           >
                             Marquer lue

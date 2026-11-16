@@ -7,19 +7,14 @@ import App from './App'
 import './index.css'
 import { AuthProvider } from './store/auth'
 import { ToastProvider } from './ui/Toasts'
+import { PlanErrorListener } from './ui/PlanErrorListener'
 
-// ──────────────────────────────────────────────────────────────────────────────
-// Redirection au chargement de l'app : toute URL "interne" (non publique)
-// est remplacée par la landing page AVANT que React monte.
-// → Pas de flash de la page protégée avant redirection.
-// → Les pages publiques (login, forgot, reset) restent intactes (utile si
-//   l'utilisateur est en train de remplir le formulaire de connexion / reset).
-// ──────────────────────────────────────────────────────────────────────────────
-const PUBLIC_PATHS = ['/', '/login', '/forgot-password', '/reset-password']
-const currentPath = window.location.pathname
-if (!PUBLIC_PATHS.includes(currentPath)) {
-  window.history.replaceState(null, '', '/')
-}
+// NB : pas de réécriture d'URL avant le montage de React.
+// La protection des routes est gérée par <AuthGuard> (qui lit le token de
+// façon synchrone et redirige vers /login sans flash de contenu protégé).
+// Réécrire l'URL ici cassait : le rechargement d'une page authentifiée
+// (renvoyé à tort sur la landing), le lien de vérification d'email
+// (/verify-email/:token) et les pages publiques /signup, /cgu, /confidentialite.
 
 const qc = new QueryClient({
   defaultOptions: {
@@ -40,6 +35,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <QueryClientProvider client={qc}>
       <AuthProvider>
         <ToastProvider>
+          <PlanErrorListener />
           <BrowserRouter>
             <App />
           </BrowserRouter>

@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { useAuth } from '../../store/auth'
+import { useRole } from '../../hooks/useRole'
 import { api } from '../../lib/axios'
 import { useToast } from '../../ui/Toasts'
 import {
@@ -11,6 +12,7 @@ import {
   AlertCircle, Phone,
 } from 'lucide-react'
 import SessionsList from './SessionsList'
+import { PasswordStrength } from '../../ui/PasswordStrength'
 
 export default function ProfilePage() {
   const { user, logout, refreshMe } = useAuth()
@@ -19,9 +21,17 @@ export default function ProfilePage() {
 
   // ── Identity ──
   const fullName  = [user?.prenom, user?.nom].filter(Boolean).join(' ').trim() || user?.email || 'Compte'
-  const roleRaw   = String(user?.role || '').toLowerCase()
-  const isAdmin   = roleRaw === 'admin'
-  const roleLabel = isAdmin ? 'Administrateur' : roleRaw === 'employee' ? 'Employé' : (user?.role || '—')
+  const { role: roleRaw, isAdmin } = useRole()
+  const roleLabel = (() => {
+    switch (roleRaw) {
+      case 'super_admin': return 'Super-Admin'
+      case 'owner':       return 'Propriétaire'
+      case 'admin':       return 'Administrateur'
+      case 'agent':       return 'Agent'
+      case 'employee':    return 'Employé' // legacy
+      default:            return user?.role || '—'
+    }
+  })()
 
   const a = (user?.prenom ?? '').trim()[0] ?? ''
   const b = (user?.nom ?? '').trim()[0] ?? ''
@@ -97,21 +107,6 @@ export default function ProfilePage() {
     navigate('/login')
   }
 
-  // ── Password strength ──
-  const pwdStrength = (p: string) => {
-    if (!p) return { score: 0, label: '', color: '' }
-    let s = 0
-    if (p.length >= 8) s++
-    if (p.length >= 12) s++
-    if (/[A-Z]/.test(p)) s++
-    if (/[0-9]/.test(p)) s++
-    if (/[^a-zA-Z0-9]/.test(p)) s++
-    const labels = ['Très faible', 'Faible', 'Moyen', 'Bon', 'Fort', 'Très fort']
-    const colors = ['bg-red-500', 'bg-red-400', 'bg-amber-500', 'bg-emerald-400', 'bg-emerald-500', 'bg-emerald-600']
-    return { score: s, label: labels[s], color: colors[s] }
-  }
-  const strength = pwdStrength(pwd.next)
-
   const mustChangePwd = Boolean((user as any)?.must_change_password)
 
   return (
@@ -170,14 +165,14 @@ export default function ProfilePage() {
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100 truncate">{fullName}</h3>
-                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[12px] font-semibold border ${
                   isAdmin
                     ? 'bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-500/15 dark:text-violet-300 dark:border-violet-500/25'
                     : 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/25'
                 }`}>
                   <ShieldCheck size={10} /> {roleLabel}
                 </span>
-                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[12px] font-semibold ${
                   user?.actif
                     ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/25'
                     : 'bg-gray-100 text-gray-600 border border-gray-200 dark:bg-white/10 dark:text-gray-300 dark:border-white/15'
@@ -256,7 +251,7 @@ export default function ProfilePage() {
                 autoComplete="email"
                 required
               />
-              <p className="text-[10px] text-gray-400 mt-1">
+              <p className="text-[12px] text-gray-400 mt-1">
                 L'adresse email est utilisée pour la connexion et les notifications.
               </p>
             </div>
@@ -347,24 +342,8 @@ export default function ProfilePage() {
                   {showNew ? <EyeOff size={14} /> : <Eye size={14} />}
                 </button>
               </div>
-              {/* Strength meter */}
-              {pwd.next && (
-                <div className="mt-2 flex items-center gap-2">
-                  <div className="flex-1 h-1 rounded-full bg-gray-100 dark:bg-white/[0.08] overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-300 ${strength.color}`}
-                      style={{ width: `${(strength.score / 5) * 100}%` }}
-                    />
-                  </div>
-                  <span className={`text-[10px] font-semibold shrink-0 ${
-                    strength.score <= 1 ? 'text-red-500' :
-                    strength.score <= 2 ? 'text-amber-600' :
-                    'text-emerald-600'
-                  }`}>
-                    {strength.label}
-                  </span>
-                </div>
-              )}
+              {/* Strength meter (composant partagé) */}
+              <PasswordStrength password={pwd.next} />
             </div>
 
             <div>
@@ -379,12 +358,12 @@ export default function ProfilePage() {
                 minLength={8}
               />
               {pwd.next && pwd.confirm && pwd.next !== pwd.confirm && (
-                <p className="text-[10px] text-red-500 mt-1 flex items-center gap-1">
+                <p className="text-[12px] text-red-500 mt-1 flex items-center gap-1">
                   <AlertCircle size={10} /> Les mots de passe ne correspondent pas.
                 </p>
               )}
               {pwd.next && pwd.confirm && pwd.next === pwd.confirm && (
-                <p className="text-[10px] text-emerald-600 mt-1 flex items-center gap-1">
+                <p className="text-[12px] text-emerald-600 mt-1 flex items-center gap-1">
                   <CheckCircle2 size={10} /> Les mots de passe correspondent.
                 </p>
               )}
