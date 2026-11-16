@@ -9,7 +9,7 @@ export default defineConfig({
     entries: ['index.html'],
     include: [
       'react','react-dom','react-router-dom',
-      '@tanstack/react-query','axios','lucide-react','clsx','recharts',
+      '@tanstack/react-query','axios','lucide-react','recharts',
       'react-hook-form','zod','@hookform/resolvers'
     ]
   },
